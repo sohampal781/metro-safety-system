@@ -106,6 +106,7 @@
                 <button onclick="switchTab('register')" id="tab-register" class="nav-btn">
     <i class="fa-solid fa-id-card mr-2"></i>RFID Register
 </button>
+                <button onclick="checkData()" class="bg-yellow-600 p-2 text-white">DEBUG: Check DB</button>
             </nav>
         </div>
         
@@ -217,8 +218,6 @@
         </div>
     </div>
 </div>
-        <button onclick="checkData()" class="bg-yellow-600 p-2 text-white">DEBUG: Check DB</button>
-
 <script>
 window.checkData = () => {
     console.log("Current Points Array:", points);

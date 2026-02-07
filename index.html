@@ -6,72 +6,69 @@
     <title>Metro Safety | Station Master Console</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <style>
-        body { background-color: #0f172a; color: #cbd5e1; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+   <style>
+        /* GOVERNMENT STANDARD THEME */
+        body { 
+            background-color: #000000; 
+            color: #cccccc; 
+            overflow: hidden; 
+            font-family: 'Courier New', Courier, monospace; /* Monospace for official look */
+            text-transform: uppercase;
+        }
+
+        /* Override Tailwind Colors for Dark Mode */
+        .bg-slate-900, .bg-slate-800 { background-color: #0a0a0a !important; border-color: #333 !important; }
+        .bg-slate-700 { background-color: #111 !important; border: 1px solid #333 !important; }
+        .border-slate-700 { border-color: #222 !important; }
+        .text-slate-500 { color: #666 !important; }
         
-        /* Tab Navigation Styles */
+        /* Industrial Tab Navigation */
         .nav-btn {
             padding: 12px 24px;
-            border-bottom: 2px solid transparent;
-            color: #64748b;
-            font-weight: 600;
+            border: 1px solid transparent;
+            border-right: 1px solid #222;
+            color: #555;
+            font-weight: bold;
+            letter-spacing: 1px;
+            background: #000;
             transition: all 0.2s;
+            cursor: pointer;
         }
+        .nav-btn:hover { background: #111; color: #fff; }
         .nav-btn.active {
-            color: #38bdf8;
-            border-bottom-color: #38bdf8;
-            background: rgba(56, 189, 248, 0.1);
+            color: #00ff00; /* Neon Green Active State */
+            background: #051a05;
+            border-bottom: 2px solid #00ff00;
         }
-        .nav-btn:hover:not(.active) { color: #94a3b8; background: rgba(255,255,255,0.05); }
 
-        /* The Drawing Canvas */
-        /* FIND THIS PART IN <style> AND UPDATE IT */
-#zone-canvas {
-    position: absolute; 
-    top: 0; 
-    left: 0; 
-    width: 100%; 
-    height: 100%;
-    cursor: crosshair; 
-    z-index: 50; /* Increased to ensure it's on top */
-}
-        #zone-canvas {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            cursor: crosshair; z-index: 20;
-        }
-        /* When not drawing, let clicks pass through to video controls if needed */
-        #zone-canvas.locked { pointer-events: none; }
-
-        /* Video Container - ORIGINAL SIZE & CENTERED */
+        /* Video Container - FULL VIEW */
         .video-wrapper {
             position: relative;
-            width: 100%; 
-            height: 100%;
+            width: 100%; height: 100%;
             background: #000;
-            display: flex;
-            justify-content: center; /* Center the video */
-            align-items: center;
+            display: flex; justify-content: center; align-items: center;
+            border: 1px solid #222;
         }
         
         video { 
-            width: auto; 
-            height: auto; 
-            max-width: 100%; 
-            max-height: 100%;
-            object-fit: contain; /* Keeps original aspect ratio */
+            width: auto; height: auto; 
+            max-width: 100%; max-height: 100%;
+            object-fit: contain; 
         }
 
-        /* Hide the yellow line overlay */
-        #safety-overlay { display: none; }
-        /* Status Indicators */
+        /* LAYERS */
+        #zone-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: crosshair; z-index: 50; }
+        #detect-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 40; }
+        #safety-overlay { display: none; /* KEEPS TRIP LINE HIDDEN */ }
+
+        /* Status Badges - Official Look */
         .status-badge {
-            display: inline-flex; items-center; gap: 6px;
-            padding: 4px 12px; border-radius: 999px;
-            font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em;
+            display: inline-flex; items-center; gap: 8px;
+            padding: 4px 12px; border: 1px solid #333;
+            font-size: 0.7rem; letter-spacing: 0.1em;
+            background: #111; color: #888;
         }
-        .status-ok { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #059669; }
-        .status-alert { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid #b91c1c; }
+        .status-ok { border-color: #064e3b; color: #34d399; background: #022c22; }
     </style>
 </head>
 <body class="flex flex-col h-screen">
@@ -79,7 +76,7 @@
     <header class="h-14 bg-slate-900 border-b border-slate-700 flex justify-between items-center px-4 shrink-0">
         <div class="flex items-center gap-4">
             <div class="text-xl font-bold text-white tracking-tight">
-                <i class="fa-solid fa-subway text-sky-500 mr-2"></i>METRO<span class="text-sky-500">GUARD</span>
+                <i class="fa-solid fa-subway text-sky-500 mr-2"></i>SURVEILLANCE <span class="text-green-500">COMMAND</span>
             </div>
             <div class="h-6 w-px bg-slate-700 mx-2"></div>
             <nav class="flex">

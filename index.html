@@ -192,7 +192,24 @@
                     </tbody>
             </table>
         </div>
-
+<div id="view-register" class="absolute inset-0 hidden bg-slate-900 p-8">
+    <div class="max-w-md mx-auto bg-slate-800 p-6 rounded-lg border border-slate-700">
+        <h3 class="text-xl font-bold text-white mb-4">Register New Personnel</h3>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-xs text-slate-500 mb-1">RFID TAG ID</label>
+                <input type="text" id="reg-rfid" class="w-full bg-black border border-slate-600 p-2 text-green-500 font-mono" placeholder="Scan Tag...">
+            </div>
+            <div>
+                <label class="block text-xs text-slate-500 mb-1">Full Name</label>
+                <input type="text" id="reg-name" class="w-full bg-black border border-slate-600 p-2 text-white" placeholder="Enter Name">
+            </div>
+            <button onclick="saveUser()" class="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-2 rounded">
+                COMPLETE REGISTRATION
+            </button>
+        </div>
+    </div>
+</div>
     </main>
 
     <script type="module">
@@ -263,32 +280,23 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 // 3. Start Drawing Action
 window.startDrawing = () => {
-    // Force resize to match video container exactly
     const container = document.querySelector('.video-wrapper');
-    if(container) {
-        canvas.width = container.offsetWidth;
-        canvas.height = container.offsetHeight;
-    }
+    canvas.width = container.offsetWidth;
+    canvas.height = container.offsetHeight;
 
     points = [];
     isDrawing = true;
     
-    // Clear previous
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
     // UI Updates
     document.getElementById('side-selector').classList.add('hidden');
-    canvas.classList.remove('locked'); 
-    canvas.style.pointerEvents = "auto"; 
+    canvas.style.pointerEvents = "auto"; // CRITICAL: Allow clicks
+    canvas.style.zIndex = "1000";       // Ensure it is on the very top
     
-    // Visual indicator that drawing is active
-    canvas.style.cursor = "crosshair";
-    canvas.style.border = "2px solid #00ff00"; // Neon Green Border
-    
-    alert("DRAWING MODE: Click points on the screen. Double-click to finish.");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    alert("DRAWING MODE: Click to add points. Double-click to finish.");
 };
 
-// 4. Mouse Down (Click to add point)
+// Handle clicks for adding points
 canvas.addEventListener('mousedown', (e) => {
     if(!isDrawing) return;
     
@@ -297,40 +305,17 @@ canvas.addEventListener('mousedown', (e) => {
     const y = e.clientY - rect.top;
 
     points.push({ x, y });
-    draw();
+    draw(); 
 });
 
-// 5. Mouse Move (Rubber band effect)
-canvas.addEventListener('mousemove', (e) => {
-    if(!isDrawing || points.length === 0) return;
-    
-    draw(); // Draw established lines
-    
-    // Draw "rubber band" line to cursor
-    const rect = canvas.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-    
-    ctx.beginPath();
-    ctx.moveTo(points[points.length-1].x, points[points.length-1].y);
-    ctx.lineTo(mouseX, mouseY);
-    ctx.strokeStyle = "#00ff00"; // Neon Green for visibility
-    ctx.setLineDash([5, 5]); // Dashed line for "preview"
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.setLineDash([]); // Reset
-});
-
-// 6. Double Click (Finish)
-canvas.addEventListener('dblclick', (e) => {
+// Double click to end
+canvas.addEventListener('dblclick', () => {
     if(!isDrawing) return;
     isDrawing = false;
-    canvas.style.pointerEvents = "none";
-    canvas.style.border = "none";
-    draw();
+    // Keep canvas visible but stop taking clicks so buttons work
+    canvas.style.pointerEvents = "none"; 
     document.getElementById('side-selector').classList.remove('hidden');
 });
-
 // 7. The Draw Function (Visuals)
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -397,6 +382,25 @@ function draw() {
                 alert("Error saving to cloud. Check console.");
             }
         };
+        window.saveUser = async () => {
+    const rfid = document.getElementById('reg-rfid').value;
+    const name = document.getElementById('reg-name').value;
+    
+    if(!rfid || !name) return alert("Please fill all fields");
+
+    try {
+        await setDoc(doc(db, "users", rfid), {
+            name: name,
+            rfid: rfid,
+            registered_at: new Date().toISOString()
+        });
+        alert("Personnel Registered Successfully!");
+        document.getElementById('reg-rfid').value = "";
+        document.getElementById('reg-name').value = "";
+    } catch (e) {
+        console.error(e);
+    }
+};
 // --- 4. LIVE MONITOR OVERLAY (Green Box Auto-Detect) ---
         const detectCanvas = document.getElementById('detect-layer');
         const dCtx = detectCanvas.getContext('2d');

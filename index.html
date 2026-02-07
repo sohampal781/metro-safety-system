@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Metro Safety – Master Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: #f4f6f8;
+      color: #333;
+    }
+
+    header {
+      background: #0b3c5d;
+      color: #fff;
+      padding: 16px 24px;
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    .container {
+      padding: 24px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 20px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .card img {
+      width: 100%;
+      height: 200px;
+      object-fit: cover;
+      border-radius: 6px;
+      background: #eee;
+    }
+
+    .row {
+      font-size: 14px;
+    }
+
+    .label {
+      font-weight: 600;
+    }
+
+    .status {
+      font-weight: 600;
+    }
+
+    .approved {
+      color: green;
+    }
+
+    .pending {
+      color: #c0392b;
+    }
+
+    button {
+      margin-top: auto;
+      padding: 10px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      background: #0b3c5d;
+      color: #fff;
+    }
+
+    button:disabled {
+      background: #aaa;
+      cursor: not-allowed;
+    }
+
+    footer {
+      text-align: center;
+      padding: 12px;
+      font-size: 12px;
+      color: #777;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  Metro Safety – Master Dashboard
+</header>
+
+<div class="container" id="violationsContainer"></div>
+
+<footer>
+  Human-in-the-loop Metro Safety Violation System
+</footer>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+  import {
+    getFirestore,
+    collection,
+    onSnapshot,
+    doc,
+    updateDoc
+  } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBoWtfLODLrDhRKkMew0sLceDgHBNAQAPM",
+    authDomain: "metro-safety-system.firebaseapp.com",
+    projectId: "metro-safety-system",
+    messagingSenderId: "783283638023",
+    appId: "1:783283638023:web:52d0d7ab6c6d7e1677bfa2"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  const container = document.getElementById("violationsContainer");
+
+  function renderViolation(id, data) {
+    const card = document.createElement("div");
+    card.className = "card";
+
+    const img = document.createElement("img");
+    img.src = data.face_url || "";
+    img.alt = "Face Image";
+
+    const rfid = document.createElement("div");
+    rfid.className = "row";
+    rfid.innerHTML = `<span class="label">RFID:</span> ${data.rfid}`;
+
+    const time = document.createElement("div");
+    time.className = "row";
+    time.innerHTML = `<span class="label">Time:</span> ${data.time}`;
+
+    const status = document.createElement("div");
+    status.className = "row status";
+    status.innerHTML = `<span class="label">Status:</span> 
+      <span class="${data.approved ? "approved" : "pending"}">
+        ${data.approved ? "Approved" : "Pending"}
+      </span>`;
+
+    const button = document.createElement("button");
+    button.textContent = data.approved ? "Fine Approved" : "Approve Fine";
+    button.disabled = data.approved;
+
+    button.addEventListener("click", async () => {
+      const ref = doc(db, "violations", id);
+      await updateDoc(ref, {
+        approved: true,
+        fine: 500
+      });
+    });
+
+    card.appendChild(img);
+    card.appendChild(rfid);
+    card.appendChild(time);
+    card.appendChild(status);
+    card.appendChild(button);
+
+    return card;
+  }
+
+  onSnapshot(collection(db, "violations"), (snapshot) => {
+    container.innerHTML = "";
+    snapshot.forEach((docSnap) => {
+      const card = renderViolation(docSnap.id, docSnap.data());
+      container.appendChild(card);
+    });
+  });
+</script>
+
+</body>
+</html>

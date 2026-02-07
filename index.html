@@ -269,54 +269,49 @@ window.checkData = () => {
         import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
 const rtdb = getDatabase(app);
+// Ensure 'points' is global
+let globalTripPoints = []; 
 
-// 1. Function to draw the SVG line on the Monitor
-function updateMonitorOverlay(points) {
+const updateMonitorOverlay = () => {
     const overlay = document.getElementById('safety-overlay');
-    if (!overlay || points.length < 2) return;
+    const container = overlay.parentElement;
+    
+    if (!overlay || globalTripPoints.length < 2) return;
 
-    overlay.style.display = "block"; // Make sure it's visible
-    overlay.innerHTML = ""; // Clear old lines
+    // 1. Match overlay size to the actual video container
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    overlay.setAttribute('width', w);
+    overlay.setAttribute('height', h);
 
-    const width = overlay.clientWidth;
-    const height = overlay.clientHeight;
-
-    // Create the path string
-    let d = `M ${points[0].x * width} ${points[0].y * height}`;
-    for (let i = 1; i < points.length; i++) {
-        d += ` L ${points[i].x * width} ${points[i].y * height}`;
+    // 2. Build the Path
+    let d = `M ${globalTripPoints[0].x * w} ${globalTripPoints[0].y * h}`;
+    for (let i = 1; i < globalTripPoints.length; i++) {
+        d += ` L ${globalTripPoints[i].x * w} ${globalTripPoints[i].y * h}`;
     }
 
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("d", d);
-    path.setAttribute("stroke", "#00ff00"); // Green
-    path.setAttribute("stroke-width", "5");
-    path.setAttribute("fill", "none");
-    path.setAttribute("stroke-linecap", "round");
-    path.style.filter = "drop-shadow(0 0 8px rgba(0, 255, 0, 0.8))"; // Glow effect
-    
-    overlay.appendChild(path);
-}
-// Optimized Listener in your <script type="module">
+    // 3. Update the SVG
+    overlay.innerHTML = `
+        <path d="${d}" 
+              stroke="#00ff00" 
+              stroke-width="4" 
+              fill="none" 
+              stroke-linecap="round"
+              style="filter: drop-shadow(0 0 8px rgba(0, 255, 0, 0.8));" />
+    `;
+};
+
+// Listen for Database Changes
 onValue(ref(rtdb, 'config/trip_line'), (snapshot) => {
     const data = snapshot.val();
     if (data && data.poly_points) {
-        // 1. Update the global points variable
-        window.points = data.poly_points; 
-
-        // 2. Wait a tiny bit for the DOM to catch up, then draw
-        setTimeout(() => {
-            const overlay = document.getElementById('safety-overlay');
-            // Force dimensions if they are still 0
-            if (overlay.clientWidth === 0) {
-                const container = overlay.closest('.video-wrapper');
-                overlay.setAttribute('width', container.offsetWidth);
-                overlay.setAttribute('height', container.offsetHeight);
-            }
-            updateMonitorOverlay(data.poly_points);
-        }, 100);
+        globalTripPoints = data.poly_points;
+        updateMonitorOverlay();
     }
 });
+
+// Auto-resize the line when the window changes
+window.addEventListener('resize', updateMonitorOverlay);
         // --- 1. VIDEO SETUP (Simulating RTSP with Webcam) ---
         async function startCameras() {
             try {
@@ -453,23 +448,21 @@ window.saveConfig = async () => {
         console.error("Save failed:", e);
     }
 };
-        window.saveUser = async () => {
-    const rfid = document.getElementById('reg-rfid').value;
-    const name = document.getElementById('reg-name').value;
+       window.saveUser = async () => {
+    const rfid = document.getElementById('reg-rfid').value.trim();
+    const name = document.getElementById('reg-name').value.trim();
     
-    if(!rfid || !name) return alert("Please fill all fields");
+    if(!rfid || !name) return alert("All fields required for Government Registry.");
 
     try {
-        await setDoc(doc(db, "users", rfid), {
+        // Save to RTDB path 'registered_users/TAG_ID'
+        await set(ref(rtdb, `registered_users/${rfid}`), {
             name: name,
-            rfid: rfid,
-            registered_at: new Date().toISOString()
+            timestamp: new Date().toISOString()
         });
-        alert("Personnel Registered Successfully!");
-        document.getElementById('reg-rfid').value = "";
-        document.getElementById('reg-name').value = "";
+        alert(`ACCESS GRANTED: ${name} registered.`);
     } catch (e) {
-        console.error(e);
+        console.error("Registry Error:", e);
     }
 };
 // --- 4. LIVE MONITOR OVERLAY (Green Box Auto-Detect) ---

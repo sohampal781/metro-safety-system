@@ -69,7 +69,16 @@
             background: transparent;
         }
         #detect-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 40; }
-        #safety-overlay { display: none; /* KEEPS TRIP LINE HIDDEN */ }
+        #safety-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: block !important; /* Ensure it isn't hidden */
+    pointer-events: none;
+    z-index: 50;
+}
 
         /* Status Badges - Official Look */
         .status-badge {
@@ -290,24 +299,24 @@ function updateMonitorOverlay(points) {
     
     overlay.appendChild(path);
 }
-
-// 2. Real-time Listener: Auto-update UI when DB changes
+// Optimized Listener in your <script type="module">
 onValue(ref(rtdb, 'config/trip_line'), (snapshot) => {
     const data = snapshot.val();
     if (data && data.poly_points) {
-        // Update the monitor overlay
-        updateMonitorOverlay(data.poly_points);
-        
-        // Also update the points array so the Config tab shows it too
-        const canvas = document.getElementById('zone-canvas');
-        if (canvas) {
-            points = data.poly_points.map(p => ({
-                x: p.x * canvas.width,
-                y: p.y * canvas.height
-            }));
-            // Call your existing draw() function to update the Config canvas
-            if (typeof draw === "function") draw();
-        }
+        // 1. Update the global points variable
+        window.points = data.poly_points; 
+
+        // 2. Wait a tiny bit for the DOM to catch up, then draw
+        setTimeout(() => {
+            const overlay = document.getElementById('safety-overlay');
+            // Force dimensions if they are still 0
+            if (overlay.clientWidth === 0) {
+                const container = overlay.closest('.video-wrapper');
+                overlay.setAttribute('width', container.offsetWidth);
+                overlay.setAttribute('height', container.offsetHeight);
+            }
+            updateMonitorOverlay(data.poly_points);
+        }, 100);
     }
 });
         // --- 1. VIDEO SETUP (Simulating RTSP with Webcam) ---

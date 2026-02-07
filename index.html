@@ -26,6 +26,16 @@
         .nav-btn:hover:not(.active) { color: #94a3b8; background: rgba(255,255,255,0.05); }
 
         /* The Drawing Canvas */
+        /* FIND THIS PART IN <style> AND UPDATE IT */
+#zone-canvas {
+    position: absolute; 
+    top: 0; 
+    left: 0; 
+    width: 100%; 
+    height: 100%;
+    cursor: crosshair; 
+    z-index: 50; /* Increased to ensure it's on top */
+}
         #zone-canvas {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             cursor: crosshair; z-index: 20;
@@ -216,94 +226,109 @@
             if(tabName === 'monitor') renderSafetyOverlay();
         };
 
-        // --- 3. DRAWING LOGIC (The "Master" Feature) ---
-        const canvas = document.getElementById('zone-canvas');
-        const ctx = canvas.getContext('2d');
+// --- FIND THE "DRAWING LOGIC" SECTION AND REPLACE WITH THIS ---
+
+// 1. Get elements
+const canvas = document.getElementById('zone-canvas');
+const ctx = canvas.getContext('2d');
+const videoContainer = document.querySelector('.video-wrapper'); // We need the container
+
+// 2. Resize function - Force canvas to match container size exactly
+function resizeCanvas() {
+    if(videoContainer) {
+        canvas.width = videoContainer.offsetWidth;
+        canvas.height = videoContainer.offsetHeight;
+        draw(); // Redraw if we resize
+    }
+}
+window.addEventListener('resize', resizeCanvas);
+
+// 3. Start Drawing Action
+window.startDrawing = () => {
+    resizeCanvas(); // Ensure size is correct before starting
+    points = [];
+    isDrawing = true;
+    
+    // Clear previous
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // UI Updates
+    document.getElementById('side-selector').classList.add('hidden');
+    canvas.classList.remove('locked'); // Make sure it captures clicks
+    canvas.style.pointerEvents = "auto"; // FORCE clicks to be enabled
+    
+    alert("Drawing Mode Active: Click points on the video. Double-click to finish.");
+};
+
+// 4. Mouse Down (Click to add point)
+canvas.addEventListener('mousedown', (e) => {
+    if(!isDrawing) return;
+    
+    // Get correct coordinates relative to the canvas, not the window
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    points.push({ x, y });
+    draw();
+});
+
+// 5. Mouse Move (Rubber band effect)
+canvas.addEventListener('mousemove', (e) => {
+    if(!isDrawing || points.length === 0) return;
+    
+    draw(); // Draw established lines
+    
+    // Draw "rubber band" line to cursor
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    
+    ctx.beginPath();
+    ctx.moveTo(points[points.length-1].x, points[points.length-1].y);
+    ctx.lineTo(mouseX, mouseY);
+    ctx.strokeStyle = "rgba(255, 255, 0, 0.5)"; // Faint yellow
+    ctx.lineWidth = 2;
+    ctx.stroke();
+});
+
+// 6. Double Click (Finish)
+canvas.addEventListener('dblclick', (e) => {
+    if(!isDrawing) return;
+    isDrawing = false;
+    canvas.style.pointerEvents = "none"; // Stop capturing clicks so you can click other buttons
+    draw();
+    document.getElementById('side-selector').classList.remove('hidden');
+});
+
+// 7. The Draw Function (Visuals)
+function draw() {
+    // Clear screen
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw the path
+    if (points.length > 0) {
+        ctx.beginPath();
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = "#fbbf24"; // Bright Yellow
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
         
-        // Resize canvas to match video resolution
-        function resizeCanvas() {
-            canvas.width = canvas.parentElement.offsetWidth;
-            canvas.height = canvas.parentElement.offsetHeight;
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) {
+            ctx.lineTo(points[i].x, points[i].y);
         }
-        window.addEventListener('resize', resizeCanvas);
-        setTimeout(resizeCanvas, 100); // Initial set
-
-        window.startDrawing = () => {
-            points = [];
-            isDrawing = true;
-            ctx.clearRect(0,0, canvas.width, canvas.height);
-            document.getElementById('side-selector').classList.add('hidden');
-            canvas.classList.remove('locked');
-        };
-
-        window.clearZone = () => {
-            points = [];
-            ctx.clearRect(0,0, canvas.width, canvas.height);
-            localStorage.removeItem('metro_zone_config'); // Clear saved
-            renderSafetyOverlay(); // Clear live view too
-        };
-
-        // Canvas Events
-        canvas.addEventListener('mousedown', (e) => {
-            if(!isDrawing) return;
-            const rect = canvas.getBoundingClientRect();
-            points.push({
-                x: e.clientX - rect.left,
-                y: e.clientY - rect.top
-            });
-            draw();
-        });
-
-        canvas.addEventListener('mousemove', (e) => {
-            if(!isDrawing || points.length === 0) return;
-            draw(); // Redraw existing lines
-            
-            // Draw rubber-band line to mouse cursor
-            const rect = canvas.getBoundingClientRect();
+        ctx.stroke();
+        
+        // Draw white dots at click points
+        ctx.fillStyle = "white";
+        points.forEach(p => {
             ctx.beginPath();
-            ctx.moveTo(points[points.length-1].x, points[points.length-1].y);
-            ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
-            ctx.strokeStyle = "yellow";
-            ctx.stroke();
+            ctx.arc(p.x, p.y, 5, 0, Math.PI*2);
+            ctx.fill();
         });
-
-        // Finish drawing on Double Click
-        canvas.addEventListener('dblclick', () => {
-            if(!isDrawing) return;
-            isDrawing = false;
-            canvas.classList.add('locked');
-            draw(); // Final draw
-            // Show the "Which side is unsafe?" popup
-            document.getElementById('side-selector').classList.remove('hidden');
-        });
-
-        function draw() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            // Draw lines
-            if (points.length > 0) {
-                ctx.beginPath();
-                ctx.lineWidth = 3;
-                ctx.strokeStyle = "#fbbf24"; // Amber-400
-                ctx.shadowBlur = 10;
-                ctx.shadowColor = "black";
-                
-                ctx.moveTo(points[0].x, points[0].y);
-                for (let i = 1; i < points.length; i++) {
-                    ctx.lineTo(points[i].x, points[i].y);
-                }
-                ctx.stroke();
-                
-                // Draw dots at vertices
-                ctx.fillStyle = "white";
-                points.forEach(p => {
-                    ctx.beginPath();
-                    ctx.arc(p.x, p.y, 4, 0, Math.PI*2);
-                    ctx.fill();
-                });
-            }
-        }
-
+    }
+}
         window.setUnsafeSide = (side) => {
             unsafeSide = side;
             document.getElementById('side-selector').classList.add('hidden');

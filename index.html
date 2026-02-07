@@ -79,6 +79,10 @@
             background: #111; color: #888;
         }
         .status-ok { border-color: #064e3b; color: #34d399; background: #022c22; }
+       /* Glowing Trip-line Style */
+.trip-line-glow {
+    filter: drop-shadow(0 0 8px rgba(34, 197, 94, 0.8));
+}
     </style>
 </head>
 <body class="flex flex-col h-screen">
@@ -99,6 +103,9 @@
                 <button onclick="switchTab('history')" id="tab-history" class="nav-btn">
                     <i class="fa-solid fa-clock-rotate-left mr-2"></i>History Log
                 </button>
+                <button onclick="switchTab('register')" id="tab-register" class="nav-btn">
+    <i class="fa-solid fa-id-card mr-2"></i>RFID Register
+</button>
             </nav>
         </div>
         
@@ -227,16 +234,15 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
         import { getFirestore, collection, query, orderBy, onSnapshot, doc, updateDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
-        // --- FIREBASE CONFIG (PUT YOUR KEYS HERE) ---
         const firebaseConfig = {
-            apiKey: "AIzaSyBoWtfLODLrDhRKkMew0sLceDgHBNAQAPM",
-            authDomain: "metro-safety-system.firebaseapp.com",
-            projectId: "metro-safety-system",
-            storageBucket: "metro-safety-system.appspot.com",
-            messagingSenderId: "783283638023",
-            appId: "1:783283638023:web:52d0d7ab6c6d7e1677bfa2"
-        };
-
+    apiKey: "AIzaSyBoWtfLODLrDhRKkMew0sLceDgHBNAQAPM",
+    authDomain: "metro-safety-system.firebaseapp.com",
+    projectId: "metro-safety-system",
+    storageBucket: "metro-safety-system.appspot.com",
+    messagingSenderId: "783283638023",
+    appId: "1:783283638023:web:52d0d7ab6c6d7e1677bfa2",
+    databaseURL: "https://metro-safety-system-default-rtdb.firebaseio.com" // Added
+};
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
@@ -244,7 +250,57 @@
         let points = [];
         let isDrawing = false;
         let unsafeSide = 'right'; // default
+        import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+
+const rtdb = getDatabase(app);
+
+// 1. Function to draw the SVG line on the Monitor
+function updateMonitorOverlay(points) {
+    const overlay = document.getElementById('safety-overlay');
+    if (!overlay || points.length < 2) return;
+
+    overlay.style.display = "block"; // Make sure it's visible
+    overlay.innerHTML = ""; // Clear old lines
+
+    const width = overlay.clientWidth;
+    const height = overlay.clientHeight;
+
+    // Create the path string
+    let d = `M ${points[0].x * width} ${points[0].y * height}`;
+    for (let i = 1; i < points.length; i++) {
+        d += ` L ${points[i].x * width} ${points[i].y * height}`;
+    }
+
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    path.setAttribute("stroke", "#00ff00"); // Green
+    path.setAttribute("stroke-width", "5");
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke-linecap", "round");
+    path.style.filter = "drop-shadow(0 0 8px rgba(0, 255, 0, 0.8))"; // Glow effect
+    
+    overlay.appendChild(path);
+}
+
+// 2. Real-time Listener: Auto-update UI when DB changes
+onValue(ref(rtdb, 'config/trip_line'), (snapshot) => {
+    const data = snapshot.val();
+    if (data && data.poly_points) {
+        // Update the monitor overlay
+        updateMonitorOverlay(data.poly_points);
         
+        // Also update the points array so the Config tab shows it too
+        const canvas = document.getElementById('zone-canvas');
+        if (canvas) {
+            points = data.poly_points.map(p => ({
+                x: p.x * canvas.width,
+                y: p.y * canvas.height
+            }));
+            // Call your existing draw() function to update the Config canvas
+            if (typeof draw === "function") draw();
+        }
+    }
+});
         // --- 1. VIDEO SETUP (Simulating RTSP with Webcam) ---
         async function startCameras() {
             try {

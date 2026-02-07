@@ -2,334 +2,187 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Metro Safety – Master Dashboard</title>
+  <title>Metro Ops – Master Control</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
+  <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      height: 100%;
+    body { background-color: #0f172a; color: #e2e8f0; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
+    
+    /* Layout Grid */
+    .grid-layout {
+      display: grid;
+      grid-template-columns: 1fr 400px;
+      height: 100vh;
+    }
+
+    /* Live Feed Section */
+    .live-feed {
+      position: relative;
       background: #000;
-      font-family: Arial, Helvetica, sans-serif;
-      overflow: hidden;
+      border-right: 1px solid #334155;
+    }
+    
+    .live-feed video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
     }
 
-    header {
+    .overlay-status {
       position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 56px;
-      background: rgba(11, 60, 93, 0.95);
-      color: #fff;
+      top: 20px; left: 20px;
+      background: rgba(0,0,0,0.7);
+      padding: 8px 16px;
+      border-left: 4px solid #10b981;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      background: #1e293b;
       display: flex;
-      align-items: center;
-      padding: 0 20px;
-      font-size: 18px;
-      font-weight: 600;
-      z-index: 20;
+      flex-direction: column;
+      box-shadow: -4px 0 15px rgba(0,0,0,0.5);
     }
 
-    video {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      object-fit: cover;
-      z-index: 1;
+    .header {
+      padding: 20px;
+      background: #0f172a;
+      border-bottom: 1px solid #334155;
     }
 
-    canvas {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      z-index: 5;
-    }
-
-    .tools {
-      position: absolute;
-      top: 70px;
-      left: 20px;
-      background: rgba(255,255,255,0.95);
-      padding: 12px;
-      border-radius: 8px;
-      z-index: 20;
-      width: 190px;
-    }
-
-    .tools h4 {
-      margin: 0 0 8px 0;
-      font-size: 14px;
-      color: #0b3c5d;
-    }
-
-    .tools button {
-      width: 100%;
-      margin-bottom: 8px;
-      padding: 8px;
-      font-size: 13px;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      background: #0b3c5d;
-      color: #fff;
-    }
-
-    .tools button.secondary {
-      background: #555;
-    }
-
-    .panel {
-      position: absolute;
-      top: 70px;
-      right: 20px;
-      width: 360px;
-      max-height: calc(100vh - 90px);
+    .violations-list {
+      flex: 1;
       overflow-y: auto;
-      background: rgba(255,255,255,0.96);
+      padding: 20px;
+    }
+
+    /* Cards */
+    .violation-card {
+      background: #334155;
       border-radius: 8px;
       padding: 12px;
-      z-index: 20;
-      box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+      margin-bottom: 16px;
+      border-left: 4px solid #ef4444; /* Red for alert */
+      animation: slideIn 0.3s ease-out;
     }
 
-    .panel h3 {
-      margin: 0 0 10px 0;
-      font-size: 15px;
-      color: #0b3c5d;
+    .violation-card.approved {
+      border-left-color: #10b981; /* Green for processed */
+      opacity: 0.6;
     }
 
-    .card {
-      background: #fff;
-      border-radius: 6px;
-      padding: 10px;
-      margin-bottom: 12px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-      font-size: 13px;
+    @keyframes slideIn {
+      from { transform: translateX(50px); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
     }
 
-    .card img {
+    .card-img {
       width: 100%;
-      height: 140px;
+      height: 160px;
       object-fit: cover;
       border-radius: 4px;
-      margin-bottom: 6px;
-    }
-
-    .row {
-      margin-bottom: 4px;
-    }
-
-    .label {
-      font-weight: 600;
-    }
-
-    .approved {
-      color: green;
-      font-weight: 600;
-    }
-
-    .pending {
-      color: #c0392b;
-      font-weight: 600;
-    }
-
-    button.approve {
-      width: 100%;
-      padding: 8px;
-      border: none;
-      border-radius: 4px;
-      background: #0b3c5d;
-      color: #fff;
-      cursor: pointer;
-      font-size: 13px;
-      margin-top: 6px;
-    }
-
-    button.approve:disabled {
-      background: #999;
-      cursor: not-allowed;
-    }
-
-    footer {
-      position: absolute;
-      bottom: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 11px;
-      color: #ddd;
-      z-index: 20;
+      margin-bottom: 10px;
+      background: #000;
     }
   </style>
 </head>
 <body>
 
-<header>
-  Metro Safety – Master Dashboard
-</header>
+<div class="grid-layout">
+  
+  <div class="live-feed">
+    <div class="overlay-status">
+      <div>SYSTEM: ONLINE</div>
+      <div>CAM_ID: PLATFORM_1_NORTH</div>
+      <div>AI_DETECTION: ACTIVE</div>
+    </div>
+    <video id="cctv" autoplay playsinline muted></video>
+  </div>
 
-<video id="webcam" autoplay playsinline></video>
-<canvas id="overlay"></canvas>
+  <div class="sidebar">
+    <div class="header">
+      <h2 class="text-xl font-bold text-white">⚠️ Violation Alerts</h2>
+      <p class="text-xs text-gray-400 mt-1">Real-time AI Cross-Line Detection</p>
+    </div>
 
-<div class="tools">
-  <h4>Station Master Control</h4>
-  <button id="drawLine">Draw Yellow Line</button>
-  <button id="lockSide" class="secondary">Lock Track Side</button>
-  <button id="simulate">Simulate Passenger Breach</button>
+    <div id="violationFeed" class="violations-list">
+      <div class="text-center text-gray-500 mt-10 text-sm">Waiting for violations...</div>
+    </div>
+  </div>
+
 </div>
-
-<div class="panel">
-  <h3>Yellow Line Violations</h3>
-  <div id="violationsContainer"></div>
-</div>
-
-<footer>
-  Human-in-the-loop Metro Safety Violation System
-</footer>
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-  import {
-    getFirestore,
-    collection,
-    onSnapshot,
-    doc,
-    updateDoc
-  } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+  import { getFirestore, collection, query, orderBy, onSnapshot, doc, updateDoc } 
+    from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyBoWtfLODLrDhRKkMew0sLceDgHBNAQAPM",
     authDomain: "metro-safety-system.firebaseapp.com",
     projectId: "metro-safety-system",
+    storageBucket: "metro-safety-system.appspot.com",
     messagingSenderId: "783283638023",
     appId: "1:783283638023:web:52d0d7ab6c6d7e1677bfa2"
   };
 
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
-  const container = document.getElementById("violationsContainer");
+  const feed = document.getElementById("violationFeed");
 
-  function renderViolation(id, data) {
-    const card = document.createElement("div");
-    card.className = "card";
+  // Query violations ordered by time (newest first)
+  const q = query(collection(db, "violations"), orderBy("time", "desc"));
 
-    card.innerHTML = `
-      <img src="${data.face_url || ""}">
-      <div class="row"><span class="label">RFID:</span> ${data.rfid}</div>
-      <div class="row"><span class="label">Time:</span> ${data.time}</div>
-      <div class="row">
-        <span class="label">Status:</span>
-        <span class="${data.approved ? "approved" : "pending"}">
-          ${data.approved ? "Approved" : "Pending"}
-        </span>
-      </div>
-    `;
+  onSnapshot(q, (snapshot) => {
+    feed.innerHTML = ""; // Refresh list
+    
+    snapshot.forEach((snap) => {
+      const data = snap.data();
+      const id = snap.id;
+      
+      const card = document.createElement("div");
+      card.className = `violation-card ${data.approved ? 'approved' : ''}`;
+      
+      card.innerHTML = `
+        <img src="${data.face_url}" class="card-img" alt="Evidence">
+        <div class="flex justify-between items-center mb-2">
+          <span class="text-xs font-mono text-yellow-400">ID: ${data.rfid || 'UNK'}</span>
+          <span class="text-xs text-gray-300">${data.time.split(' ')[1]}</span>
+        </div>
+        
+        ${!data.approved ? `
+          <button id="btn-${id}" class="w-full bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded text-sm font-bold transition">
+            ISSUE E-CHALLAN (₹500)
+          </button>
+        ` : `
+          <div class="w-full bg-green-900/50 text-green-400 py-2 text-center text-sm font-bold border border-green-800 rounded">
+            ✓ CHALLAN SENT
+          </div>
+        `}
+      `;
 
-    const btn = document.createElement("button");
-    btn.className = "approve";
-    btn.textContent = data.approved ? "Fine Approved" : "Approve Fine";
-    btn.disabled = data.approved;
+      feed.appendChild(card);
 
-    btn.onclick = async () => {
-      await updateDoc(doc(db, "violations", id), {
-        approved: true,
-        fine: 500
-      });
-    };
-
-    card.appendChild(btn);
-    return card;
-  }
-
-  onSnapshot(collection(db, "violations"), snap => {
-    container.innerHTML = "";
-    snap.forEach(d => container.appendChild(renderViolation(d.id, d.data())));
+      // Attach Event Listener for Button
+      const btn = document.getElementById(`btn-${id}`);
+      if(btn) {
+        btn.onclick = async () => {
+            btn.textContent = "Processing...";
+            await updateDoc(doc(db, "violations", id), {
+                approved: true,
+                processed_at: new Date().toISOString()
+            });
+        };
+      }
+    });
   });
-</script>
 
-<script>
-  const video = document.getElementById("webcam");
-  const canvas = document.getElementById("overlay");
-  const ctx = canvas.getContext("2d");
-
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-
-  let drawing = false;
-  let locked = false;
-  let points = [];
-
+  // Setup Dummy CCTV View (In real life this is just a monitor)
   navigator.mediaDevices.getUserMedia({ video: true })
-    .then(stream => video.srcObject = stream)
-    .catch(() => alert("Camera access denied"));
+    .then(stream => document.getElementById("cctv").srcObject = stream);
 
-  document.getElementById("drawLine").onclick = () => {
-    points = [];
-    locked = false;
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-  };
-
-  document.getElementById("lockSide").onclick = () => {
-    locked = true;
-    alert("Track side locked. Monitoring active.");
-  };
-
-  canvas.addEventListener("mousedown", () => {
-    if (!locked) drawing = true;
-  });
-
-  canvas.addEventListener("mouseup", () => drawing = false);
-
-  canvas.addEventListener("mousemove", e => {
-    if (!drawing || locked) return;
-    points.push({ x: e.clientX, y: e.clientY });
-    drawLine();
-  });
-
-  function drawLine() {
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    if (points.length < 2) return;
-    ctx.strokeStyle = "yellow";
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    points.forEach(p => ctx.lineTo(p.x, p.y));
-    ctx.stroke();
-  }
-
-  document.getElementById("simulate").onclick = () => {
-    if (!locked) return alert("Lock track side first");
-    captureFace();
-  };
-
-  function captureFace() {
-    const snap = document.createElement("canvas");
-    snap.width = 240;
-    snap.height = 180;
-    snap.getContext("2d").drawImage(video, 0, 0, snap.width, snap.height);
-
-    const card = document.createElement("div");
-    card.className = "card";
-    card.innerHTML = `
-      <img src="${snap.toDataURL()}">
-      <div class="row"><b>Auto Capture</b></div>
-      <div class="row">Passenger crossed yellow line</div>
-      <div class="row"><span class="label">Status:</span> <span class="pending">Pending</span></div>
-    `;
-    document.getElementById("violationsContainer").prepend(card);
-  }
-
-  window.onresize = () => {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    drawLine();
-  };
 </script>
-
 </body>
 </html>
-

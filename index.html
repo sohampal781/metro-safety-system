@@ -300,7 +300,51 @@ const updateMonitorOverlay = () => {
               style="filter: drop-shadow(0 0 8px rgba(0, 255, 0, 0.8));" />
     `;
 };
+// Ensure this is inside your <script type="module">
+let tripPoints = [];
 
+const renderTripLine = () => {
+    const overlay = document.getElementById('safety-overlay');
+    const container = overlay.closest('.video-wrapper');
+    
+    if (!overlay || !container || tripPoints.length < 2) return;
+
+    // Force dimensions to match container
+    const w = container.offsetWidth;
+    const h = container.offsetHeight;
+    overlay.setAttribute('width', w);
+    overlay.setAttribute('height', h);
+    overlay.style.display = "block"; // Override "Hidden" status
+
+    // Create the SVG Path
+    let d = `M ${tripPoints[0].x * w} ${tripPoints[0].y * h}`;
+    for (let i = 1; i < tripPoints.length; i++) {
+        d += ` L ${tripPoints[i].x * w} ${tripPoints[i].y * h}`;
+    }
+
+    overlay.innerHTML = `
+        <path d="${d}" 
+              stroke="#00ff00" 
+              stroke-width="5" 
+              fill="none" 
+              stroke-linecap="round"
+              style="filter: drop-shadow(0 0 10px rgba(0, 255, 0, 0.9));" />
+    `;
+};
+
+// Listen to RTDB for changes
+onValue(ref(rtdb, 'config/trip_line'), (snapshot) => {
+    const data = snapshot.val();
+    if (data && data.poly_points) {
+        tripPoints = data.poly_points; // Store normalized coordinates
+        renderTripLine();
+    } else {
+        console.warn("No trip_line data found at 'config/trip_line'");
+    }
+});
+
+// Re-draw when window is resized
+window.addEventListener('resize', renderTripLine);
 // Listen for Database Changes
 onValue(ref(rtdb, 'config/trip_line'), (snapshot) => {
     const data = snapshot.val();
@@ -448,21 +492,23 @@ window.saveConfig = async () => {
         console.error("Save failed:", e);
     }
 };
-       window.saveUser = async () => {
+     window.saveUser = async () => {
     const rfid = document.getElementById('reg-rfid').value.trim();
     const name = document.getElementById('reg-name').value.trim();
     
-    if(!rfid || !name) return alert("All fields required for Government Registry.");
+    if(!rfid || !name) return alert("Government Standard: All fields required.");
 
     try {
-        // Save to RTDB path 'registered_users/TAG_ID'
+        // Save to 'registered_users' node
         await set(ref(rtdb, `registered_users/${rfid}`), {
             name: name,
             timestamp: new Date().toISOString()
         });
-        alert(`ACCESS GRANTED: ${name} registered.`);
+        alert(`SUCCESS: Tag ${rfid} assigned to ${name}`);
+        document.getElementById('reg-rfid').value = "";
+        document.getElementById('reg-name').value = "";
     } catch (e) {
-        console.error("Registry Error:", e);
+        console.error("Registry failed:", e);
     }
 };
 // --- 4. LIVE MONITOR OVERLAY (Green Box Auto-Detect) ---

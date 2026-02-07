@@ -217,6 +217,16 @@
         </div>
     </div>
 </div>
+        <button onclick="checkData()" class="bg-yellow-600 p-2 text-white">DEBUG: Check DB</button>
+
+<script>
+window.checkData = () => {
+    console.log("Current Points Array:", points);
+    const overlay = document.getElementById('safety-overlay');
+    console.log("Overlay Dimensions:", overlay.clientWidth, "x", overlay.clientHeight);
+    alert("Check the browser console (F12) to see if points exist!");
+};
+</script>
     </main>
 
     <script type="module">
@@ -588,6 +598,12 @@ window.saveConfig = async () => {
         setInterval(() => {
             document.getElementById('clock').innerText = new Date().toLocaleTimeString();
         }, 1000);     
+        window.checkData = () => {
+    console.log("Current Points Array:", points);
+    const overlay = document.getElementById('safety-overlay');
+    console.log("Overlay Dimensions:", overlay.clientWidth, "x", overlay.clientHeight);
+    alert("Check the browser console (F12) to see if points exist!");
+};
     </script>
     <script src="https://cdn.tailwindcss.com"></script>
 </body>

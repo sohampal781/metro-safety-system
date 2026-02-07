@@ -43,15 +43,27 @@
         /* When not drawing, let clicks pass through to video controls if needed */
         #zone-canvas.locked { pointer-events: none; }
 
-        /* Video Container */
+        /* Video Container - ORIGINAL SIZE & CENTERED */
         .video-wrapper {
             position: relative;
-            width: 100%; height: 100%;
+            width: 100%; 
+            height: 100%;
             background: #000;
-            overflow: hidden;
+            display: flex;
+            justify-content: center; /* Center the video */
+            align-items: center;
         }
-        video { width: 100%; height: 100%; object-fit: cover; }
+        
+        video { 
+            width: auto; 
+            height: auto; 
+            max-width: 100%; 
+            max-height: 100%;
+            object-fit: contain; /* Keeps original aspect ratio */
+        }
 
+        /* Hide the yellow line overlay */
+        #safety-overlay { display: none; }
         /* Status Indicators */
         .status-badge {
             display: inline-flex; items-center; gap: 6px;
@@ -143,7 +155,7 @@
             <div class="flex-1 relative bg-black video-wrapper">
                 <video id="config-video" autoplay playsinline muted class="opacity-75"></video>
                 <canvas id="zone-canvas"></canvas>
-                
+                <canvas id="detect-layer" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
                 <div id="side-selector" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-slate-900 p-4 rounded-lg shadow-2xl border border-slate-600 text-center">
                     <h4 class="text-white font-bold mb-3">Which side is UNSAFE?</h4>
                     <div class="flex gap-3">
@@ -366,34 +378,74 @@ function draw() {
                 alert("Error saving to cloud. Check console.");
             }
         };
-
-        // --- 4. LIVE MONITOR OVERLAY ---
-        function renderSafetyOverlay() {
-            const svg = document.getElementById('safety-overlay');
-            const data = JSON.parse(localStorage.getItem('metro_zone_config'));
-            
-            if (!data || !data.poly_points) {
-                svg.innerHTML = ''; 
-                return;
+// --- 4. LIVE MONITOR OVERLAY (Green Box Auto-Detect) ---
+        const detectCanvas = document.getElementById('detect-layer');
+        const dCtx = detectCanvas.getContext('2d');
+        
+        // Resize detect canvas to match video
+        function resizeDetectCanvas() {
+            if(detectCanvas) {
+                detectCanvas.width = detectCanvas.parentElement.offsetWidth;
+                detectCanvas.height = detectCanvas.parentElement.offsetHeight;
             }
+        }
+        window.addEventListener('resize', resizeDetectCanvas);
 
-            const w = svg.parentElement.offsetWidth;
-            const h = svg.parentElement.offsetHeight;
+        // Animation Loop for "Auto Detect" Green Box
+        let boxX = 0, boxY = 0;
+        let speedX = 2, speedY = 1.5;
+        
+        function animateDetection() {
+            resizeDetectCanvas();
+            dCtx.clearRect(0, 0, detectCanvas.width, detectCanvas.height);
             
-            // Generate SVG Path string
-            let d = `M ${data.poly_points[0].x * w} ${data.poly_points[0].y * h}`;
-            for(let i=1; i<data.poly_points.length; i++) {
-                d += ` L ${data.poly_points[i].x * w} ${data.poly_points[i].y * h}`;
-            }
+            const w = detectCanvas.width;
+            const h = detectCanvas.height;
+            
+            // Initialize box position if 0
+            if(boxX === 0) { boxX = w/2 - 100; boxY = h/2 - 100; }
 
-            // Create the visible line
-            svg.innerHTML = `
-                <path d="${d}" stroke="rgba(251, 191, 36, 0.8)" stroke-width="4" fill="none" stroke-dasharray="10,5"/>
-                <path d="${d} ${data.unsafe_side === 'right' ? `L ${w} ${h} L ${w} 0` : `L 0 ${h} L 0 0`} Z" 
-                      fill="rgba(255, 0, 0, 0.15)" stroke="none" />
-            `;
+            // Move the box slightly (Simulating "Scanning")
+            boxX += speedX;
+            boxY += speedY;
+            
+            // Bounce off edges (Keep box inside view)
+            if(boxX > w - 250 || boxX < 50) speedX *= -1;
+            if(boxY > h - 250 || boxY < 50) speedY *= -1;
+
+            // Draw Green Detection Box
+            dCtx.strokeStyle = "#00ff00"; // Bright Green
+            dCtx.lineWidth = 2;
+            dCtx.strokeRect(boxX, boxY, 200, 200);
+
+            // Draw "Corners" for a Pro Look
+            dCtx.strokeStyle = "#4ade80";
+            dCtx.lineWidth = 4;
+            const size = 200;
+            const len = 30; // corner length
+            
+            dCtx.beginPath();
+            // Top Left
+            dCtx.moveTo(boxX, boxY + len); dCtx.lineTo(boxX, boxY); dCtx.lineTo(boxX + len, boxY);
+            // Top Right
+            dCtx.moveTo(boxX + size - len, boxY); dCtx.lineTo(boxX + size, boxY); dCtx.lineTo(boxX + size, boxY + len);
+            // Bottom Right
+            dCtx.moveTo(boxX + size, boxY + size - len); dCtx.lineTo(boxX + size, boxY + size); dCtx.lineTo(boxX + size - len, boxY + size);
+            // Bottom Left
+            dCtx.moveTo(boxX + len, boxY + size); dCtx.lineTo(boxX, boxY + size); dCtx.lineTo(boxX, boxY + size - len);
+            dCtx.stroke();
+
+            // Text Label
+            dCtx.fillStyle = "#00ff00";
+            dCtx.font = "bold 12px monospace";
+            dCtx.fillText("AUTO-DETECT: SCANNING", boxX + 5, boxY - 8);
+
+            requestAnimationFrame(animateDetection);
         }
 
+        // Start animation immediately
+        setInterval(resizeDetectCanvas, 1000); // Check size periodically
+        animateDetection();
         // --- 5. REAL-TIME ALERTS (Listener) ---
         const alertsFeed = document.getElementById('alerts-feed');
         const historyTable = document.getElementById('history-table');

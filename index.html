@@ -1,188 +1,238 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Metro Ops – Master Control</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    body { background-color: #0f172a; color: #e2e8f0; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metro Safety: Master Control (Demo)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    /* Layout Grid */
-    .grid-layout {
-      display: grid;
-      grid-template-columns: 1fr 400px;
-      height: 100vh;
-    }
-
-    /* Live Feed Section */
-    .live-feed {
-      position: relative;
-      background: #000;
-      border-right: 1px solid #334155;
-    }
-    
-    .live-feed video {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-    }
-
-    .overlay-status {
-      position: absolute;
-      top: 20px; left: 20px;
-      background: rgba(0,0,0,0.7);
-      padding: 8px 16px;
-      border-left: 4px solid #10b981;
-      border-radius: 4px;
-      font-family: monospace;
-    }
-
-    /* Sidebar */
-    .sidebar {
-      background: #1e293b;
-      display: flex;
-      flex-direction: column;
-      box-shadow: -4px 0 15px rgba(0,0,0,0.5);
-    }
-
-    .header {
-      padding: 20px;
-      background: #0f172a;
-      border-bottom: 1px solid #334155;
-    }
-
-    .violations-list {
-      flex: 1;
-      overflow-y: auto;
-      padding: 20px;
-    }
-
-    /* Cards */
-    .violation-card {
-      background: #334155;
-      border-radius: 8px;
-      padding: 12px;
-      margin-bottom: 16px;
-      border-left: 4px solid #ef4444; /* Red for alert */
-      animation: slideIn 0.3s ease-out;
-    }
-
-    .violation-card.approved {
-      border-left-color: #10b981; /* Green for processed */
-      opacity: 0.6;
-    }
-
-    @keyframes slideIn {
-      from { transform: translateX(50px); opacity: 0; }
-      to { transform: translateX(0); opacity: 1; }
-    }
-
-    .card-img {
-      width: 100%;
-      height: 160px;
-      object-fit: cover;
-      border-radius: 4px;
-      margin-bottom: 10px;
-      background: #000;
-    }
-  </style>
-</head>
-<body>
-
-<div class="grid-layout">
-  
-  <div class="live-feed">
-    <div class="overlay-status">
-      <div>SYSTEM: ONLINE</div>
-      <div>CAM_ID: PLATFORM_1_NORTH</div>
-      <div>AI_DETECTION: ACTIVE</div>
-    </div>
-    <video id="cctv" autoplay playsinline muted></video>
-  </div>
-
-  <div class="sidebar">
-    <div class="header">
-      <h2 class="text-xl font-bold text-white">⚠️ Violation Alerts</h2>
-      <p class="text-xs text-gray-400 mt-1">Real-time AI Cross-Line Detection</p>
-    </div>
-
-    <div id="violationFeed" class="violations-list">
-      <div class="text-center text-gray-500 mt-10 text-sm">Waiting for violations...</div>
-    </div>
-  </div>
-
-</div>
-
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-  import { getFirestore, collection, query, orderBy, onSnapshot, doc, updateDoc } 
-    from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyBoWtfLODLrDhRKkMew0sLceDgHBNAQAPM",
-    authDomain: "metro-safety-system.firebaseapp.com",
-    projectId: "metro-safety-system",
-    storageBucket: "metro-safety-system.appspot.com",
-    messagingSenderId: "783283638023",
-    appId: "1:783283638023:web:52d0d7ab6c6d7e1677bfa2"
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
-  const feed = document.getElementById("violationFeed");
-
-  // Query violations ordered by time (newest first)
-  const q = query(collection(db, "violations"), orderBy("time", "desc"));
-
-  onSnapshot(q, (snapshot) => {
-    feed.innerHTML = ""; // Refresh list
-    
-    snapshot.forEach((snap) => {
-      const data = snap.data();
-      const id = snap.id;
-      
-      const card = document.createElement("div");
-      card.className = `violation-card ${data.approved ? 'approved' : ''}`;
-      
-      card.innerHTML = `
-        <img src="${data.face_url}" class="card-img" alt="Evidence">
-        <div class="flex justify-between items-center mb-2">
-          <span class="text-xs font-mono text-yellow-400">ID: ${data.rfid || 'UNK'}</span>
-          <span class="text-xs text-gray-300">${data.time.split(' ')[1]}</span>
-        </div>
+    <style>
+        body { background-color: #0f172a; color: white; overflow: hidden; }
         
-        ${!data.approved ? `
-          <button id="btn-${id}" class="w-full bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded text-sm font-bold transition">
-            ISSUE E-CHALLAN (₹500)
-          </button>
-        ` : `
-          <div class="w-full bg-green-900/50 text-green-400 py-2 text-center text-sm font-bold border border-green-800 rounded">
-            ✓ CHALLAN SENT
-          </div>
-        `}
-      `;
+        /* The Virtual "Yellow Line" Overlay */
+        #safety-line {
+            position: absolute;
+            top: 0; bottom: 0; left: 65%;
+            width: 4px;
+            background: rgba(255, 255, 0, 0.6);
+            box-shadow: 0 0 15px yellow;
+            z-index: 10;
+        }
 
-      feed.appendChild(card);
+        /* Flashing Alert Animation */
+        @keyframes flash {
+            0% { opacity: 0; } 50% { opacity: 1; } 100% { opacity: 0; }
+        }
+        .recording-dot {
+            width: 12px; height: 12px; background: red; border-radius: 50%;
+            animation: flash 1.5s infinite;
+        }
 
-      // Attach Event Listener for Button
-      const btn = document.getElementById(`btn-${id}`);
-      if(btn) {
-        btn.onclick = async () => {
-            btn.textContent = "Processing...";
-            await updateDoc(doc(db, "violations", id), {
-                approved: true,
+        /* Scrollbar styling */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+    </style>
+</head>
+<body class="h-screen flex flex-col">
+
+    <header class="h-16 bg-slate-900 border-b border-slate-700 flex items-center justify-between px-6 shrink-0">
+        <div class="flex items-center gap-3">
+            <i class="fa-solid fa-train-subway text-2xl text-yellow-400"></i>
+            <h1 class="text-xl font-bold tracking-wide">METRO SAFETY <span class="text-slate-500 text-sm font-normal">| Live Ops</span></h1>
+        </div>
+        <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2 text-xs font-mono text-slate-400 bg-slate-800 px-3 py-1 rounded">
+                <div class="recording-dot"></div>
+                LIVE FEED: CAM-04 (HOWRAH)
+            </div>
+            <button onclick="simulateBreach()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm font-bold transition shadow-lg shadow-red-900/50 border border-red-500">
+                <i class="fa-solid fa-person-walking-arrow-right mr-2"></i> SIMULATE VIOLATION
+            </button>
+        </div>
+    </header>
+
+    <div class="flex-1 flex overflow-hidden">
+        
+        <div class="relative flex-1 bg-black flex items-center justify-center overflow-hidden">
+            <video id="webcam" autoplay playsinline muted class="absolute w-full h-full object-cover opacity-80"></video>
+            
+            <div id="safety-line"></div>
+            <div class="absolute top-4 right-1/3 text-yellow-400 text-xs font-bold font-mono rotate-90 origin-right">SAFETY ZONE LIMIT</div>
+
+            <div class="absolute bottom-6 left-6 bg-slate-900/80 p-4 rounded-lg border border-slate-700 backdrop-blur-sm max-w-md">
+                <h3 class="text-sm font-bold text-slate-300 mb-2"><i class="fa-solid fa-microchip mr-2"></i>AI DIAGNOSTICS</h3>
+                <div class="grid grid-cols-2 gap-4 text-xs font-mono text-slate-400">
+                    <div>FPS: <span class="text-green-400">30.02</span></div>
+                    <div>Latency: <span class="text-green-400">12ms</span></div>
+                    <div>Objects: <span class="text-blue-400">DETECTING...</span></div>
+                    <div>Status: <span class="text-green-400">ARMED</span></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="w-96 bg-slate-800 border-l border-slate-700 flex flex-col shadow-2xl z-20">
+            <div class="p-4 border-b border-slate-700 bg-slate-800">
+                <h2 class="font-bold text-slate-200"><i class="fa-solid fa-bell text-red-500 mr-2"></i>Real-time Alerts</h2>
+            </div>
+            
+            <div id="violation-feed" class="flex-1 overflow-y-auto p-4 space-y-4">
+                <div class="text-center text-slate-500 mt-10 text-sm italic">
+                    <i class="fa-solid fa-spinner fa-spin mb-2 text-2xl"></i><br>
+                    Waiting for violations...
+                </div>
+            </div>
+
+            <div class="p-3 bg-slate-900 border-t border-slate-700 text-xs text-center text-slate-500">
+                System Active • Connected to Firebase
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, updateDoc, doc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+
+        // --------------------------------------------------------------
+        // 1. CONFIGURATION (REPLACE WITH YOUR KEY FROM FIREBASE CONSOLE)
+        // --------------------------------------------------------------
+        const firebaseConfig = {
+            apiKey: "AIzaSy...", 
+            authDomain: "your-app.firebaseapp.com",
+            projectId: "your-app",
+            storageBucket: "your-app.appspot.com",
+            messagingSenderId: "123456...",
+            appId: "1:123456..."
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // --------------------------------------------------------------
+        // 2. WEBCAM SETUP
+        // --------------------------------------------------------------
+        const video = document.getElementById('webcam');
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+            } catch (err) {
+                console.error("Camera Error:", err);
+                alert("Please allow camera access to run the demo.");
+            }
+        }
+        startCamera();
+
+        // --------------------------------------------------------------
+        // 3. SIMULATION LOGIC (REPLACES PYTHON FOR DEMO)
+        // --------------------------------------------------------------
+        window.simulateBreach = async function() {
+            // 1. Capture snapshot from video
+            const canvas = document.createElement('canvas');
+            canvas.width = 640; canvas.height = 480;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // Draw a "Bounding Box" to look like AI
+            ctx.strokeStyle = "red"; ctx.lineWidth = 4;
+            ctx.strokeRect(100, 50, 200, 300); // Fake detection box
+            
+            const imageUrl = canvas.toDataURL('image/jpeg', 0.8);
+
+            // 2. Add to Firestore
+            // In a real app, Python does this part automatically
+            try {
+                await addDoc(collection(db, "violations"), {
+                    timestamp: new Date().toISOString(),
+                    rfid_tag: "METRO-" + Math.floor(1000 + Math.random() * 9000), // Random ID
+                    image_base64: imageUrl, // Storing base64 for simple demo
+                    status: "PENDING",
+                    confidence: (0.85 + Math.random() * 0.14).toFixed(2) // Fake AI confidence
+                });
+                console.log("Simulation sent to DB!");
+            } catch (e) {
+                console.error("Error adding document: ", e);
+                alert("Firebase Error: Check your config keys in the code!");
+            }
+        };
+
+        // --------------------------------------------------------------
+        // 4. DASHBOARD LOGIC (THE STATION MASTER)
+        // --------------------------------------------------------------
+        const feed = document.getElementById('violation-feed');
+        
+        // Listen to Database Updates
+        const q = query(collection(db, "violations"), orderBy("timestamp", "desc"));
+        
+        onSnapshot(q, (snapshot) => {
+            feed.innerHTML = ""; // Clear list
+            if(snapshot.empty) {
+                feed.innerHTML = `<div class="text-center text-slate-500 mt-10 text-sm">No violations recorded today.</div>`;
+                return;
+            }
+
+            snapshot.forEach((snap) => {
+                const data = snap.data();
+                const id = snap.id;
+                const isPending = data.status === "PENDING";
+                
+                // Create Card HTML
+                const timeStr = new Date(data.timestamp).toLocaleTimeString();
+                
+                const card = document.createElement('div');
+                card.className = `bg-slate-700 rounded-lg p-3 border-l-4 ${isPending ? 'border-red-500' : 'border-green-500'} shadow-lg animation-fade-in`;
+                
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-2">
+                        <div>
+                            <span class="text-xs font-bold text-slate-400 block">VIOLATION ID</span>
+                            <span class="text-sm font-mono text-white">${id.substring(0,8)}...</span>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-xs font-bold text-slate-400 block">TIME</span>
+                            <span class="text-sm font-mono text-yellow-400">${timeStr}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="relative mb-3 group cursor-pointer">
+                        <img src="${data.image_base64}" class="w-full h-32 object-cover rounded bg-black border border-slate-600">
+                        <div class="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] px-1 rounded">
+                            CONF: ${data.confidence}%
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between bg-slate-800 p-2 rounded mb-2">
+                        <span class="text-xs text-slate-400"><i class="fa-solid fa-id-card mr-1"></i> RFID</span>
+                        <span class="text-xs font-bold text-white">${data.rfid_tag}</span>
+                    </div>
+
+                    ${isPending ? `
+                        <button onclick="approveFine('${id}')" class="w-full bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-2 rounded transition flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-gavel"></i> APPROVE FINE (₹500)
+                        </button>
+                    ` : `
+                        <div class="w-full bg-green-900/30 border border-green-600/50 text-green-400 text-xs font-bold py-2 rounded text-center">
+                            <i class="fa-solid fa-check-circle mr-1"></i> FINE PROCESSED
+                        </div>
+                    `}
+                `;
+                feed.appendChild(card);
+            });
+        });
+
+        // 5. Action: Approve Fine
+        window.approveFine = async function(docId) {
+            const btn = document.querySelector(`button[onclick="approveFine('${docId}')"]`);
+            if(btn) btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> PROCESSING...';
+            
+            await updateDoc(doc(db, "violations", docId), {
+                status: "APPROVED",
                 processed_at: new Date().toISOString()
             });
         };
-      }
-    });
-  });
 
-  // Setup Dummy CCTV View (In real life this is just a monitor)
-  navigator.mediaDevices.getUserMedia({ video: true })
-    .then(stream => document.getElementById("cctv").srcObject = stream);
-
-</script>
+    </script>
 </body>
 </html>

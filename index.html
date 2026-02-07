@@ -236,11 +236,6 @@ window.checkData = () => {
     </main>
 
     <script type="module">
-        // This empty function stops the "ReferenceError" crash
-    window.renderSafetyOverlay = function() {
-        console.log("Overlay hidden per government standard.");
-    };
-
     // Force the drawing canvas to be on top so you can see the line
     const zoneCanvas = document.getElementById('zone-canvas');
     if(zoneCanvas) {

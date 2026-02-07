@@ -3,235 +3,436 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Metro Safety: Master Control (Demo)</title>
+    <title>Metro Safety | Station Master Console</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <style>
-        body { background-color: #0f172a; color: white; overflow: hidden; }
+        body { background-color: #0f172a; color: #cbd5e1; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
         
-        /* The Virtual "Yellow Line" Overlay */
-        #safety-line {
-            position: absolute;
-            top: 0; bottom: 0; left: 65%;
-            width: 4px;
-            background: rgba(255, 255, 0, 0.6);
-            box-shadow: 0 0 15px yellow;
-            z-index: 10;
+        /* Tab Navigation Styles */
+        .nav-btn {
+            padding: 12px 24px;
+            border-bottom: 2px solid transparent;
+            color: #64748b;
+            font-weight: 600;
+            transition: all 0.2s;
         }
+        .nav-btn.active {
+            color: #38bdf8;
+            border-bottom-color: #38bdf8;
+            background: rgba(56, 189, 248, 0.1);
+        }
+        .nav-btn:hover:not(.active) { color: #94a3b8; background: rgba(255,255,255,0.05); }
 
-        /* Flashing Alert Animation */
-        @keyframes flash {
-            0% { opacity: 0; } 50% { opacity: 1; } 100% { opacity: 0; }
+        /* The Drawing Canvas */
+        #zone-canvas {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            cursor: crosshair; z-index: 20;
         }
-        .recording-dot {
-            width: 12px; height: 12px; background: red; border-radius: 50%;
-            animation: flash 1.5s infinite;
-        }
+        /* When not drawing, let clicks pass through to video controls if needed */
+        #zone-canvas.locked { pointer-events: none; }
 
-        /* Scrollbar styling */
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #1e293b; }
-        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        /* Video Container */
+        .video-wrapper {
+            position: relative;
+            width: 100%; height: 100%;
+            background: #000;
+            overflow: hidden;
+        }
+        video { width: 100%; height: 100%; object-fit: cover; }
+
+        /* Status Indicators */
+        .status-badge {
+            display: inline-flex; items-center; gap: 6px;
+            padding: 4px 12px; border-radius: 999px;
+            font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em;
+        }
+        .status-ok { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #059669; }
+        .status-alert { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid #b91c1c; }
     </style>
 </head>
-<body class="h-screen flex flex-col">
+<body class="flex flex-col h-screen">
 
-    <header class="h-16 bg-slate-900 border-b border-slate-700 flex items-center justify-between px-6 shrink-0">
-        <div class="flex items-center gap-3">
-            <i class="fa-solid fa-train-subway text-2xl text-yellow-400"></i>
-            <h1 class="text-xl font-bold tracking-wide">METRO SAFETY <span class="text-slate-500 text-sm font-normal">| Live Ops</span></h1>
-        </div>
+    <header class="h-14 bg-slate-900 border-b border-slate-700 flex justify-between items-center px-4 shrink-0">
         <div class="flex items-center gap-4">
-            <div class="flex items-center gap-2 text-xs font-mono text-slate-400 bg-slate-800 px-3 py-1 rounded">
-                <div class="recording-dot"></div>
-                LIVE FEED: CAM-04 (HOWRAH)
+            <div class="text-xl font-bold text-white tracking-tight">
+                <i class="fa-solid fa-subway text-sky-500 mr-2"></i>METRO<span class="text-sky-500">GUARD</span>
             </div>
-            <button onclick="simulateBreach()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm font-bold transition shadow-lg shadow-red-900/50 border border-red-500">
-                <i class="fa-solid fa-person-walking-arrow-right mr-2"></i> SIMULATE VIOLATION
-            </button>
+            <div class="h-6 w-px bg-slate-700 mx-2"></div>
+            <nav class="flex">
+                <button onclick="switchTab('monitor')" id="tab-monitor" class="nav-btn active">
+                    <i class="fa-solid fa-eye mr-2"></i>Live Monitor
+                </button>
+                <button onclick="switchTab('config')" id="tab-config" class="nav-btn">
+                    <i class="fa-solid fa-pen-ruler mr-2"></i>Zone Config
+                </button>
+                <button onclick="switchTab('history')" id="tab-history" class="nav-btn">
+                    <i class="fa-solid fa-clock-rotate-left mr-2"></i>History Log
+                </button>
+            </nav>
+        </div>
+        
+        <div class="flex items-center gap-4">
+            <div id="connection-status" class="status-badge status-ok">
+                <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                SYSTEM ONLINE
+            </div>
+            <div class="text-xs text-slate-500 font-mono text-right">
+                <div id="clock">12:00:00</div>
+                <div>CAM-01 [MASTER]</div>
+            </div>
         </div>
     </header>
 
-    <div class="flex-1 flex overflow-hidden">
+    <main class="flex-1 relative overflow-hidden">
         
-        <div class="relative flex-1 bg-black flex items-center justify-center overflow-hidden">
-            <video id="webcam" autoplay playsinline muted class="absolute w-full h-full object-cover opacity-80"></video>
-            
-            <div id="safety-line"></div>
-            <div class="absolute top-4 right-1/3 text-yellow-400 text-xs font-bold font-mono rotate-90 origin-right">SAFETY ZONE LIMIT</div>
+        <div id="view-monitor" class="absolute inset-0 grid grid-cols-[1fr_400px]">
+            <div class="video-wrapper relative group">
+                <video id="monitor-video" autoplay playsinline muted></video>
+                <svg id="safety-overlay" class="absolute inset-0 w-full h-full pointer-events-none"></svg>
+                
+                <div class="absolute top-4 left-4 bg-black/60 backdrop-blur px-3 py-1 rounded border-l-4 border-sky-500 text-xs text-white">
+                    Monitoring Zone: <span id="zone-status-text">Active</span>
+                </div>
+            </div>
 
-            <div class="absolute bottom-6 left-6 bg-slate-900/80 p-4 rounded-lg border border-slate-700 backdrop-blur-sm max-w-md">
-                <h3 class="text-sm font-bold text-slate-300 mb-2"><i class="fa-solid fa-microchip mr-2"></i>AI DIAGNOSTICS</h3>
-                <div class="grid grid-cols-2 gap-4 text-xs font-mono text-slate-400">
-                    <div>FPS: <span class="text-green-400">30.02</span></div>
-                    <div>Latency: <span class="text-green-400">12ms</span></div>
-                    <div>Objects: <span class="text-blue-400">DETECTING...</span></div>
-                    <div>Status: <span class="text-green-400">ARMED</span></div>
+            <div class="bg-slate-800 border-l border-slate-700 flex flex-col">
+                <div class="p-4 bg-slate-900 border-b border-slate-700 flex justify-between items-center">
+                    <h3 class="font-bold text-white">Live Violations</h3>
+                    <span class="bg-red-900/50 text-red-400 text-xs px-2 py-1 rounded">Real-time</span>
+                </div>
+                
+                <div id="alerts-feed" class="flex-1 overflow-y-auto p-4 space-y-3">
+                    <div class="text-center text-slate-500 mt-10 italic text-sm">
+                        Waiting for detection from Python backend...
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div class="w-96 bg-slate-800 border-l border-slate-700 flex flex-col shadow-2xl z-20">
-            <div class="p-4 border-b border-slate-700 bg-slate-800">
-                <h2 class="font-bold text-slate-200"><i class="fa-solid fa-bell text-red-500 mr-2"></i>Real-time Alerts</h2>
-            </div>
-            
-            <div id="violation-feed" class="flex-1 overflow-y-auto p-4 space-y-4">
-                <div class="text-center text-slate-500 mt-10 text-sm italic">
-                    <i class="fa-solid fa-spinner fa-spin mb-2 text-2xl"></i><br>
-                    Waiting for violations...
+        <div id="view-config" class="absolute inset-0 hidden flex flex-col bg-slate-900">
+            <div class="h-12 bg-slate-800 border-b border-slate-700 flex items-center px-4 gap-4 justify-between">
+                <div class="flex gap-2">
+                    <button onclick="startDrawing()" class="bg-sky-600 hover:bg-sky-500 text-white px-3 py-1.5 rounded text-sm font-semibold transition">
+                        <i class="fa-solid fa-pencil mr-2"></i>New Curve
+                    </button>
+                    <button onclick="clearZone()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-1.5 rounded text-sm font-semibold transition">
+                        <i class="fa-solid fa-trash mr-2"></i>Clear
+                    </button>
                 </div>
+                <div class="flex items-center gap-2 text-sm text-slate-400">
+                    <i class="fa-solid fa-circle-info text-sky-500"></i>
+                    <span>Instructions: Click points on the video to draw the platform edge. Double-click to finish.</span>
+                </div>
+                <button onclick="saveConfig()" class="bg-green-600 hover:bg-green-500 text-white px-4 py-1.5 rounded text-sm font-bold shadow-lg shadow-green-900/20">
+                    <i class="fa-solid fa-floppy-disk mr-2"></i>Save Zone
+                </button>
             </div>
 
-            <div class="p-3 bg-slate-900 border-t border-slate-700 text-xs text-center text-slate-500">
-                System Active • Connected to Firebase
+            <div class="flex-1 relative bg-black video-wrapper">
+                <video id="config-video" autoplay playsinline muted class="opacity-75"></video>
+                <canvas id="zone-canvas"></canvas>
+                
+                <div id="side-selector" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-slate-900 p-4 rounded-lg shadow-2xl border border-slate-600 text-center">
+                    <h4 class="text-white font-bold mb-3">Which side is UNSAFE?</h4>
+                    <div class="flex gap-3">
+                        <button onclick="setUnsafeSide('left')" class="bg-red-900/50 border border-red-500 hover:bg-red-800 text-red-200 px-4 py-2 rounded">
+                            <i class="fa-solid fa-arrow-left mr-2"></i>Left / Top
+                        </button>
+                        <button onclick="setUnsafeSide('right')" class="bg-red-900/50 border border-red-500 hover:bg-red-800 text-red-200 px-4 py-2 rounded">
+                            Right / Bottom<i class="fa-solid fa-arrow-right ml-2"></i>
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
+
+        <div id="view-history" class="absolute inset-0 hidden bg-slate-900 p-8 overflow-auto">
+            <h2 class="text-2xl font-bold text-white mb-6">Violation Log (Past 24h)</h2>
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="text-slate-400 border-b border-slate-700">
+                        <th class="p-3">Time</th>
+                        <th class="p-3">ID</th>
+                        <th class="p-3">Status</th>
+                        <th class="p-3">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="history-table" class="text-slate-300">
+                    </tbody>
+            </table>
+        </div>
+
+    </main>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, updateDoc, doc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { getFirestore, collection, query, orderBy, onSnapshot, doc, updateDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
-        // --------------------------------------------------------------
-        // 1. CONFIGURATION (REPLACE WITH YOUR KEY FROM FIREBASE CONSOLE)
-        // --------------------------------------------------------------
+        // --- FIREBASE CONFIG (PUT YOUR KEYS HERE) ---
         const firebaseConfig = {
-            apiKey: "AIzaSy...", 
-            authDomain: "your-app.firebaseapp.com",
-            projectId: "your-app",
-            storageBucket: "your-app.appspot.com",
-            messagingSenderId: "123456...",
-            appId: "1:123456..."
+            apiKey: "AIzaSyBoWtfLODLrDhRKkMew0sLceDgHBNAQAPM",
+            authDomain: "metro-safety-system.firebaseapp.com",
+            projectId: "metro-safety-system",
+            storageBucket: "metro-safety-system.appspot.com",
+            messagingSenderId: "783283638023",
+            appId: "1:783283638023:web:52d0d7ab6c6d7e1677bfa2"
         };
 
-        // Initialize Firebase
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // --------------------------------------------------------------
-        // 2. WEBCAM SETUP
-        // --------------------------------------------------------------
-        const video = document.getElementById('webcam');
-        async function startCamera() {
+        // --- GLOBAL STATE ---
+        let points = [];
+        let isDrawing = false;
+        let unsafeSide = 'right'; // default
+        
+        // --- 1. VIDEO SETUP (Simulating RTSP with Webcam) ---
+        async function startCameras() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                video.srcObject = stream;
-            } catch (err) {
-                console.error("Camera Error:", err);
-                alert("Please allow camera access to run the demo.");
+                document.getElementById('monitor-video').srcObject = stream;
+                document.getElementById('config-video').srcObject = stream;
+            } catch (e) {
+                console.error("Camera failed", e);
+                alert("Camera access denied. In production, this would be an RTSP stream.");
             }
         }
-        startCamera();
+        startCameras();
 
-        // --------------------------------------------------------------
-        // 3. SIMULATION LOGIC (REPLACES PYTHON FOR DEMO)
-        // --------------------------------------------------------------
-        window.simulateBreach = async function() {
-            // 1. Capture snapshot from video
-            const canvas = document.createElement('canvas');
-            canvas.width = 640; canvas.height = 480;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        // --- 2. TAB SWITCHING LOGIC ---
+        window.switchTab = (tabName) => {
+            // Hide all views
+            ['monitor', 'config', 'history'].forEach(t => {
+                document.getElementById(`view-${t}`).classList.add('hidden');
+                document.getElementById(`tab-${t}`).classList.remove('active');
+            });
+            // Show selected
+            document.getElementById(`view-${tabName}`).classList.remove('hidden');
+            document.getElementById(`tab-${tabName}`).classList.add('active');
             
-            // Draw a "Bounding Box" to look like AI
-            ctx.strokeStyle = "red"; ctx.lineWidth = 4;
-            ctx.strokeRect(100, 50, 200, 300); // Fake detection box
-            
-            const imageUrl = canvas.toDataURL('image/jpeg', 0.8);
+            // If switching to monitor, redraw the safety overlay
+            if(tabName === 'monitor') renderSafetyOverlay();
+        };
 
-            // 2. Add to Firestore
-            // In a real app, Python does this part automatically
-            try {
-                await addDoc(collection(db, "violations"), {
-                    timestamp: new Date().toISOString(),
-                    rfid_tag: "METRO-" + Math.floor(1000 + Math.random() * 9000), // Random ID
-                    image_base64: imageUrl, // Storing base64 for simple demo
-                    status: "PENDING",
-                    confidence: (0.85 + Math.random() * 0.14).toFixed(2) // Fake AI confidence
+        // --- 3. DRAWING LOGIC (The "Master" Feature) ---
+        const canvas = document.getElementById('zone-canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Resize canvas to match video resolution
+        function resizeCanvas() {
+            canvas.width = canvas.parentElement.offsetWidth;
+            canvas.height = canvas.parentElement.offsetHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        setTimeout(resizeCanvas, 100); // Initial set
+
+        window.startDrawing = () => {
+            points = [];
+            isDrawing = true;
+            ctx.clearRect(0,0, canvas.width, canvas.height);
+            document.getElementById('side-selector').classList.add('hidden');
+            canvas.classList.remove('locked');
+        };
+
+        window.clearZone = () => {
+            points = [];
+            ctx.clearRect(0,0, canvas.width, canvas.height);
+            localStorage.removeItem('metro_zone_config'); // Clear saved
+            renderSafetyOverlay(); // Clear live view too
+        };
+
+        // Canvas Events
+        canvas.addEventListener('mousedown', (e) => {
+            if(!isDrawing) return;
+            const rect = canvas.getBoundingClientRect();
+            points.push({
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            });
+            draw();
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if(!isDrawing || points.length === 0) return;
+            draw(); // Redraw existing lines
+            
+            // Draw rubber-band line to mouse cursor
+            const rect = canvas.getBoundingClientRect();
+            ctx.beginPath();
+            ctx.moveTo(points[points.length-1].x, points[points.length-1].y);
+            ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+            ctx.strokeStyle = "yellow";
+            ctx.stroke();
+        });
+
+        // Finish drawing on Double Click
+        canvas.addEventListener('dblclick', () => {
+            if(!isDrawing) return;
+            isDrawing = false;
+            canvas.classList.add('locked');
+            draw(); // Final draw
+            // Show the "Which side is unsafe?" popup
+            document.getElementById('side-selector').classList.remove('hidden');
+        });
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw lines
+            if (points.length > 0) {
+                ctx.beginPath();
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = "#fbbf24"; // Amber-400
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = "black";
+                
+                ctx.moveTo(points[0].x, points[0].y);
+                for (let i = 1; i < points.length; i++) {
+                    ctx.lineTo(points[i].x, points[i].y);
+                }
+                ctx.stroke();
+                
+                // Draw dots at vertices
+                ctx.fillStyle = "white";
+                points.forEach(p => {
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 4, 0, Math.PI*2);
+                    ctx.fill();
                 });
-                console.log("Simulation sent to DB!");
+            }
+        }
+
+        window.setUnsafeSide = (side) => {
+            unsafeSide = side;
+            document.getElementById('side-selector').classList.add('hidden');
+            alert(`Zone Configured! The ${side.toUpperCase()} side is now marked as DANGER.`);
+        };
+
+        // Save Config to Firebase (for Python Backend to read)
+        window.saveConfig = async () => {
+            if(points.length < 2) return alert("Please draw a line first.");
+            
+            // We save NORMALIZED coordinates (0.0 to 1.0) so it works on any resolution
+            const normalizedPoints = points.map(p => ({
+                x: p.x / canvas.width,
+                y: p.y / canvas.height
+            }));
+
+            const configData = {
+                station_id: "STN-01",
+                poly_points: normalizedPoints,
+                unsafe_side: unsafeSide,
+                updated_at: new Date().toISOString()
+            };
+
+            // 1. Save locally for immediate UI update
+            localStorage.setItem('metro_zone_config', JSON.stringify(configData));
+            
+            // 2. Save to Firebase (Real World)
+            try {
+                await setDoc(doc(db, "config", "station_settings"), configData);
+                alert("Configuration Saved to Cloud! The AI Camera will now respect this boundary.");
+                renderSafetyOverlay(); // Update monitor view
+                switchTab('monitor'); // Go back to monitor
             } catch (e) {
-                console.error("Error adding document: ", e);
-                alert("Firebase Error: Check your config keys in the code!");
+                console.error("Save failed", e);
+                alert("Error saving to cloud. Check console.");
             }
         };
 
-        // --------------------------------------------------------------
-        // 4. DASHBOARD LOGIC (THE STATION MASTER)
-        // --------------------------------------------------------------
-        const feed = document.getElementById('violation-feed');
-        
-        // Listen to Database Updates
-        const q = query(collection(db, "violations"), orderBy("timestamp", "desc"));
-        
-        onSnapshot(q, (snapshot) => {
-            feed.innerHTML = ""; // Clear list
-            if(snapshot.empty) {
-                feed.innerHTML = `<div class="text-center text-slate-500 mt-10 text-sm">No violations recorded today.</div>`;
+        // --- 4. LIVE MONITOR OVERLAY ---
+        function renderSafetyOverlay() {
+            const svg = document.getElementById('safety-overlay');
+            const data = JSON.parse(localStorage.getItem('metro_zone_config'));
+            
+            if (!data || !data.poly_points) {
+                svg.innerHTML = ''; 
                 return;
             }
 
-            snapshot.forEach((snap) => {
+            const w = svg.parentElement.offsetWidth;
+            const h = svg.parentElement.offsetHeight;
+            
+            // Generate SVG Path string
+            let d = `M ${data.poly_points[0].x * w} ${data.poly_points[0].y * h}`;
+            for(let i=1; i<data.poly_points.length; i++) {
+                d += ` L ${data.poly_points[i].x * w} ${data.poly_points[i].y * h}`;
+            }
+
+            // Create the visible line
+            svg.innerHTML = `
+                <path d="${d}" stroke="rgba(251, 191, 36, 0.8)" stroke-width="4" fill="none" stroke-dasharray="10,5"/>
+                <path d="${d} ${data.unsafe_side === 'right' ? `L ${w} ${h} L ${w} 0` : `L 0 ${h} L 0 0`} Z" 
+                      fill="rgba(255, 0, 0, 0.15)" stroke="none" />
+            `;
+        }
+
+        // --- 5. REAL-TIME ALERTS (Listener) ---
+        const alertsFeed = document.getElementById('alerts-feed');
+        const historyTable = document.getElementById('history-table');
+
+        // Listen for ANY change in 'violations' collection
+        const q = query(collection(db, "violations"), orderBy("time", "desc"));
+        
+        onSnapshot(q, (snapshot) => {
+            alertsFeed.innerHTML = "";
+            historyTable.innerHTML = "";
+
+            if(snapshot.empty) {
+                alertsFeed.innerHTML = `<div class="text-center text-slate-500 mt-10">System Armed. No violations.</div>`;
+            }
+
+            snapshot.forEach(snap => {
                 const data = snap.data();
                 const id = snap.id;
-                const isPending = data.status === "PENDING";
                 
-                // Create Card HTML
-                const timeStr = new Date(data.timestamp).toLocaleTimeString();
-                
-                const card = document.createElement('div');
-                card.className = `bg-slate-700 rounded-lg p-3 border-l-4 ${isPending ? 'border-red-500' : 'border-green-500'} shadow-lg animation-fade-in`;
-                
-                card.innerHTML = `
-                    <div class="flex justify-between items-start mb-2">
-                        <div>
-                            <span class="text-xs font-bold text-slate-400 block">VIOLATION ID</span>
-                            <span class="text-sm font-mono text-white">${id.substring(0,8)}...</span>
+                // 1. Add to Sidebar (Only Pending/Recent)
+                if(!data.approved) {
+                    const card = document.createElement('div');
+                    card.className = "bg-slate-700 rounded p-3 border-l-4 border-red-500 shadow-md animate-pulse";
+                    card.innerHTML = `
+                        <div class="flex justify-between text-xs text-slate-400 mb-2">
+                            <span>CAM-01</span>
+                            <span>${data.time.split(' ')[1]}</span>
                         </div>
-                        <div class="text-right">
-                            <span class="text-xs font-bold text-slate-400 block">TIME</span>
-                            <span class="text-sm font-mono text-yellow-400">${timeStr}</span>
+                        <img src="${data.face_url || 'https://placehold.co/300x200?text=No+Signal'}" class="w-full h-32 object-cover bg-black mb-2 rounded">
+                        <div class="flex justify-between items-center">
+                            <span class="text-white font-mono text-sm">${data.rfid || 'Detecting ID...'}</span>
+                            <button onclick="window.approveFine('${id}')" class="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded font-bold">
+                                FINE
+                            </button>
                         </div>
-                    </div>
-                    
-                    <div class="relative mb-3 group cursor-pointer">
-                        <img src="${data.image_base64}" class="w-full h-32 object-cover rounded bg-black border border-slate-600">
-                        <div class="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] px-1 rounded">
-                            CONF: ${data.confidence}%
-                        </div>
-                    </div>
+                    `;
+                    alertsFeed.appendChild(card);
+                }
 
-                    <div class="flex items-center justify-between bg-slate-800 p-2 rounded mb-2">
-                        <span class="text-xs text-slate-400"><i class="fa-solid fa-id-card mr-1"></i> RFID</span>
-                        <span class="text-xs font-bold text-white">${data.rfid_tag}</span>
-                    </div>
-
-                    ${isPending ? `
-                        <button onclick="approveFine('${id}')" class="w-full bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-2 rounded transition flex items-center justify-center gap-2">
-                            <i class="fa-solid fa-gavel"></i> APPROVE FINE (₹500)
-                        </button>
-                    ` : `
-                        <div class="w-full bg-green-900/30 border border-green-600/50 text-green-400 text-xs font-bold py-2 rounded text-center">
-                            <i class="fa-solid fa-check-circle mr-1"></i> FINE PROCESSED
-                        </div>
-                    `}
+                // 2. Add to History Table
+                const row = document.createElement('tr');
+                row.className = "border-b border-slate-700 hover:bg-slate-800";
+                row.innerHTML = `
+                    <td class="p-3 text-sm">${data.time}</td>
+                    <td class="p-3 font-mono text-sky-400">${data.rfid || 'UNK'}</td>
+                    <td class="p-3"><span class="px-2 py-0.5 rounded text-xs ${data.approved ? 'bg-green-900 text-green-400' : 'bg-red-900 text-red-400'}">${data.approved ? 'RESOLVED' : 'PENDING'}</span></td>
+                    <td class="p-3 text-xs text-slate-500">${data.approved ? 'Auto-Debited' : '-'}</td>
                 `;
-                feed.appendChild(card);
+                historyTable.appendChild(row);
             });
         });
 
-        // 5. Action: Approve Fine
-        window.approveFine = async function(docId) {
-            const btn = document.querySelector(`button[onclick="approveFine('${docId}')"]`);
-            if(btn) btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> PROCESSING...';
-            
+        // Global function for the button
+        window.approveFine = async (docId) => {
             await updateDoc(doc(db, "violations", docId), {
-                status: "APPROVED",
+                approved: true,
                 processed_at: new Date().toISOString()
             });
         };
+
+        // Clock Update
+        setInterval(() => {
+            document.getElementById('clock').innerText = new Date().toLocaleTimeString();
+        }, 1000);
 
     </script>
 </body>

@@ -213,6 +213,17 @@
     </main>
 
     <script type="module">
+        // This empty function stops the "ReferenceError" crash
+    window.renderSafetyOverlay = function() {
+        console.log("Overlay hidden per government standard.");
+    };
+
+    // Force the drawing canvas to be on top so you can see the line
+    const zoneCanvas = document.getElementById('zone-canvas');
+    if(zoneCanvas) {
+        zoneCanvas.style.zIndex = "999"; 
+        zoneCanvas.style.pointerEvents = "auto";
+    }
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
         import { getFirestore, collection, query, orderBy, onSnapshot, doc, updateDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
@@ -532,20 +543,7 @@ function draw() {
         // Clock Update
         setInterval(() => {
             document.getElementById('clock').innerText = new Date().toLocaleTimeString();
-        }, 1000);
-// --- PASTE THIS AT THE VERY BOTTOM OF YOUR SCRIPT (Before </script>) ---
-    
-    // This empty function stops the "ReferenceError" crash
-    window.renderSafetyOverlay = function() {
-        console.log("Overlay hidden per government standard.");
-    };
-
-    // Force the drawing canvas to be on top so you can see the line
-    const zoneCanvas = document.getElementById('zone-canvas');
-    if(zoneCanvas) {
-        zoneCanvas.style.zIndex = "999"; 
-        zoneCanvas.style.pointerEvents = "auto";
-    }
+        }, 1000);     
     </script>
 </body>
 </html>

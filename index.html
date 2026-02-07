@@ -251,10 +251,15 @@ function resizeCanvas() {
     }
 }
 window.addEventListener('resize', resizeCanvas);
-
 // 3. Start Drawing Action
 window.startDrawing = () => {
-    resizeCanvas(); // Ensure size is correct before starting
+    // Force resize to match video container exactly
+    const container = document.querySelector('.video-wrapper');
+    if(container) {
+        canvas.width = container.offsetWidth;
+        canvas.height = container.offsetHeight;
+    }
+
     points = [];
     isDrawing = true;
     
@@ -263,17 +268,20 @@ window.startDrawing = () => {
     
     // UI Updates
     document.getElementById('side-selector').classList.add('hidden');
-    canvas.classList.remove('locked'); // Make sure it captures clicks
-    canvas.style.pointerEvents = "auto"; // FORCE clicks to be enabled
+    canvas.classList.remove('locked'); 
+    canvas.style.pointerEvents = "auto"; 
     
-    alert("Drawing Mode Active: Click points on the video. Double-click to finish.");
+    // Visual indicator that drawing is active
+    canvas.style.cursor = "crosshair";
+    canvas.style.border = "2px solid #00ff00"; // Neon Green Border
+    
+    alert("DRAWING MODE: Click points on the screen. Double-click to finish.");
 };
 
 // 4. Mouse Down (Click to add point)
 canvas.addEventListener('mousedown', (e) => {
     if(!isDrawing) return;
     
-    // Get correct coordinates relative to the canvas, not the window
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
@@ -296,32 +304,34 @@ canvas.addEventListener('mousemove', (e) => {
     ctx.beginPath();
     ctx.moveTo(points[points.length-1].x, points[points.length-1].y);
     ctx.lineTo(mouseX, mouseY);
-    ctx.strokeStyle = "rgba(255, 255, 0, 0.5)"; // Faint yellow
+    ctx.strokeStyle = "#00ff00"; // Neon Green for visibility
+    ctx.setLineDash([5, 5]); // Dashed line for "preview"
     ctx.lineWidth = 2;
     ctx.stroke();
+    ctx.setLineDash([]); // Reset
 });
 
 // 6. Double Click (Finish)
 canvas.addEventListener('dblclick', (e) => {
     if(!isDrawing) return;
     isDrawing = false;
-    canvas.style.pointerEvents = "none"; // Stop capturing clicks so you can click other buttons
+    canvas.style.pointerEvents = "none";
+    canvas.style.border = "none";
     draw();
     document.getElementById('side-selector').classList.remove('hidden');
 });
 
 // 7. The Draw Function (Visuals)
 function draw() {
-    // Clear screen
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    // Draw the path
     if (points.length > 0) {
         ctx.beginPath();
         ctx.lineWidth = 4;
-        ctx.strokeStyle = "#fbbf24"; // Bright Yellow
+        ctx.strokeStyle = "#fbbf24"; // Bright Yellow (Final Line)
         ctx.lineCap = "round";
-        ctx.lineJoin = "round";
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = "black";
         
         ctx.moveTo(points[0].x, points[0].y);
         for (let i = 1; i < points.length; i++) {
@@ -329,11 +339,11 @@ function draw() {
         }
         ctx.stroke();
         
-        // Draw white dots at click points
-        ctx.fillStyle = "white";
+        // Draw dots at vertices so you can see where you clicked
+        ctx.fillStyle = "#fff";
         points.forEach(p => {
             ctx.beginPath();
-            ctx.arc(p.x, p.y, 5, 0, Math.PI*2);
+            ctx.arc(p.x, p.y, 4, 0, Math.PI*2);
             ctx.fill();
         });
     }
@@ -345,10 +355,11 @@ function draw() {
         };
 
         // Save Config to Firebase (for Python Backend to read)
+        // Save Config to Firebase
         window.saveConfig = async () => {
             if(points.length < 2) return alert("Please draw a line first.");
             
-            // We save NORMALIZED coordinates (0.0 to 1.0) so it works on any resolution
+            // Normalize coordinates
             const normalizedPoints = points.map(p => ({
                 x: p.x / canvas.width,
                 y: p.y / canvas.height
@@ -361,15 +372,16 @@ function draw() {
                 updated_at: new Date().toISOString()
             };
 
-            // 1. Save locally for immediate UI update
+            // 1. Save locally
             localStorage.setItem('metro_zone_config', JSON.stringify(configData));
             
-            // 2. Save to Firebase (Real World)
+            // 2. Save to Firebase
             try {
                 await setDoc(doc(db, "config", "station_settings"), configData);
-                alert("Configuration Saved to Cloud! The AI Camera will now respect this boundary.");
-                renderSafetyOverlay(); // Update monitor view
-                switchTab('monitor'); // Go back to monitor
+                alert("ZONE SAVED! System is now monitoring this area.");
+                
+                // CRITICAL FIX: Removed the 'renderSafetyOverlay' call that was crashing
+                switchTab('monitor'); 
             } catch (e) {
                 console.error("Save failed", e);
                 alert("Error saving to cloud. Check console.");

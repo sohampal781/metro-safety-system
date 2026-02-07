@@ -21,6 +21,26 @@
       font-weight: 600;
     }
 
+    .webcam-section {
+      padding: 20px 24px;
+      background: #ffffff;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    }
+
+    .webcam-section h3 {
+      margin: 0 0 12px 0;
+      font-size: 16px;
+      color: #0b3c5d;
+    }
+
+    video {
+      width: 100%;
+      max-width: 420px;
+      border-radius: 8px;
+      border: 2px solid #0b3c5d;
+      background: #000;
+    }
+
     .container {
       padding: 24px;
       display: grid;
@@ -54,16 +74,14 @@
       font-weight: 600;
     }
 
-    .status {
-      font-weight: 600;
-    }
-
     .approved {
       color: green;
+      font-weight: 600;
     }
 
     .pending {
       color: #c0392b;
+      font-weight: 600;
     }
 
     button {
@@ -95,6 +113,11 @@
 <header>
   Metro Safety – Master Dashboard
 </header>
+
+<div class="webcam-section">
+  <h3>Live Station Camera Feed</h3>
+  <video id="webcam" autoplay playsinline></video>
+</div>
 
 <div class="container" id="violationsContainer"></div>
 
@@ -142,7 +165,7 @@
     time.innerHTML = `<span class="label">Time:</span> ${data.time}`;
 
     const status = document.createElement("div");
-    status.className = "row status";
+    status.className = "row";
     status.innerHTML = `<span class="label">Status:</span> 
       <span class="${data.approved ? "approved" : "pending"}">
         ${data.approved ? "Approved" : "Pending"}
@@ -152,30 +175,33 @@
     button.textContent = data.approved ? "Fine Approved" : "Approve Fine";
     button.disabled = data.approved;
 
-    button.addEventListener("click", async () => {
-      const ref = doc(db, "violations", id);
-      await updateDoc(ref, {
+    button.onclick = async () => {
+      await updateDoc(doc(db, "violations", id), {
         approved: true,
         fine: 500
       });
-    });
+    };
 
-    card.appendChild(img);
-    card.appendChild(rfid);
-    card.appendChild(time);
-    card.appendChild(status);
-    card.appendChild(button);
-
+    card.append(img, rfid, time, status, button);
     return card;
   }
 
   onSnapshot(collection(db, "violations"), (snapshot) => {
     container.innerHTML = "";
-    snapshot.forEach((docSnap) => {
-      const card = renderViolation(docSnap.id, docSnap.data());
-      container.appendChild(card);
+    snapshot.forEach(docSnap => {
+      container.appendChild(renderViolation(docSnap.id, docSnap.data()));
     });
   });
+
+  const video = document.getElementById("webcam");
+
+  navigator.mediaDevices.getUserMedia({ video: true })
+    .then(stream => {
+      video.srcObject = stream;
+    })
+    .catch(() => {
+      video.replaceWith("Camera access denied or unavailable");
+    });
 </script>
 
 </body>

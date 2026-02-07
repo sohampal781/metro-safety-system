@@ -359,40 +359,28 @@ function draw() {
             document.getElementById('side-selector').classList.add('hidden');
             alert(`Zone Configured! The ${side.toUpperCase()} side is now marked as DANGER.`);
         };
+window.saveConfig = async () => {
+    if (points.length < 2) return alert("Please draw a line first.");
 
-        // Save Config to Firebase (for Python Backend to read)
-        // Save Config to Firebase
-        window.saveConfig = async () => {
-            if(points.length < 2) return alert("Please draw a line first.");
-            
-            // Normalize coordinates
-            const normalizedPoints = points.map(p => ({
-                x: p.x / canvas.width,
-                y: p.y / canvas.height
-            }));
+    const configData = {
+        station_id: "STN-01",
+        poly_points: points.map(p => ({
+            x: p.x / canvas.width,
+            y: p.y / canvas.height
+        })),
+        unsafe_side: unsafeSide,
+        updated_at: new Date().toISOString()
+    };
 
-            const configData = {
-                station_id: "STN-01",
-                poly_points: normalizedPoints,
-                unsafe_side: unsafeSide,
-                updated_at: new Date().toISOString()
-            };
-
-            // 1. Save locally
-            localStorage.setItem('metro_zone_config', JSON.stringify(configData));
-            
-            // 2. Save to Firebase
-            try {
-                await setDoc(doc(db, "config", "station_settings"), configData);
-                alert("ZONE SAVED! System is now monitoring this area.");
-                
-                // CRITICAL FIX: Removed the 'renderSafetyOverlay' call that was crashing
-                switchTab('monitor'); 
-            } catch (e) {
-                console.error("Save failed", e);
-                alert("Error saving to cloud. Check console.");
-            }
-        };
+    try {
+        await setDoc(doc(db, "config", "station_settings"), configData);
+        alert("ZONE SAVED!");
+        // Use window. prefix to ensure it hits the global scope
+        window.switchTab('monitor'); 
+    } catch (e) {
+        console.error("Save failed:", e);
+    }
+};
         window.saveUser = async () => {
     const rfid = document.getElementById('reg-rfid').value;
     const name = document.getElementById('reg-name').value;
@@ -545,5 +533,6 @@ function draw() {
             document.getElementById('clock').innerText = new Date().toLocaleTimeString();
         }, 1000);     
     </script>
+    <script src="https://cdn.tailwindcss.com"></script>
 </body>
 </html>

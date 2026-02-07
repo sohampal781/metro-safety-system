@@ -10,8 +10,8 @@
       margin: 0;
       padding: 0;
       height: 100%;
-      font-family: Arial, Helvetica, sans-serif;
       background: #000;
+      font-family: Arial, Helvetica, sans-serif;
       overflow: hidden;
     }
 
@@ -21,14 +21,14 @@
       left: 0;
       right: 0;
       height: 56px;
-      background: rgba(11, 60, 93, 0.9);
+      background: rgba(11, 60, 93, 0.95);
       color: #fff;
       display: flex;
       align-items: center;
       padding: 0 20px;
-      z-index: 10;
       font-size: 18px;
       font-weight: 600;
+      z-index: 20;
     }
 
     video {
@@ -38,7 +38,49 @@
       width: 100vw;
       height: 100vh;
       object-fit: cover;
-      background: #000;
+      z-index: 1;
+    }
+
+    canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 5;
+    }
+
+    .tools {
+      position: absolute;
+      top: 70px;
+      left: 20px;
+      background: rgba(255,255,255,0.95);
+      padding: 12px;
+      border-radius: 8px;
+      z-index: 20;
+      width: 190px;
+    }
+
+    .tools h4 {
+      margin: 0 0 8px 0;
+      font-size: 14px;
+      color: #0b3c5d;
+    }
+
+    .tools button {
+      width: 100%;
+      margin-bottom: 8px;
+      padding: 8px;
+      font-size: 13px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      background: #0b3c5d;
+      color: #fff;
+    }
+
+    .tools button.secondary {
+      background: #555;
     }
 
     .panel {
@@ -48,11 +90,11 @@
       width: 360px;
       max-height: calc(100vh - 90px);
       overflow-y: auto;
-      background: rgba(255, 255, 255, 0.96);
+      background: rgba(255,255,255,0.96);
       border-radius: 8px;
       padding: 12px;
-      z-index: 10;
-      box-shadow: 0 8px 20px rgba(0,0,0,0.35);
+      z-index: 20;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.4);
     }
 
     .panel h3 {
@@ -96,7 +138,7 @@
       font-weight: 600;
     }
 
-    button {
+    button.approve {
       width: 100%;
       padding: 8px;
       border: none;
@@ -108,7 +150,7 @@
       margin-top: 6px;
     }
 
-    button:disabled {
+    button.approve:disabled {
       background: #999;
       cursor: not-allowed;
     }
@@ -120,7 +162,7 @@
       transform: translateX(-50%);
       font-size: 11px;
       color: #ddd;
-      z-index: 10;
+      z-index: 20;
     }
   </style>
 </head>
@@ -131,6 +173,14 @@
 </header>
 
 <video id="webcam" autoplay playsinline></video>
+<canvas id="overlay"></canvas>
+
+<div class="tools">
+  <h4>Station Master Control</h4>
+  <button id="drawLine">Draw Yellow Line</button>
+  <button id="lockSide" class="secondary">Lock Track Side</button>
+  <button id="simulate">Simulate Passenger Breach</button>
+</div>
 
 <div class="panel">
   <h3>Yellow Line Violations</h3>
@@ -168,7 +218,7 @@
     card.className = "card";
 
     card.innerHTML = `
-      <img src="${data.face_url || ""}" />
+      <img src="${data.face_url || ""}">
       <div class="row"><span class="label">RFID:</span> ${data.rfid}</div>
       <div class="row"><span class="label">Time:</span> ${data.time}</div>
       <div class="row">
@@ -180,6 +230,7 @@
     `;
 
     const btn = document.createElement("button");
+    btn.className = "approve";
     btn.textContent = data.approved ? "Fine Approved" : "Approve Fine";
     btn.disabled = data.approved;
 
@@ -194,18 +245,91 @@
     return card;
   }
 
-  onSnapshot(collection(db, "violations"), snapshot => {
+  onSnapshot(collection(db, "violations"), snap => {
     container.innerHTML = "";
-    snapshot.forEach(d => {
-      container.appendChild(renderViolation(d.id, d.data()));
-    });
+    snap.forEach(d => container.appendChild(renderViolation(d.id, d.data())));
   });
+</script>
 
+<script>
   const video = document.getElementById("webcam");
+  const canvas = document.getElementById("overlay");
+  const ctx = canvas.getContext("2d");
+
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  let drawing = false;
+  let locked = false;
+  let points = [];
+
   navigator.mediaDevices.getUserMedia({ video: true })
     .then(stream => video.srcObject = stream)
     .catch(() => alert("Camera access denied"));
+
+  document.getElementById("drawLine").onclick = () => {
+    points = [];
+    locked = false;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+  };
+
+  document.getElementById("lockSide").onclick = () => {
+    locked = true;
+    alert("Track side locked. Monitoring active.");
+  };
+
+  canvas.addEventListener("mousedown", () => {
+    if (!locked) drawing = true;
+  });
+
+  canvas.addEventListener("mouseup", () => drawing = false);
+
+  canvas.addEventListener("mousemove", e => {
+    if (!drawing || locked) return;
+    points.push({ x: e.clientX, y: e.clientY });
+    drawLine();
+  });
+
+  function drawLine() {
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    if (points.length < 2) return;
+    ctx.strokeStyle = "yellow";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    points.forEach(p => ctx.lineTo(p.x, p.y));
+    ctx.stroke();
+  }
+
+  document.getElementById("simulate").onclick = () => {
+    if (!locked) return alert("Lock track side first");
+    captureFace();
+  };
+
+  function captureFace() {
+    const snap = document.createElement("canvas");
+    snap.width = 240;
+    snap.height = 180;
+    snap.getContext("2d").drawImage(video, 0, 0, snap.width, snap.height);
+
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <img src="${snap.toDataURL()}">
+      <div class="row"><b>Auto Capture</b></div>
+      <div class="row">Passenger crossed yellow line</div>
+      <div class="row"><span class="label">Status:</span> <span class="pending">Pending</span></div>
+    `;
+    document.getElementById("violationsContainer").prepend(card);
+  }
+
+  window.onresize = () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    drawLine();
+  };
 </script>
 
 </body>
 </html>
+

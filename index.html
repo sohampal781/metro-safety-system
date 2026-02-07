@@ -43,12 +43,9 @@
 
         /* Video Container - FULL VIEW */
         .video-wrapper {
-            position: relative;
-            width: 100%; height: 100%;
-            background: #000;
-            display: flex; justify-content: center; align-items: center;
-            border: 1px solid #222;
-        }
+    position: relative !important;
+    overflow: hidden;
+}
         
         video { 
             width: auto; height: auto; 
@@ -69,15 +66,16 @@
             background: transparent;
         }
         #detect-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 40; }
-        #safety-overlay {
-    position: absolute;
+       #safety-overlay {
+    display: block !important; /* Override any hidden styles */
+    position: absolute !important;
     top: 0;
     left: 0;
-    width: 100%;
-    height: 100%;
-    display: block !important; /* Ensure it isn't hidden */
-    pointer-events: none;
-    z-index: 50;
+    width: 100% !important;
+    height: 100% !important;
+    z-index: 9999 !important; /* Sit above the video and everything else */
+    pointer-events: none; /* Let clicks pass through to the video if needed */
+    overflow: visible !important; /* Ensure the glow isn't clipped */
 }
 
         /* Status Badges - Official Look */

@@ -8,15 +8,21 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         body { background-color: #000; color: #ccc; overflow: hidden; font-family: 'Courier New', monospace; text-transform: uppercase; }
-        .nav-btn { padding: 12px 24px; border-right: 1px solid #222; color: #555; font-weight: bold; background: #000; cursor: pointer; }
+        .nav-btn { padding: 12px 24px; border-right: 1px solid #222; color: #555; font-weight: bold; background: #000; cursor: pointer; transition: 0.2s; }
         .nav-btn.active { color: #0f0; background: #051a05; border-bottom: 2px solid #0f0; }
+        
+        /* Video Container - FULL VIEW */
         .video-wrapper { position: relative; width: 100%; height: 100%; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-        video { width: 100% !important; height: 100% !important; object-fit: cover; position: absolute; }
-        svg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
-        #slider-panel { display: block; overflow-y: auto; max-height: calc(100vh - 220px); padding-bottom: 40px; }
+        video { width: 100% !important; height: 100% !important; object-fit: cover; position: absolute; top: 0; left: 0; }
+        svg { position: absolute; inset: 0; width: 100% !important; height: 100% !important; z-index: 10; pointer-events: none; }
+        
+        /* Sidebar scrolling fix for Point 4 to N */
+        #slider-panel { display: block !important; overflow-y: auto !important; max-height: calc(100vh - 220px); padding-bottom: 40px; }
         #slider-panel::-webkit-scrollbar { width: 6px; }
         #slider-panel::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
-        .unsafe-overlay-tint { fill: rgba(220, 38, 38, 0.4); }
+        #slider-panel::-webkit-scrollbar-thumb:hover { background: #00ff00; }
+
+        .unsafe-overlay-tint { fill: rgba(220, 38, 38, 0.4); pointer-events: none; }
         .camera-error { background: repeating-linear-gradient(45deg, #000, #000 10px, #111 10px, #111 20px); display: flex; align-items: center; justify-content: center; }
     </style>
 </head>
@@ -24,14 +30,19 @@
 
     <header class="h-14 bg-black border-b border-slate-700 flex justify-between items-center px-4 shrink-0">
         <div class="flex items-center gap-4">
-            <div class="text-xl font-bold text-white"><i class="fa-solid fa-subway text-sky-500 mr-2"></i>SURVEILLANCE <span class="text-green-500">COMMAND</span></div>
+            <div class="text-xl font-bold text-white tracking-tight">
+                <i class="fa-solid fa-subway text-sky-500 mr-2"></i>SURVEILLANCE <span class="text-green-500">COMMAND</span>
+            </div>
             <nav class="flex">
                 <button onclick="window.switchTab('monitor')" id="tab-monitor" class="nav-btn active">MONITOR</button>
                 <button onclick="window.switchTab('config')" id="tab-config" class="nav-btn">CONFIG</button>
                 <button onclick="window.switchTab('prosecute')" id="tab-prosecute" class="nav-btn">PROSECUTION</button>
             </nav>
         </div>
-        <div id="clock" class="text-xs font-mono">12:00:00</div>
+        <div class="flex items-center gap-4">
+             <button onclick="checkData()" class="bg-yellow-600/20 border border-yellow-600 px-2 py-1 text-[10px] text-yellow-500">DEBUG DB</button>
+             <div id="clock" class="text-xs font-mono text-slate-500">12:00:00</div>
+        </div>
     </header>
 
     <main class="flex-1 relative overflow-hidden">
@@ -39,36 +50,52 @@
             <div class="video-wrapper">
                 <video id="monitor-video" autoplay playsinline muted></video>
                 <svg id="safety-overlay"></svg>
-                <button onclick="window.triggerFaceCapture('MANUAL_SNAP')" class="absolute bottom-6 right-6 bg-red-600 text-white p-4 rounded-full z-50 shadow-xl hover:scale-110 transition"><i class="fa-solid fa-camera"></i></button>
+                <button onclick="window.triggerFaceCapture('MANUAL_SNAP')" class="absolute bottom-6 right-6 bg-red-600 text-white p-4 rounded-full z-50 shadow-xl hover:scale-110 transition">
+                    <i class="fa-solid fa-camera text-xl"></i>
+                </button>
             </div>
-            <div class="bg-slate-900 border-l border-slate-700 p-4 overflow-y-auto" id="alerts-feed"></div>
+            <div class="bg-slate-900 border-l border-slate-700 flex flex-col p-4">
+                <h3 class="font-bold text-white border-b border-slate-700 pb-2 mb-4 text-xs">MASTER LIVE FEED</h3>
+                <div id="alerts-feed" class="flex-1 overflow-y-auto space-y-3">
+                    <div class="text-center text-slate-500 mt-10 italic text-sm">System Armed. No violations.</div>
+                </div>
+            </div>
         </div>
 
-        <div id="view-config" class="absolute inset-0 hidden grid grid-cols-[1fr_350px]">
-            <div class="video-wrapper"><video id="config-video" autoplay playsinline muted class="opacity-50"></video><svg id="config-overlay"></svg></div>
-            <div class="bg-slate-900 border-l border-slate-700 p-4 flex flex-col">
-                <h3 class="font-bold mb-4 text-sm">ZONE PARAMETERS</h3>
+        <div id="view-config" class="absolute inset-0 hidden grid grid-cols-[1fr_350px] bg-slate-900">
+            <div class="video-wrapper">
+                <video id="config-video" autoplay playsinline muted class="opacity-50"></video>
+                <svg id="config-overlay"></svg>
+            </div>
+            <div class="bg-slate-800 border-l border-slate-700 flex flex-col p-4">
+                <h3 class="font-bold text-white mb-4 text-sm">ZONE PARAMETERS</h3>
                 <label class="text-[10px] text-slate-500 block mb-1">CONTROL POINTS (N)</label>
-                <input id="pointCount" type="range" min="2" max="10" value="4" class="w-full mb-4 accent-sky-500">
-                <div class="flex justify-between text-sky-400 font-mono text-[10px] mt-1 mb-4">
+                <input id="pointCount" type="range" min="2" max="10" value="4" class="w-full mb-2 accent-sky-500 cursor-pointer">
+                <div class="flex justify-between text-sky-400 font-mono text-[10px] mb-4">
                     <span>2 pts</span> <span id="pointCountLabel">4</span> <span>10 pts</span>
                 </div>
-                <div id="slider-panel" class="flex-1"></div>
-                <button onclick="window.saveConfig()" class="w-full bg-green-600 py-3 rounded font-bold mt-4 hover:bg-green-500 transition">LOCK ZONE</button>
+                <div id="slider-panel" class="flex-1 space-y-3"></div>
+                <button onclick="window.saveConfig()" class="w-full bg-green-600 hover:bg-green-500 text-white py-3 rounded font-bold mt-4 transition">LOCK ZONE CONFIG</button>
             </div>
         </div>
 
         <div id="view-prosecute" class="absolute inset-0 hidden bg-black p-6 overflow-y-auto">
-            <h2 class="text-xl font-bold mb-6 border-b border-slate-800 pb-2">PROSECUTION LOG</h2>
-            <div id="prosecution-list" class="grid grid-cols-1 md:grid-cols-3 gap-6"></div>
+            <h2 class="text-xl font-bold mb-6 border-b border-slate-800 pb-2">E-PROSECUTION LOG</h2>
+            <div id="prosecution-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
         </div>
 
-        <div id="safety-side-picker" class="hidden absolute inset-0 bg-black/80 flex items-center justify-center z-[2000]">
-            <div class="bg-slate-900 p-8 rounded-xl text-center border border-slate-700">
-                <h3 class="mb-6 font-bold text-white">CALIBRATE SAFE SIDE</h3>
-                <div class="flex gap-4">
-                    <button onclick="window.setSafetySide('left')" class="p-6 bg-slate-800 rounded-lg border border-slate-600 hover:bg-green-900/30">LEFT PLATFORM</button>
-                    <button onclick="window.setSafetySide('right')" class="p-6 bg-slate-800 rounded-lg border border-slate-600 hover:bg-green-900/30">RIGHT PLATFORM</button>
+        <div id="safety-side-picker" class="hidden absolute inset-0 bg-black/90 flex items-center justify-center z-[2000]">
+            <div class="bg-slate-900 p-8 rounded-xl text-center border border-slate-700 max-w-md">
+                <h3 class="text-lg font-bold text-white mb-6 uppercase tracking-widest">Select Safe Platform Side</h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <button onclick="window.setSafetySide('left')" class="p-6 bg-slate-800 rounded-lg border border-slate-600 hover:bg-green-900/30 transition group">
+                        <i class="fa-solid fa-arrow-left text-green-500 text-2xl mb-2 group-hover:scale-125 transition"></i>
+                        <div class="text-white font-bold">LEFT SIDE</div>
+                    </button>
+                    <button onclick="window.setSafetySide('right')" class="p-6 bg-slate-800 rounded-lg border border-slate-600 hover:bg-green-900/30 transition group">
+                        <i class="fa-solid fa-arrow-right text-green-500 text-2xl mb-2 group-hover:scale-125 transition"></i>
+                        <div class="text-white font-bold">RIGHT SIDE</div>
+                    </button>
                 </div>
             </div>
         </div>
@@ -78,43 +105,64 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
         import { getFirestore, doc, setDoc, collection, query, orderBy, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
-        const firebaseConfig = { apiKey: "AIzaSyBoWtfLODLrDhRKkMew0sLceDgHBNAQAPM", projectId: "metro-safety-system" };
+        const firebaseConfig = { 
+            apiKey: "AIzaSyBoWtfLODLrDhRKkMew0sLceDgHBNAQAPM", 
+            projectId: "metro-safety-system", 
+            databaseURL: "https://metro-safety-system-default-rtdb.firebaseio.com" 
+        };
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
+        // --- GLOBAL STATE ---
         let controlPoints = [];
         let n = 4;
         let sidePref = 'left';
 
-        // 1. DETECTION ENGINE
+        // --- 1. DETECTION MATH ENGINE ---
         window.isUnsafe = (pX, pY) => {
             if (!controlPoints.length) return false;
+            // Logic: Intruding if X moves past boundary from safe platform side
             return sidePref === 'left' ? pX > controlPoints[0].x : pX < controlPoints[0].x;
         };
 
         window.processDetection = (x, y) => {
-            if (window.isUnsafe(x, y)) window.triggerFaceCapture('AUTO_DETECTION');
+            console.log(`AI HOOK: Analyzing X:${x}, Y:${y}`);
+            if (window.isUnsafe(x, y)) {
+                console.warn("DANGER: INTRUSION DETECTED");
+                window.triggerFaceCapture('AUTO_DETECTION');
+            }
         };
 
-        // 2. CAPTURE & DATABASE
+        // --- 2. IMAGE CAPTURE & FIRESTORE SYNC ---
         window.triggerFaceCapture = async (type) => {
             const video = document.getElementById('monitor-video');
+            if (!video || video.readyState < 2) return;
+
             const canvas = document.createElement('canvas');
-            if(!video.videoWidth) return;
             canvas.width = video.videoWidth; canvas.height = video.videoHeight;
             canvas.getContext('2d').drawImage(video, 0, 0);
-            const img = canvas.toDataURL('image/jpeg', 0.6);
+            const imgData = canvas.toDataURL('image/jpeg', 0.6);
+            
             try {
                 const id = `V-${Date.now()}`;
-                await setDoc(doc(db, "violations", id), { timestamp: new Date().toISOString(), image_data: img, type: type });
-            } catch (e) { console.error("Firebase Error:", e); }
+                await setDoc(doc(db, "violations", id), { 
+                    timestamp: new Date().toISOString(), 
+                    image_data: imgData, 
+                    type: type,
+                    station: "STN-HOWRAH-01"
+                });
+                console.log("Master Log: Saved ", id);
+            } catch (e) { console.error("Firebase Sync Error:", e); }
         };
 
         window.deleteRecord = async (id) => {
-            if(confirm("Permanently delete this record?")) await deleteDoc(doc(db, "violations", id));
+            if(confirm("Confirm permanent removal from prosecution database?")) {
+                try { await deleteDoc(doc(db, "violations", id)); } 
+                catch (e) { console.error("Delete failed", e); }
+            }
         };
 
-        // 3. UI & DRAWING
+        // --- 3. UI RENDERING & ZOOM STABILITY ---
         window.drawLines = () => {
             const overlays = ['safety-overlay', 'config-overlay'];
             overlays.forEach(id => {
@@ -123,12 +171,20 @@
                 const w = video.clientWidth; const h = video.clientHeight;
                 if (!svg || !w) return;
                 svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+                
                 let d = `M ${controlPoints[0].x * w} ${controlPoints[0].y * h}`;
                 for (let i = 1; i < controlPoints.length; i++) d += ` L ${controlPoints[i].x * w} ${controlPoints[i].y * h}`;
+                
                 let shade = d;
-                if (sidePref === 'left') shade += ` L ${w} ${controlPoints[controlPoints.length-1].y*h} L ${w} ${h} L 0 ${h} L 0 ${controlPoints[0].y*h} Z`;
-                else shade += ` L 0 ${controlPoints[controlPoints.length-1].y*h} L 0 ${h} L ${w} ${h} L ${w} ${controlPoints[0].y*h} Z`;
-                svg.innerHTML = `<path d="${shade}" class="unsafe-overlay-tint"/><path d="${d}" stroke="#0f0" stroke-width="5" fill="none"/>`;
+                // Math to close the polygon for the Red Unsafe Tint
+                if (sidePref === 'left') shade += ` L ${w} ${controlPoints[n-1].y*h} L ${w} ${h} L 0 ${h} L 0 ${controlPoints[0].y*h} Z`;
+                else shade += ` L 0 ${controlPoints[n-1].y*h} L 0 ${h} L ${w} ${h} L ${w} ${controlPoints[0].y*h} Z`;
+                
+                svg.innerHTML = `
+                    <path d="${shade}" class="unsafe-overlay-tint"/>
+                    <path d="${d}" stroke="#0f0" stroke-width="5" fill="none" stroke-linecap="round"/>
+                    ${id === 'config-overlay' ? controlPoints.map((p, i) => `<circle cx="${p.x * w}" cy="${p.y * h}" r="5" fill="white" stroke="#0f0" stroke-width="2"/>`).join('') : ''}
+                `;
             });
         };
 
@@ -144,60 +200,87 @@
             panel.innerHTML = '';
             controlPoints.forEach((pt, i) => {
                 const div = document.createElement('div');
-                div.className = "p-3 bg-white/5 border border-white/10 rounded mb-3";
-                div.innerHTML = `<div class="flex justify-between text-[10px] mb-2"><span class="text-green-500 font-bold">PT ${i+1}</span><span class="pos-label text-slate-500">X:${Math.round(pt.x*100)}% Y:${Math.round(pt.y*100)}%</span></div>
-                <input type="range" min="0" max="100" value="${pt.x*100}" oninput="window.updatePoint(${i}, 'x', this.value)" class="w-full h-1 accent-sky-500 mb-2">
-                <input type="range" min="0" max="100" value="${pt.y*100}" oninput="window.updatePoint(${i}, 'y', this.value)" class="w-full h-1 accent-red-500">`;
+                div.className = "p-3 bg-black/50 border border-white/10 rounded mb-3 shadow-inner";
+                div.innerHTML = `
+                    <div class="flex justify-between text-[10px] mb-2"><span class="text-green-500 font-bold">PT ${i+1}</span><span class="pos-label text-slate-500">X:${Math.round(pt.x*100)}% Y:${Math.round(pt.y*100)}%</span></div>
+                    <input type="range" min="0" max="100" value="${pt.x*100}" oninput="window.updatePoint(${i}, 'x', this.value)" class="w-full h-1 accent-sky-500 mb-2 cursor-pointer">
+                    <input type="range" min="0" max="100" value="${pt.y*100}" oninput="window.updatePoint(${i}, 'y', this.value)" class="w-full h-1 accent-red-500 cursor-pointer">
+                `;
                 panel.appendChild(div);
             });
         };
 
-        // 4. CAMERA & LISTENERS
+        // --- 4. CAMERA & DATABASE LISTENERS ---
         window.startCamera = async () => {
             try {
-                const s = await navigator.mediaDevices.getUserMedia({ video: true });
+                const s = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
                 document.getElementById('monitor-video').srcObject = s;
                 document.getElementById('config-video').srcObject = s;
             } catch (e) { document.querySelectorAll('.video-wrapper').forEach(v => v.classList.add('camera-error')); }
         };
 
         window.startListeners = () => {
-            onSnapshot(query(collection(db, "violations"), orderBy("timestamp", "desc")), (snap) => {
+            const q = query(collection(db, "violations"), orderBy("timestamp", "desc"));
+            onSnapshot(q, (snap) => {
                 const list = document.getElementById('prosecution-list');
                 const feed = document.getElementById('alerts-feed');
                 if(list) list.innerHTML = ""; if(feed) feed.innerHTML = "";
+
+                if(snap.empty && feed) feed.innerHTML = `<div class="text-center text-slate-500 mt-10 italic text-sm">System Armed. No violations.</div>`;
+
                 snap.forEach(doc => {
                     const d = doc.data();
                     const card = document.createElement('div');
-                    card.className = "bg-slate-900 border border-slate-800 rounded overflow-hidden mb-4";
-                    card.innerHTML = `<img src="${d.image_data}" class="w-full h-32 object-cover"><div class="p-3"><div class="flex justify-between text-[10px] mb-2"><span class="text-red-500 font-bold">${d.type}</span><span>${new Date(d.timestamp).toLocaleTimeString()}</span></div>
-                    <button onclick="window.deleteRecord('${doc.id}')" class="w-full bg-red-900/40 py-2 text-[10px]">DELETE</button></div>`;
+                    card.className = "bg-slate-900 border border-slate-800 rounded overflow-hidden shadow-2xl";
+                    card.innerHTML = `
+                        <img src="${d.image_data}" class="w-full h-40 object-cover border-b border-red-900/50">
+                        <div class="p-3">
+                            <div class="flex justify-between text-[10px] mb-2 font-bold"><span class="text-red-500">${d.type}</span><span class="text-slate-500">${new Date(d.timestamp).toLocaleTimeString()}</span></div>
+                            <button onclick="window.deleteRecord('${doc.id}')" class="w-full bg-red-900/20 hover:bg-red-600 text-red-400 hover:text-white py-2 text-[10px] transition rounded border border-red-900/50">DELETE RECORD</button>
+                        </div>`;
                     if(list) list.appendChild(card);
-                    if(feed) feed.appendChild(card.cloneNode(true));
+                    if(feed) {
+                        const clone = card.cloneNode(true);
+                        clone.className = "bg-slate-800 border-l-4 border-red-600 p-2 mb-3 animate-pulse";
+                        clone.querySelector('img').className = "w-full h-24 object-cover rounded";
+                        clone.querySelector('button').remove();
+                        feed.appendChild(clone);
+                    }
                 });
             });
         };
 
-        // 5. INIT
-        window.saveConfig = () => document.getElementById('safety-side-picker').classList.remove('hidden');
-        window.setSafetySide = (s) => { sidePref = s; window.drawLines(); document.getElementById('safety-side-picker').classList.add('hidden'); window.switchTab('monitor'); };
+        // --- 5. TAB SYSTEM & INITIALIZATION ---
         window.switchTab = (t) => {
-            document.querySelectorAll('main > div').forEach(d => d.classList.add('hidden'));
+            document.querySelectorAll('main > div').forEach(div => div.classList.add('hidden'));
             document.getElementById(`view-${t}`).classList.remove('hidden');
-            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
             document.getElementById(`tab-${t}`).classList.add('active');
             setTimeout(window.drawLines, 50);
         };
 
+        window.saveConfig = () => document.getElementById('safety-side-picker').classList.remove('hidden');
+        
+        window.setSafetySide = async (s) => { 
+            sidePref = s; 
+            window.drawLines(); 
+            document.getElementById('safety-side-picker').classList.add('hidden'); 
+            window.switchTab('monitor'); 
+        };
+
         document.getElementById('pointCount').oninput = (e) => { 
             n = parseInt(e.target.value); 
-            document.getElementById('pointCountLabel').innerText = n; // THIS NOW WORKS
+            document.getElementById('pointCountLabel').innerText = n;
             controlPoints = Array.from({length: n}, (_, i) => ({ x: i/(n-1), y: 0.5 })); 
             window.renderSliders(); 
             window.drawLines(); 
         };
+
+        window.checkData = () => { console.log("State:", {sidePref, controlPoints}); alert("Console check active."); };
         
         setInterval(() => { document.getElementById('clock').innerText = new Date().toLocaleTimeString(); }, 1000);
+        
+        // START SERVICES
         window.startCamera();
         window.startListeners();
         controlPoints = Array.from({length: 4}, (_, i) => ({ x: i/3, y: 0.5 }));

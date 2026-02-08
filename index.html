@@ -16,10 +16,8 @@
         video { width: 100% !important; height: 100% !important; object-fit: cover; position: absolute; top: 0; left: 0; }
         svg { position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 10; pointer-events: none; }
 
-        /* Independent Sidebar Scrolling Fix */
         #slider-panel { display: block !important; overflow-y: auto !important; max-height: calc(100vh - 220px); padding-bottom: 40px; }
         #slider-panel::-webkit-scrollbar { width: 6px; }
-        #slider-panel::-webkit-scrollbar-track { background: #0a0a0a; }
         #slider-panel::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
         #slider-panel::-webkit-scrollbar-thumb:hover { background: #00ff00; }
 
@@ -104,31 +102,32 @@
         };
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
-        function isUnsafe(personX, personY) {
-        if (controlPoints.length < 1) return false;
-        
-        // Basic Left/Right check based on your preference
-        if (sidePreference === 'left') {
-            // If Left is safe, person is unsafe if they are to the RIGHT of the line
-            return personX > controlPoints[0].x;
-        } else {
-            // If Right is safe, person is unsafe if they are to the LEFT of the line
-            return personX < controlPoints[0].x;
-        }
-    }
-        window.processDetection = (pX, pY) => {
-        console.log(`Processing detection at X: ${pX}, Y: ${pY}`);
-        if (isUnsafe(pX, pY)) {
-            console.warn("VIOLATION DETECTED!");
-            triggerFaceCapture();
-        } else {
-            console.log("Person is in SAFE zone.");
-        }
-    };
+
+        // Global State
         let controlPoints = [];
         let n = 4;
         let sidePreference = 'left'; 
 
+        // 1. Math: Unsafe Detection Logic
+        function isUnsafe(personX, personY) {
+            if (controlPoints.length < 1) return false;
+            if (sidePreference === 'left') {
+                return personX > controlPoints[0].x;
+            } else {
+                return personX < controlPoints[0].x;
+            }
+        }
+
+        // EXPOSE TO WINDOW FOR CONSOLE/AI ACCESS
+        window.processDetection = (pX, pY) => {
+            console.log(`Analyzing: X=${pX}, Y=${pY}`);
+            if (isUnsafe(pX, pY)) {
+                console.warn("VIOLATION DETECTED!");
+                triggerFaceCapture();
+            }
+        };
+
+        // 2. Points & UI Initialization
         function initPoints(count) {
             controlPoints = Array.from({length: count}, (_, i) => ({ x: i / (count - 1), y: 0.5 }));
             renderSliders();
@@ -163,6 +162,7 @@
             });
         }
 
+        // 3. SVG Line & Overlay Logic
         function drawLines() {
             const overlays = ['safety-overlay', 'config-overlay'];
             overlays.forEach(id => {
@@ -170,6 +170,7 @@
                 const video = document.getElementById('config-video');
                 const w = video.clientWidth || svg.parentElement.clientWidth;
                 const h = video.clientHeight || svg.parentElement.clientHeight;
+                if (!svg) return;
                 svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
 
                 if (controlPoints.length < 2) return;
@@ -179,78 +180,42 @@
 
                 let unsafeD = d;
                 if (sidePreference === 'left') {
-                    unsafeD += ` L ${w} ${controlPoints[controlPoints.length-1].y * h} L ${w} ${h} L ${controlPoints[0].x * w} ${h} Z`;
+                    unsafeD += ` L ${w} ${controlPoints[controlPoints.length-1].y * h} L ${w} ${h} L 0 ${h} L 0 ${controlPoints[0].y * h} Z`;
                 } else {
-                    unsafeD += ` L 0 ${controlPoints[controlPoints.length-1].y * h} L 0 ${h} L ${controlPoints[0].x * w} ${h} Z`;
+                    unsafeD += ` L 0 ${controlPoints[controlPoints.length-1].y * h} L 0 ${h} L ${w} ${h} L ${w} ${controlPoints[0].y * h} Z`;
                 }
 
                 svg.innerHTML = `
                     <path d="${unsafeD}" class="unsafe-overlay-tint" />
                     <path d="${d}" stroke="#00ff00" stroke-width="5" fill="none" stroke-linecap="round" />
-                    ${controlPoints.map(p => `<circle cx="${p.x * w}" cy="${p.y * h}" r="4" fill="white" />`).join('')}`;
+                    ${id === 'config-overlay' ? controlPoints.map(p => `<circle cx="${p.x * w}" cy="${p.y * h}" r="4" fill="white" />`).join('') : ''}`;
             });
         }
-/**
- * CAPTURE LOGIC: Snapshots the monitor feed and uploads to Master Portal
- * This function is triggered automatically when a person is detected in an unsafe zone.
- */
-async function triggerFaceCapture() {
-    // 1. Target the Master's Live Monitor Video
-    const video = document.getElementById('monitor-video');
-    if (!video || video.readyState < 2) {
-        console.error("Capture Failed: Monitor video stream not ready.");
-        return;
-    }
 
-    // 2. Create an Off-screen Canvas to render the snapshot
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;   // Use actual video resolution for 100% zoom
-    canvas.height = video.videoHeight;
-    
-    const ctx = canvas.getContext('2d');
-    
-    // 3. Draw the current frame from the video to the canvas
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
-    // 4. Convert the snapshot to a Base64 JPEG string (0.7 quality for speed)
-    const faceDataUrl = canvas.toDataURL('image/jpeg', 0.7);
-    
-    try {
-        // 5. Generate a unique ID for the violation
-        const violationId = `VIO-${Date.now()}`;
-        
-        // 6. Save data to Firebase Firestore 'violations' collection
-        // This is what the Master Portal Listener picks up in real-time
-        await setDoc(doc(db, "violations", violationId), {
-            timestamp: new Date().toISOString(),
-            image_data: faceDataUrl,
-            status: "UNAUTHORIZED_TRACK_ACCESS",
-            station: "HOWRAH_STN_01",
-            processed: false
-        });
-        
-        console.log(`Master Portal: Violation ${violationId} successfully logged.`);
-        
-        // 7. Optional: Visual confirmation for the Master on the current page
-        const feed = document.getElementById('alerts-feed');
-        if (feed) {
-            const card = document.createElement('div');
-            card.className = "bg-red-900/40 border border-red-500 p-2 mb-2 rounded animate-pulse";
-            card.innerHTML = `
-                <div class="flex justify-between text-[8px] text-red-400 mb-1 font-bold">
-                    <span>INTRUSION DETECTED</span>
-                    <span>${new Date().toLocaleTimeString()}</span>
-                </div>
-                <img src="${faceDataUrl}" class="w-full h-24 object-cover rounded">
-            `;
-            feed.prepend(card);
+        // 4. Capture & Storage Logic
+        async function triggerFaceCapture() {
+            const video = document.getElementById('monitor-video');
+            if (!video || video.readyState < 2) return;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            
+            const faceDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+            
+            try {
+                const violationId = `VIO-${Date.now()}`;
+                await setDoc(doc(db, "violations", violationId), {
+                    timestamp: new Date().toISOString(),
+                    image_data: faceDataUrl,
+                    status: "UNAUTHORIZED_TRACK_ACCESS",
+                    station: "HOWRAH_STN_01"
+                });
+            } catch (e) { console.error("Firestore Error:", e); }
         }
-        
-    } catch (e) {
-        console.error("Critical: Firestore Sync Failed", e);
-    }
-}
-        // --- MASTER PORTAL LIVE VIOLATION LISTENER ---
+
+        // 5. Firebase Live Listener
         function startViolationListener() {
             const q = query(collection(db, "violations"), orderBy("timestamp", "desc"));
             onSnapshot(q, (snapshot) => {
@@ -270,13 +235,14 @@ async function triggerFaceCapture() {
                             <span>${new Date(data.timestamp).toLocaleTimeString()}</span>
                         </div>
                         <img src="${data.image_data}" class="w-full h-32 object-cover rounded border border-red-900 mb-2">
-                        <div class="text-[10px] text-white">STATUS: TRACK INTRUSION</div>
+                        <div class="text-[10px] text-white font-bold">STATUS: TRACK INTRUSION</div>
                     `;
-                    feed.prepend(card);
+                    feed.appendChild(card);
                 });
             });
         }
 
+        // 6. Camera & Tab Utils
         async function startCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
@@ -293,7 +259,11 @@ async function triggerFaceCapture() {
             sidePreference = side;
             drawLines();
             try {
-                await setDoc(doc(db, "config", "station_settings"), { poly_points: controlPoints, safe_side: sidePreference, updated_at: new Date().toISOString() });
+                await setDoc(doc(db, "config", "station_settings"), { 
+                    poly_points: controlPoints, 
+                    safe_side: sidePreference, 
+                    updated_at: new Date().toISOString() 
+                });
                 document.getElementById('safety-side-picker').classList.add('hidden');
                 window.switchTab('monitor');
             } catch (e) { console.error("Save Error:", e); }

@@ -21,7 +21,21 @@
         svg { position: absolute; inset: 0; width: 100% !important; height: 100% !important; z-index: 10; pointer-events: none; }
 
         /* Sidebar Control Panel */
-        #slider-panel { display: block; overflow-y: auto; max-height: calc(100vh - 250px); padding-right: 10px; }
+        /* Ensure the save button never gets pushed off-screen */
+#slider-panel { 
+    display: block !important; 
+    overflow-y: auto !important; 
+    max-height: calc(100vh - 300px); 
+    padding-right: 10px; 
+    margin-bottom: 20px; 
+}
+
+/* Big View Modal Styling */
+#image-modal img {
+    max-height: 80vh;
+    object-fit: contain;
+    box-shadow: 0 0 50px rgba(220, 38, 38, 0.5);
+}
         #slider-panel::-webkit-scrollbar { width: 4px; }
         #slider-panel::-webkit-scrollbar-track { background: #0a0a0a; }
         #slider-panel::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
@@ -190,35 +204,28 @@
         let nodeCount = 4;
         let safeSide = 'left';
         let isSystemReady = false;
-
-        /**
-         * 1. COORDINATE SYSTEM & INTERPOLATION ENGINE
-         * Based on the user's station logging interest
-         */
-        window.isUnsafe = (personX, personY) => {
-            if (controlPoints.length < 2) return false;
+window.isUnsafe = (pX, pY) => {
+    if (controlPoints.length < 2) return false;
+    
+    // 1. Sort points by X to define segments
+    const pts = [...controlPoints].sort((a, b) => a.x - b.x);
+    
+    // 2. Find which line segment the person is in
+    for (let i = 0; i < pts.length - 1; i++) {
+        const p1 = pts[i];
+        const p2 = pts[i+1];
+        
+        if (pX >= p1.x && pX <= p2.x) {
+            // 3. Calculate the Y of the line at this specific X
+            const lineY = p1.y + ((p2.y - p1.y) / (p2.x - p1.x)) * (pX - p1.x);
             
-            // Linear Interpolation for Polyline Segments
-            for (let i = 0; i < controlPoints.length - 1; i++) {
-                const p1 = controlPoints[i];
-                const p2 = controlPoints[i+1];
-                
-                // Check if person X falls within this line segment
-                if (personX >= Math.min(p1.x, p2.x) && personX <= Math.max(p1.x, p2.x)) {
-                    // Standard linear interpolation formula: y = y1 + ((y2 - y1) / (x2 - x1)) * (x - x1)
-                    const lineY = p1.y + ((p2.y - p1.y) / (p2.x - p1.x)) * (personX - p1.x);
-                    
-                    // Violation logic based on safe side preference
-                    if (safeSide === 'left') {
-                        return personX > p1.x; // Simplified for vertical-ish lines
-                    } else {
-                        return personX < p1.x;
-                    }
-                }
-            }
-            return false;
-        };
-
+            // 4. Return true if person is on the unsafe side
+            // If sidePref is 'left' (Platform on Left), Unsafe is Right (Higher X)
+            return sidePref === 'left' ? pX > p1.x : pX < p1.x;
+        }
+    }
+    return false;
+};
         /**
          * 2. DETECTION HOOK (FOR AI INTEGRATION)
          */
@@ -498,7 +505,32 @@
         
         // Final Draw Sync
         setTimeout(window.drawLines, 1000);
-        
+        window.openPreview = (data) => {
+    const modal = document.getElementById('image-modal');
+    document.getElementById('modal-img').src = data.image_data;
+    document.getElementById('modal-meta').innerText = `BREACH DETECTED: ${data.timestamp}`;
+    modal.classList.remove('hidden');
+};
+        snap.forEach(docSnap => {
+    const d = docSnap.data();
+    const card = document.createElement('div');
+    card.className = "bg-slate-900 border border-slate-800 rounded overflow-hidden shadow-xl";
+    // Added onclick to the image for Big View
+    card.innerHTML = `
+        <img src="${d.image_data}" class="w-full h-32 object-cover cursor-pointer" 
+             onclick='window.openPreview(${JSON.stringify(d)})'>
+        <div class="p-3">
+            <div class="text-[9px] mb-2 font-bold text-red-500">${d.type}</div>
+            <button onclick="window.deleteRecord('${docSnap.id}')" class="w-full bg-red-900/40 py-2 text-[9px]">DELETE</button>
+        </div>`;
+    list.appendChild(card);
+    feed.appendChild(card.cloneNode(true));
+});
     </script>
+    <div id="image-modal" class="hidden fixed inset-0 bg-black/95 z-[5000] flex flex-col items-center justify-center">
+    <button onclick="document.getElementById('image-modal').classList.add('hidden')" class="absolute top-5 right-5 text-white text-5xl">&times;</button>
+    <img id="modal-img" src="" class="border-2 border-red-600">
+    <div id="modal-meta" class="mt-4 text-red-500 font-mono"></div>
+</div>
 </body>
 </html>

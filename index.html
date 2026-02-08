@@ -102,24 +102,16 @@ video {
 #slider-panel {
     display: block !important;
     overflow-y: auto !important;
-    max-height: calc(100vh - 200px); /* Adjusts height to stay within screen */
-    padding-bottom: 50px; /* Extra space at the bottom for the last slider */
+    max-height: calc(100vh - 180px); 
+    padding-right: 10px;
+    scrollbar-width: thin;
+    scrollbar-color: #00ff00 #0a0a0a;
 }
 
-/* Custom Scrollbar for Industrial Look */
-#slider-panel::-webkit-scrollbar {
-    width: 6px;
-}
-#slider-panel::-webkit-scrollbar-track {
-    background: #0a0a0a;
-}
-#slider-panel::-webkit-scrollbar-thumb {
-    background: #333;
-    border-radius: 3px;
-}
-#slider-panel::-webkit-scrollbar-thumb:hover {
-    background: #00ff00;
-}
+#slider-panel::-webkit-scrollbar { width: 6px; }
+#slider-panel::-webkit-scrollbar-track { background: #0a0a0a; }
+#slider-panel::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
+#slider-panel::-webkit-scrollbar-thumb:hover { background: #00ff00; }
         .status-ok { border-color: #064e3b; color: #34d399; background: #022c22; }
        /* Glowing Trip-line Style */
 .trip-line-glow {
@@ -328,24 +320,26 @@ function renderSliders() {
             `;
         });
     }
+// --- STATE: Independent Data ---
 window.updatePoint = (index, axis, val) => {
-    // 1. Record the current scroll position so it doesn't jump
+    // 1. Capture current scroll so the list doesn't jump
     const panel = document.getElementById('slider-panel');
-    const scrollPos = panel.scrollTop;
+    const currentScroll = panel.scrollTop;
 
-    // 2. Update the specific point
+    // 2. Update ONLY the specific slider data
     controlPoints[index][axis] = val / 100;
     
-    // 3. Keep the line flowing left-to-right (Anti-Zigzag)
-    controlPoints.sort((a, b) => a.x - b.x);
-    
-    // 4. Update the visual line
+    // 3. Redraw the line (No sorting - points stay in their original order)
     drawLines();
 
-    // 5. Refresh the text labels without breaking the scroll
-    renderSliders();
-    panel.scrollTop = scrollPos; 
+    // 4. Update the visual labels (POS % text)
+    const labels = panel.querySelectorAll('.pos-label');
+    if (labels[index]) {
+        const pt = controlPoints[index];
+        labels[index].innerText = `X:${Math.round(pt.x*100)}% Y:${Math.round(pt.y*100)}%`;
+    }
 };
+
     window.saveConfig = () => {
         if (controlPoints.length < 2) return alert("Define the line first.");
         document.getElementById('safety-side-picker').classList.remove('hidden');

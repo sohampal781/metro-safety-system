@@ -99,15 +99,29 @@ video {
             background: #111; color: #888;
         }
        /* Ensure the sidebar container allows scrolling */
+/* Sidebar scrolling fix */
 #slider-panel {
     display: block !important;
     overflow-y: auto !important;
-    max-height: calc(100vh - 180px); 
-    padding-right: 10px;
-    scrollbar-width: thin;
-    scrollbar-color: #00ff00 #0a0a0a;
+    max-height: calc(100vh - 200px); 
+    padding-bottom: 40px;
 }
 
+/* Unsafe Zone Preview Tint */
+.unsafe-overlay-tint {
+    fill: rgba(220, 38, 38, 0.3); /* Transparent Red */
+    pointer-events: none;
+}
+
+/* Camera Fallback Style */
+.camera-error {
+    background: repeating-linear-gradient(45deg, #000, #000 10px, #050505 10px, #050505 20px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #333;
+    font-size: 10px;
+}
 #slider-panel::-webkit-scrollbar { width: 6px; }
 #slider-panel::-webkit-scrollbar-track { background: #0a0a0a; }
 #slider-panel::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
@@ -205,21 +219,23 @@ video {
             </div>
         </div>
         <div id="safety-side-picker" class="hidden absolute inset-0 bg-black/80 flex items-center justify-center z-[2000]">
-    <div class="bg-slate-900 border border-slate-700 p-6 rounded-xl shadow-2xl text-center max-w-sm">
-        <i class="fa-solid fa-shield-halved text-4xl text-sky-500 mb-4"></i>
-        <h3 class="text-xl font-bold text-white mb-2">Define Safe Zone</h3>
-        <p class="text-slate-400 text-sm mb-6">Which side of the green line is the SAFE PLATFORM?</p>
+    <div class="bg-slate-900 border border-slate-700 p-6 rounded-xl shadow-2xl text-center w-[400px]">
+        <div class="text-sky-500 mb-2 font-bold tracking-widest text-xs">SYSTEM CALIBRATION</div>
+        <h3 class="text-xl font-bold text-white mb-6">WHICH SIDE IS SAFE?</h3>
         
         <div class="grid grid-cols-2 gap-4">
-            <button onclick="setSafetySide('above')" class="bg-slate-800 hover:bg-sky-900 border border-slate-600 p-4 rounded-lg transition group">
-                <div class="text-white font-bold group-hover:text-sky-400">ABOVE / LEFT</div>
-                <div class="text-[10px] text-slate-500">Platform is here</div>
+            <button onclick="setSafetySide('left')" class="bg-slate-800 hover:bg-green-900 border border-slate-600 p-4 rounded-lg transition">
+                <i class="fa-solid fa-arrow-left text-green-500 mb-2"></i>
+                <div class="text-white font-bold">LEFT SIDE</div>
+                <div class="text-[9px] text-slate-500">SAFE PLATFORM</div>
             </button>
-            <button onclick="setSafetySide('below')" class="bg-slate-800 hover:bg-red-900 border border-slate-600 p-4 rounded-lg transition group">
-                <div class="text-white font-bold group-hover:text-red-400">BELOW / RIGHT</div>
-                <div class="text-[10px] text-slate-500">Track is here</div>
+            <button onclick="setSafetySide('right')" class="bg-slate-800 hover:bg-green-900 border border-slate-600 p-4 rounded-lg transition">
+                <i class="fa-solid fa-arrow-right text-green-500 mb-2"></i>
+                <div class="text-white font-bold">RIGHT SIDE</div>
+                <div class="text-[9px] text-slate-500">SAFE PLATFORM</div>
             </button>
         </div>
+        <button onclick="document.getElementById('safety-side-picker').classList.add('hidden')" class="mt-6 text-slate-500 hover:text-white text-[10px] underline">CANCEL</button>
     </div>
 </div>
     </div>
@@ -283,63 +299,95 @@ function renderSliders() {
         panel.appendChild(group);
     });
 }
-    // --- CORE DRAWING LOGIC (Fixed for 100% Zoom & Anti-Zigzag) ---
-    function drawLines() {
-        const overlays = ['safety-overlay', 'config-overlay'];
-        
-        overlays.forEach(id => {
-            const svg = document.getElementById(id);
-            if (!svg) return;
+   let safeSide = 'left';
 
-            // Anchor drawing to the video's actual client dimensions
-            const video = document.getElementById('config-video');
-            const w = video.clientWidth || svg.parentElement.clientWidth;
-            const h = video.clientHeight || svg.parentElement.clientHeight;
-
-            svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
-
-            if (controlPoints.length < 2) return;
-
-            // Generate SVG Path
-            let d = `M ${controlPoints[0].x * w} ${controlPoints[0].y * h}`;
-            for (let i = 1; i < controlPoints.length; i++) {
-                d += ` L ${controlPoints[i].x * w} ${controlPoints[i].y * h}`;
-            }
-
-            svg.innerHTML = `
-                <path d="${d}" 
-                      stroke="#00ff00" 
-                      stroke-width="5" 
-                      fill="none" 
-                      stroke-linecap="round" 
-                      stroke-linejoin="round" 
-                      style="filter: drop-shadow(0 0 10px rgba(0,255,0,0.9))" />
-                ${controlPoints.map(p => `
-                    <circle cx="${p.x * w}" cy="${p.y * h}" r="5" fill="white" stroke="#00ff00" stroke-width="2" />
-                `).join('')}
-            `;
-        });
-    }
-// --- STATE: Independent Data ---
+// 1. Independent Slider Update (No sorting, individual labels)
 window.updatePoint = (index, axis, val) => {
-    // 1. Capture current scroll so the list doesn't jump
-    const panel = document.getElementById('slider-panel');
-    const currentScroll = panel.scrollTop;
-
-    // 2. Update ONLY the specific slider data
     controlPoints[index][axis] = val / 100;
     
-    // 3. Redraw the line (No sorting - points stay in their original order)
-    drawLines();
-
-    // 4. Update the visual labels (POS % text)
-    const labels = panel.querySelectorAll('.pos-label');
-    if (labels[index]) {
-        const pt = controlPoints[index];
-        labels[index].innerText = `X:${Math.round(pt.x*100)}% Y:${Math.round(pt.y*100)}%`;
+    // Update the specific label text for this point immediately
+    const panel = document.getElementById('slider-panel');
+    const label = panel.querySelectorAll('.pos-label')[index];
+    if(label) {
+        label.innerText = `X:${Math.round(controlPoints[index].x*100)}% Y:${Math.round(controlPoints[index].y*100)}%`;
     }
+    
+    drawLines();
 };
 
+// 2. Enhanced Drawing with Unsafe Preview
+function drawLines() {
+    const overlays = ['safety-overlay', 'config-overlay'];
+    overlays.forEach(id => {
+        const svg = document.getElementById(id);
+        const video = document.getElementById('config-video');
+        const w = video.clientWidth || svg.parentElement.clientWidth;
+        const h = video.clientHeight || svg.parentElement.clientHeight;
+        svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+
+        if (controlPoints.length < 2) return;
+
+        // Path for the line
+        let d = `M ${controlPoints[0].x * w} ${controlPoints[0].y * h}`;
+        for (let i = 1; i < controlPoints.length; i++) {
+            d += ` L ${controlPoints[i].x * w} ${controlPoints[i].y * h}`;
+        }
+
+        // Preview Shape: This fills the 'Unsafe' side with a red tint
+        let unsafeD = d;
+        if (safeSide === 'left') {
+            // If Left is safe, Right is unsafe. Close shape to the right.
+            unsafeD += ` L ${w} ${controlPoints[controlPoints.length-1].y * h} L ${w} 0 L ${w} ${h} L ${controlPoints[0].x * w} ${h} Z`;
+        } else {
+            // If Right is safe, Left is unsafe. Close shape to the left.
+            unsafeD += ` L 0 ${controlPoints[controlPoints.length-1].y * h} L 0 0 L 0 ${h} L ${controlPoints[0].x * w} ${h} Z`;
+        }
+
+        svg.innerHTML = `
+            <path d="${unsafeD}" class="unsafe-overlay-tint" />
+            <path d="${d}" stroke="#00ff00" stroke-width="5" fill="none" stroke-linecap="round" />
+            ${controlPoints.map(p => `<circle cx="${p.x * w}" cy="${p.y * h}" r="4" fill="white" />`).join('')}
+        `;
+    });
+}
+    async function startCamera() {
+    const videos = [document.getElementById('monitor-video'), document.getElementById('config-video')];
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { width: 1280, height: 720 } 
+        });
+        videos.forEach(v => {
+            v.srcObject = stream;
+            v.onloadedmetadata = () => { drawLines(); };
+        });
+        console.log("Camera Stream active.");
+    } catch (err) {
+        console.error("Camera Error:", err);
+        videos.forEach(v => v.parentElement.classList.add('camera-error'));
+        alert("CRITICAL: No camera detected. System running in Virtual Simulation mode.");
+    }
+}
+
+// Initialize
+window.setSafetySide = (side) => {
+    safeSide = side;
+    drawLines(); // Update preview
+    saveToFirebase();
+};
+
+async function saveToFirebase() {
+    try {
+        await setDoc(doc(db, "config", "station_settings"), {
+            poly_points: controlPoints,
+            safe_side: safeSide,
+            timestamp: new Date().toISOString()
+        });
+        document.getElementById('safety-side-picker').classList.add('hidden');
+        window.switchTab('monitor');
+    } catch (e) { alert("Save Failed: " + e.message); }
+}
+
+startCamera();
     window.saveConfig = () => {
         if (controlPoints.length < 2) return alert("Define the line first.");
         document.getElementById('safety-side-picker').classList.remove('hidden');

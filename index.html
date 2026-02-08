@@ -98,6 +98,28 @@ video {
             font-size: 0.7rem; letter-spacing: 0.1em;
             background: #111; color: #888;
         }
+       /* Ensure the sidebar container allows scrolling */
+#slider-panel {
+    display: block !important;
+    overflow-y: auto !important;
+    max-height: calc(100vh - 200px); /* Adjusts height to stay within screen */
+    padding-bottom: 50px; /* Extra space at the bottom for the last slider */
+}
+
+/* Custom Scrollbar for Industrial Look */
+#slider-panel::-webkit-scrollbar {
+    width: 6px;
+}
+#slider-panel::-webkit-scrollbar-track {
+    background: #0a0a0a;
+}
+#slider-panel::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 3px;
+}
+#slider-panel::-webkit-scrollbar-thumb:hover {
+    background: #00ff00;
+}
         .status-ok { border-color: #064e3b; color: #34d399; background: #022c22; }
        /* Glowing Trip-line Style */
 .trip-line-glow {
@@ -240,41 +262,35 @@ video {
         renderSliders();
         drawLines();
     }
-
-    // --- RENDER DYNAMIC SLIDERS ---
-    function renderSliders() {
-        const panel = document.getElementById('slider-panel');
-        // We do not clear innerHTML here to prevent slider "flicker" while moving
-        // Instead, we update the labels and values if they exist, or build new ones
-        panel.innerHTML = '';
-        
-        controlPoints.forEach((pt, i) => {
-            const group = document.createElement('div');
-            group.className = "p-3 bg-black/40 border border-slate-700 rounded-lg mb-2";
-            group.innerHTML = `
-                <div class="flex justify-between items-center mb-2">
-                    <span class="text-green-500 font-bold text-[10px]">POINT ${i + 1}</span>
-                    <span class="text-[9px] text-slate-500 font-mono">X: ${Math.round(pt.x*100)}% | Y: ${Math.round(pt.y*100)}%</span>
+function renderSliders() {
+    const panel = document.getElementById('slider-panel');
+    panel.innerHTML = '';
+    
+    controlPoints.forEach((pt, i) => {
+        const group = document.createElement('div');
+        group.className = "p-3 bg-black/40 border border-slate-700 rounded-lg mb-4"; // Increased margin
+        group.innerHTML = `
+            <div class="flex justify-between items-center mb-2">
+                <span class="text-green-500 font-bold text-[10px]">POINT ${i + 1}</span>
+                <span class="text-[9px] text-slate-500 font-mono">X:${Math.round(pt.x*100)}% Y:${Math.round(pt.y*100)}%</span>
+            </div>
+            <div class="grid grid-cols-1 gap-3"> <div>
+                    <label class="text-[8px] text-slate-500 block uppercase">Horizontal Position</label>
+                    <input type="range" min="0" max="100" value="${pt.x * 100}" 
+                        oninput="window.updatePoint(${i}, 'x', this.value)" 
+                        class="w-full h-1 bg-slate-700 appearance-none accent-sky-500 cursor-pointer">
                 </div>
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="text-[9px] text-slate-400 block">HORIZONTAL (X)</label>
-                        <input type="range" min="0" max="100" value="${pt.x * 100}" 
-                            oninput="window.updatePoint(${i}, 'x', this.value)" 
-                            class="w-full h-1 bg-slate-700 appearance-none accent-sky-500">
-                    </div>
-                    <div>
-                        <label class="text-[9px] text-slate-400 block">VERTICAL (Y)</label>
-                        <input type="range" min="0" max="100" value="${pt.y * 100}" 
-                            oninput="window.updatePoint(${i}, 'y', this.value)" 
-                            class="w-full h-1 bg-slate-700 appearance-none accent-red-500">
-                    </div>
+                <div>
+                    <label class="text-[8px] text-slate-500 block uppercase">Vertical Height (Safety Edge)</label>
+                    <input type="range" min="0" max="100" value="${pt.y * 100}" 
+                        oninput="window.updatePoint(${i}, 'y', this.value)" 
+                        class="w-full h-1 bg-slate-700 appearance-none accent-red-500 cursor-pointer">
                 </div>
-            `;
-            panel.appendChild(group);
-        });
-    }
-
+            </div>
+        `;
+        panel.appendChild(group);
+    });
+}
     // --- CORE DRAWING LOGIC (Fixed for 100% Zoom & Anti-Zigzag) ---
     function drawLines() {
         const overlays = ['safety-overlay', 'config-overlay'];
@@ -312,19 +328,24 @@ video {
             `;
         });
     }
+window.updatePoint = (index, axis, val) => {
+    // 1. Record the current scroll position so it doesn't jump
+    const panel = document.getElementById('slider-panel');
+    const scrollPos = panel.scrollTop;
 
-    // --- EXPOSED WINDOW FUNCTIONS ---
-    window.updatePoint = (index, axis, val) => {
-        controlPoints[index][axis] = val / 100;
-        
-        // ANTI-ZIGZAG: Sort points by X so the line always flows left-to-right
-        controlPoints.sort((a, b) => a.x - b.x);
-        
-        // Refresh UI
-        drawLines();
-        renderSliders(); 
-    };
+    // 2. Update the specific point
+    controlPoints[index][axis] = val / 100;
+    
+    // 3. Keep the line flowing left-to-right (Anti-Zigzag)
+    controlPoints.sort((a, b) => a.x - b.x);
+    
+    // 4. Update the visual line
+    drawLines();
 
+    // 5. Refresh the text labels without breaking the scroll
+    renderSliders();
+    panel.scrollTop = scrollPos; 
+};
     window.saveConfig = () => {
         if (controlPoints.length < 2) return alert("Define the line first.");
         document.getElementById('safety-side-picker').classList.remove('hidden');

@@ -35,6 +35,7 @@
             <nav class="flex">
                 <button onclick="switchTab('monitor')" id="tab-monitor" class="nav-btn active">LIVE MONITOR</button>
                 <button onclick="switchTab('config')" id="tab-config" class="nav-btn">ZONE CONFIG</button>
+                <button onclick="switchTab('prosecute')" id="tab-prosecute" class="nav-btn">PROSECUTION LOG</button>
             </nav>
         </div>
         <div class="text-xs text-slate-500 font-mono text-right">
@@ -56,7 +57,24 @@
                 </div>
             </div>
         </div>
+<div id="view-monitor" class="absolute inset-0 grid grid-cols-[1fr_400px]">
+    <div class="video-wrapper">
+        <video id="monitor-video" autoplay playsinline muted></video>
+        <svg id="safety-overlay"></svg>
+        <button onclick="triggerFaceCapture('MANUAL_SNAP')" class="absolute bottom-10 right-10 bg-red-600 hover:bg-red-700 text-white p-4 rounded-full shadow-2xl z-50">
+            <i class="fa-solid fa-camera text-2xl"></i>
+        </button>
+    </div>
+    </div>
 
+<div id="view-prosecute" class="absolute inset-0 hidden bg-slate-900 p-6 overflow-y-auto">
+    <div class="flex justify-between items-center border-b border-slate-700 pb-4 mb-6">
+        <h2 class="text-xl font-bold text-white">E-PROSECUTION DATABASE</h2>
+        <span class="text-xs text-slate-500">STATION: HOWRAH_MAIN</span>
+    </div>
+    <div id="prosecution-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        </div>
+</div>
         <div id="view-config" class="absolute inset-0 hidden grid grid-cols-[1fr_350px] bg-slate-900">
             <div class="video-wrapper relative">
                 <video id="config-video" autoplay playsinline muted class="opacity-50"></video>
@@ -90,207 +108,133 @@
             </div>
         </div>
     </main>
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+    import { 
+        getFirestore, doc, setDoc, collection, query, 
+        orderBy, onSnapshot, deleteDoc 
+    } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getFirestore, doc, setDoc, collection, query, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+    // 1. DATABASE CONFIGURATION
+    const firebaseConfig = { 
+        apiKey: "AIzaSyBoWtfLODLrDhRKkMew0sLceDgHBNAQAPM", 
+        projectId: "metro-safety-system", 
+        databaseURL: "https://metro-safety-system-default-rtdb.firebaseio.com" 
+    };
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
 
-        const firebaseConfig = { 
-            apiKey: "AIzaSyBoWtfLODLrDhRKkMew0sLceDgHBNAQAPM", 
-            projectId: "metro-safety-system", 
-            databaseURL: "https://metro-safety-system-default-rtdb.firebaseio.com" 
-        };
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
+    // 2. GLOBAL STATE
+    let controlPoints = [];
+    let n = 4;
+    let sidePreference = 'left'; 
 
-        // Global State
-        let controlPoints = [];
-        let n = 4;
-        let sidePreference = 'left'; 
+    // 3. DETECTION ENGINE (Accessed by AI/Console)
+    function isUnsafe(personX, personY) {
+        if (controlPoints.length < 1) return false;
+        // Logic: Compare person X with the boundary line X
+        return sidePreference === 'left' ? personX > controlPoints[0].x : personX < controlPoints[0].x;
+    }
 
-        // 1. Math: Unsafe Detection Logic
-        function isUnsafe(personX, personY) {
-            if (controlPoints.length < 1) return false;
-            if (sidePreference === 'left') {
-                return personX > controlPoints[0].x;
-            } else {
-                return personX < controlPoints[0].x;
-            }
+    window.processDetection = (pX, pY) => {
+        if (isUnsafe(pX, pY)) {
+            console.warn("AUTO-VIOLATION DETECTED");
+            triggerFaceCapture('AUTO_DETECTION');
         }
+    };
 
-        // EXPOSE TO WINDOW FOR CONSOLE/AI ACCESS
-        window.processDetection = (pX, pY) => {
-            console.log(`Analyzing: X=${pX}, Y=${pY}`);
-            if (isUnsafe(pX, pY)) {
-                console.warn("VIOLATION DETECTED!");
-                triggerFaceCapture();
-            }
-        };
+    // 4. IMAGE CAPTURE ENGINE (Manual & Auto)
+    window.triggerFaceCapture = async (type = 'MANUAL_SNAP') => {
+        const video = document.getElementById('monitor-video');
+        if (!video || video.readyState < 2) return;
 
-        // 2. Points & UI Initialization
-        function initPoints(count) {
-            controlPoints = Array.from({length: count}, (_, i) => ({ x: i / (count - 1), y: 0.5 }));
-            renderSliders();
-            drawLines();
-        }
-
-        window.updatePoint = (index, axis, val) => {
-            controlPoints[index][axis] = val / 100;
-            const labels = document.querySelectorAll('.pos-label');
-            if(labels[index]) {
-                labels[index].innerText = `X:${Math.round(controlPoints[index].x*100)}% Y:${Math.round(controlPoints[index].y*100)}%`;
-            }
-            drawLines();
-        };
-
-        function renderSliders() {
-            const panel = document.getElementById('slider-panel');
-            panel.innerHTML = '';
-            controlPoints.forEach((pt, i) => {
-                const group = document.createElement('div');
-                group.className = "p-3 bg-black/40 border border-slate-700 rounded-lg mb-4";
-                group.innerHTML = `
-                    <div class="flex justify-between items-center mb-2">
-                        <span class="text-green-500 font-bold text-[10px]">POINT ${i + 1}</span>
-                        <span class="pos-label text-[9px] text-slate-500 font-mono">X:${Math.round(pt.x*100)}% Y:${Math.round(pt.y*100)}%</span>
-                    </div>
-                    <div class="space-y-3">
-                        <input type="range" min="0" max="100" value="${pt.x * 100}" oninput="window.updatePoint(${i}, 'x', this.value)" class="w-full h-1 bg-slate-700 appearance-none accent-sky-500">
-                        <input type="range" min="0" max="100" value="${pt.y * 100}" oninput="window.updatePoint(${i}, 'y', this.value)" class="w-full h-1 bg-slate-700 appearance-none accent-red-500">
-                    </div>`;
-                panel.appendChild(group);
-            });
-        }
-
-        // 3. SVG Line & Overlay Logic
-        function drawLines() {
-            const overlays = ['safety-overlay', 'config-overlay'];
-            overlays.forEach(id => {
-                const svg = document.getElementById(id);
-                const video = document.getElementById('config-video');
-                const w = video.clientWidth || svg.parentElement.clientWidth;
-                const h = video.clientHeight || svg.parentElement.clientHeight;
-                if (!svg) return;
-                svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
-
-                if (controlPoints.length < 2) return;
-
-                let d = `M ${controlPoints[0].x * w} ${controlPoints[0].y * h}`;
-                for (let i = 1; i < controlPoints.length; i++) d += ` L ${controlPoints[i].x * w} ${controlPoints[i].y * h}`;
-
-                let unsafeD = d;
-                if (sidePreference === 'left') {
-                    unsafeD += ` L ${w} ${controlPoints[controlPoints.length-1].y * h} L ${w} ${h} L 0 ${h} L 0 ${controlPoints[0].y * h} Z`;
-                } else {
-                    unsafeD += ` L 0 ${controlPoints[controlPoints.length-1].y * h} L 0 ${h} L ${w} ${h} L ${w} ${controlPoints[0].y * h} Z`;
-                }
-
-                svg.innerHTML = `
-                    <path d="${unsafeD}" class="unsafe-overlay-tint" />
-                    <path d="${d}" stroke="#00ff00" stroke-width="5" fill="none" stroke-linecap="round" />
-                    ${id === 'config-overlay' ? controlPoints.map(p => `<circle cx="${p.x * w}" cy="${p.y * h}" r="4" fill="white" />`).join('') : ''}`;
-            });
-        }
-
-        // 4. Capture & Storage Logic
-        async function triggerFaceCapture() {
-            const video = document.getElementById('monitor-video');
-            if (!video || video.readyState < 2) return;
-
-            const canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            canvas.getContext('2d').drawImage(video, 0, 0);
-            
-            const faceDataUrl = canvas.toDataURL('image/jpeg', 0.7);
-            
-            try {
-                const violationId = `VIO-${Date.now()}`;
-                await setDoc(doc(db, "violations", violationId), {
-                    timestamp: new Date().toISOString(),
-                    image_data: faceDataUrl,
-                    status: "UNAUTHORIZED_TRACK_ACCESS",
-                    station: "HOWRAH_STN_01"
-                });
-            } catch (e) { console.error("Firestore Error:", e); }
-        }
-
-        // 5. Firebase Live Listener
-        function startViolationListener() {
-            const q = query(collection(db, "violations"), orderBy("timestamp", "desc"));
-            onSnapshot(q, (snapshot) => {
-                const feed = document.getElementById('alerts-feed');
-                feed.innerHTML = "";
-                if (snapshot.empty) {
-                    feed.innerHTML = `<div class="text-center text-slate-500 mt-10 italic text-sm">System Armed. No violations.</div>`;
-                    return;
-                }
-                snapshot.forEach(snap => {
-                    const data = snap.data();
-                    const card = document.createElement('div');
-                    card.className = "bg-red-900/30 border border-red-600/50 p-3 mb-3 rounded-lg animate-pulse";
-                    card.innerHTML = `
-                        <div class="flex justify-between text-[8px] text-red-400 font-bold mb-2">
-                            <span>ID: ${snap.id.substring(0,8)}</span>
-                            <span>${new Date(data.timestamp).toLocaleTimeString()}</span>
-                        </div>
-                        <img src="${data.image_data}" class="w-full h-32 object-cover rounded border border-red-900 mb-2">
-                        <div class="text-[10px] text-white font-bold">STATUS: TRACK INTRUSION</div>
-                    `;
-                    feed.appendChild(card);
-                });
-            });
-        }
-
-        // 6. Camera & Tab Utils
-        async function startCamera() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
-                document.getElementById('monitor-video').srcObject = stream;
-                document.getElementById('config-video').srcObject = stream;
-            } catch (err) {
-                document.querySelectorAll('.video-wrapper').forEach(v => v.classList.add('camera-error'));
-            }
-        }
-
-        window.saveConfig = () => document.getElementById('safety-side-picker').classList.remove('hidden');
-
-        window.setSafetySide = async (side) => {
-            sidePreference = side;
-            drawLines();
-            try {
-                await setDoc(doc(db, "config", "station_settings"), { 
-                    poly_points: controlPoints, 
-                    safe_side: sidePreference, 
-                    updated_at: new Date().toISOString() 
-                });
-                document.getElementById('safety-side-picker').classList.add('hidden');
-                window.switchTab('monitor');
-            } catch (e) { console.error("Save Error:", e); }
-        };
-
-        window.switchTab = (tab) => {
-            document.getElementById('view-monitor').classList.toggle('hidden', tab !== 'monitor');
-            document.getElementById('view-config').classList.toggle('hidden', tab !== 'config');
-            document.getElementById('tab-monitor').classList.toggle('active', tab === 'monitor');
-            document.getElementById('tab-config').classList.toggle('active', tab === 'config');
-            setTimeout(drawLines, 50);
-        };
-
-        document.getElementById('pointCount').oninput = (e) => {
-            n = parseInt(e.target.value);
-            document.getElementById('pointCountLabel').innerText = n;
-            initPoints(n);
-        };
-
-        window.addEventListener('resize', drawLines);
-        setInterval(() => { document.getElementById('clock').innerText = new Date().toLocaleTimeString(); }, 1000);
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext('2d').drawImage(video, 0, 0);
         
-        startCamera();
-        initPoints(4);
-        startViolationListener();
-        const resizeObserver = new ResizeObserver(() => drawLines());
-        document.querySelectorAll('.video-wrapper').forEach(div => resizeObserver.observe(div));
-    </script>
+        const faceDataUrl = canvas.toDataURL('image/jpeg', 0.6);
+        const recordId = `VIO-${Date.now()}`;
+
+        try {
+            await setDoc(doc(db, "violations", recordId), {
+                timestamp: new Date().toISOString(),
+                image_data: faceDataUrl,
+                type: type,
+                station: "HOWRAH_MASTER_01"
+            });
+        } catch (e) { console.error("Database Sync Error:", e); }
+    };
+
+    // 5. PROSECUTION LOG & DELETE LOGIC
+    function startProsecutionListener() {
+        const q = query(collection(db, "violations"), orderBy("timestamp", "desc"));
+        onSnapshot(q, (snapshot) => {
+            // Update Mini-Feed on Monitor
+            const feed = document.getElementById('alerts-feed');
+            // Update Main Prosecution Tab
+            const list = document.getElementById('prosecution-list');
+            
+            if (feed) feed.innerHTML = "";
+            if (list) list.innerHTML = "";
+
+            snapshot.forEach(snap => {
+                const d = snap.data();
+                const card = createViolationCard(snap.id, d);
+                if (list) list.appendChild(card);
+                
+                // Also add a simplified version to the live feed
+                if (feed) {
+                    const miniCard = document.createElement('div');
+                    miniCard.className = "bg-red-900/30 border-l-4 border-red-500 p-2 mb-2 animate-pulse";
+                    miniCard.innerHTML = `<img src="${d.image_data}" class="w-full h-20 object-cover rounded">`;
+                    feed.appendChild(miniCard);
+                }
+            });
+        });
+    }
+
+    function createViolationCard(id, data) {
+        const div = document.createElement('div');
+        div.className = "bg-slate-800 border border-slate-700 rounded overflow-hidden shadow-xl";
+        div.innerHTML = `
+            <img src="${data.image_data}" class="w-full h-40 object-cover">
+            <div class="p-3">
+                <div class="flex justify-between text-[10px] text-slate-400 mb-2">
+                    <span class="font-bold text-red-500">${data.type}</span>
+                    <span>${new Date(data.timestamp).toLocaleTimeString()}</span>
+                </div>
+                <button onclick="deleteRecord('${id}')" class="w-full bg-red-900/20 hover:bg-red-600 text-red-400 hover:text-white py-2 text-[10px] transition">
+                    DELETE FROM RECORDS
+                </button>
+            </div>
+        `;
+        return div;
+    }
+
+    window.deleteRecord = async (id) => {
+        if (confirm("Permanently delete this prosecution record?")) {
+            try {
+                await deleteDoc(doc(db, "violations", id));
+            } catch (e) { alert("Delete failed: " + e.message); }
+        }
+    };
+
+    // 6. UI & SYSTEM UTILS
+    window.switchTab = (tab) => {
+        document.querySelectorAll('main > div').forEach(div => div.classList.add('hidden'));
+        document.getElementById(`view-${tab}`).classList.remove('hidden');
+        document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+        document.getElementById(`tab-${tab}`).classList.add('active');
+        if (tab === 'config' || tab === 'monitor') setTimeout(drawLines, 50);
+    };
+
+    // ... [Include initPoints, updatePoint, renderSliders, drawLines, startCamera from previous steps] ...
+    
+    // START SERVICES
+    startCamera();
+    initPoints(4);
+    startProsecutionListener();
+</script>
 </body>
 </html>

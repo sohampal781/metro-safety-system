@@ -179,7 +179,6 @@
         </div>
     </div>
 </main>
-
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
     import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
@@ -197,11 +196,15 @@
     let controlPoints = [];
     let n = 4;
 
-    // --- INITIALIZE POINTS ---
+    // --- INITIALIZE POINTS (HORIZONTAL ALIGNMENT) ---
     function initPoints(count) {
         controlPoints = [];
         for (let i = 0; i < count; i++) {
-            controlPoints.push({ x: (i / (count - 1)), y: 0.5 });
+            // X spreads out horizontally, Y stays centered
+            controlPoints.push({ 
+                x: (i / (count - 1)), 
+                y: 0.5 
+            });
         }
         renderSliders();
         drawLines();
@@ -214,23 +217,25 @@
         
         controlPoints.forEach((pt, i) => {
             const group = document.createElement('div');
-            group.className = "p-3 bg-black/30 border border-slate-700 rounded-lg space-y-2";
+            group.className = "p-3 bg-black/40 border border-slate-700 rounded-lg mb-2";
             group.innerHTML = `
-                <div class="flex justify-between items-center mb-1">
-                    <span class="text-sky-500 font-bold text-[10px]">NODE ${i + 1}</span>
-                    <span class="text-[9px] text-slate-500 font-mono">${Math.round(pt.x*100)},${Math.round(pt.y*100)}</span>
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-green-500 font-bold text-[10px]">POINT ${i + 1}</span>
+                    <span class="text-[9px] text-slate-500 font-mono">POS: ${Math.round(pt.x*100)}% | ${Math.round(pt.y*100)}%</span>
                 </div>
-                <div class="space-y-1">
-                    <label class="text-[9px] text-slate-400 flex justify-between">X-AXIS <span>${Math.round(pt.x*100)}%</span></label>
-                    <input type="range" min="0" max="100" value="${pt.x * 100}" 
-                        oninput="window.updatePoint(${i}, 'x', this.value)" 
-                        class="w-full h-1 bg-slate-700 appearance-none accent-green-500">
-                </div>
-                <div class="space-y-1">
-                    <label class="text-[9px] text-slate-400 flex justify-between">Y-AXIS <span>${Math.round(pt.y*100)}%</span></label>
-                    <input type="range" min="0" max="100" value="${pt.y * 100}" 
-                        oninput="window.updatePoint(${i}, 'y', this.value)" 
-                        class="w-full h-1 bg-slate-700 appearance-none accent-green-500">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-[9px] text-slate-400 block">X (LEFT-RIGHT)</label>
+                        <input type="range" min="0" max="100" value="${pt.x * 100}" 
+                            oninput="window.updatePoint(${i}, 'x', this.value)" 
+                            class="w-full h-1 bg-slate-700 appearance-none accent-sky-500">
+                    </div>
+                    <div>
+                        <label class="text-[9px] text-slate-400 block">Y (UP-DOWN)</label>
+                        <input type="range" min="0" max="100" value="${pt.y * 100}" 
+                            oninput="window.updatePoint(${i}, 'y', this.value)" 
+                            class="w-full h-1 bg-slate-700 appearance-none accent-red-500">
+                    </div>
                 </div>
             `;
             panel.appendChild(group);
@@ -248,16 +253,19 @@
             
             if (controlPoints.length < 2) return;
 
+            // Generate Path Data
             let d = `M ${controlPoints[0].x * w} ${controlPoints[0].y * h}`;
             for (let i = 1; i < controlPoints.length; i++) {
                 d += ` L ${controlPoints[i].x * w} ${controlPoints[i].y * h}`;
             }
 
             svg.innerHTML = `
-                <path d="${d}" stroke="#00ff00" stroke-width="4" fill="none" 
+                <path d="${d}" stroke="#00ff00" stroke-width="5" fill="none" 
                 stroke-linecap="round" stroke-linejoin="round" 
-                style="filter: drop-shadow(0 0 8px rgba(0,255,0,0.8))" />
-                ${controlPoints.map(p => `<circle cx="${p.x * w}" cy="${p.y * h}" r="4" fill="#fff" />`).join('')}
+                style="filter: drop-shadow(0 0 10px rgba(0,255,0,0.9))" />
+                ${controlPoints.map(p => `
+                    <circle cx="${p.x * w}" cy="${p.y * h}" r="5" fill="#fff" stroke="#00ff00" stroke-width="2" />
+                `).join('')}
             `;
         });
     }
@@ -266,21 +274,20 @@
     window.updatePoint = (index, axis, val) => {
         controlPoints[index][axis] = val / 100;
         drawLines();
-        // Update specific label text without re-rendering all sliders for performance
-        renderSliders(); 
     };
 
     window.saveConfig = async () => {
         const configData = {
             station_id: "STN-01",
             poly_points: controlPoints,
+            orientation: "horizontal",
             updated_at: new Date().toISOString()
         };
         try {
             await setDoc(doc(db, "config", "station_settings"), configData);
-            alert("ZONE CONFIGURATION UPLOADED TO CLOUD");
+            alert("HORIZONTAL ZONE SAVED SUCCESSFULLY");
             window.switchTab('monitor');
-        } catch (e) { console.error(e); }
+        } catch (e) { alert("Error saving: " + e.message); }
     };
 
     window.switchTab = (tab) => {
@@ -288,10 +295,10 @@
         document.getElementById('view-config').classList.toggle('hidden', tab !== 'config');
         document.getElementById('tab-monitor').classList.toggle('active', tab === 'monitor');
         document.getElementById('tab-config').classList.toggle('active', tab === 'config');
-        drawLines();
+        setTimeout(drawLines, 50); // Small delay to ensure container size is correct
     };
 
-    // --- LISTENERS ---
+    // --- INITIALIZATION ---
     document.getElementById('pointCount').oninput = (e) => {
         n = parseInt(e.target.value);
         document.getElementById('pointCountLabel').innerText = n;
@@ -299,11 +306,9 @@
     };
 
     window.addEventListener('resize', drawLines);
-
-    // Initial Start
-    initPoints(4);
+    initPoints(4); // Start with 4 horizontal points
     
-    // Start Webcam
+    // Video Access
     navigator.mediaDevices.getUserMedia({ video: true }).then(s => {
         document.getElementById('monitor-video').srcObject = s;
         document.getElementById('config-video').srcObject = s;

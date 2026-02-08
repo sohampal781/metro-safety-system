@@ -143,41 +143,39 @@
                 panel.appendChild(group);
             });
         }
+function drawLines() {
+    const overlays = ['safety-overlay', 'config-overlay'];
+    overlays.forEach(id => {
+        const svg = document.getElementById(id);
+        const video = document.getElementById('config-video');
+        const w = video.clientWidth || svg.parentElement.clientWidth;
+        const h = video.clientHeight || svg.parentElement.clientHeight;
+        
+        if (!svg || controlPoints.length < 2) return;
+        svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
 
-        // Draw Line & Safety Overlay
-        function drawLines() {
-            const overlays = ['safety-overlay', 'config-overlay'];
-            overlays.forEach(id => {
-                const svg = document.getElementById(id);
-                const video = document.getElementById('config-video');
-                const w = video.clientWidth || svg.parentElement.clientWidth;
-                const h = video.clientHeight || svg.parentElement.clientHeight;
-                svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
-
-                if (controlPoints.length < 2) return;
-
-                let d = `M ${controlPoints[0].x * w} ${controlPoints[0].y * h}`;
-                for (let i = 1; i < controlPoints.length; i++) {
-                    d += ` L ${controlPoints[i].x * w} ${controlPoints[i].y * h}`;
-                }
-
-                // Building the Unsafe Area Polygon
-                let unsafeD = d;
-                if (sidePreference === 'left') {
-                    // Left is safe, shade everything to the right
-                    unsafeD += ` L ${w} ${controlPoints[controlPoints.length-1].y * h} L ${w} ${h} L ${controlPoints[0].x * w} ${h} Z`;
-                } else {
-                    // Right is safe, shade everything to the left
-                    unsafeD += ` L 0 ${controlPoints[controlPoints.length-1].y * h} L 0 ${h} L ${controlPoints[0].x * w} ${h} Z`;
-                }
-
-                svg.innerHTML = `
-                    <path d="${unsafeD}" class="unsafe-overlay-tint" />
-                    <path d="${d}" stroke="#00ff00" stroke-width="5" fill="none" stroke-linecap="round" />
-                    ${controlPoints.map(p => `<circle cx="${p.x * w}" cy="${p.y * h}" r="4" fill="white" />`).join('')}`;
-            });
+        // Base Line Path
+        let d = `M ${controlPoints[0].x * w} ${controlPoints[0].y * h}`;
+        for (let i = 1; i < controlPoints.length; i++) {
+            d += ` L ${controlPoints[i].x * w} ${controlPoints[i].y * h}`;
         }
 
+        // Unsafe Area Polygon Logic
+        let unsafeD = d;
+        if (sidePreference === 'left') {
+            // Shade everything to the RIGHT
+            unsafeD += ` L ${w} ${controlPoints[controlPoints.length-1].y * h} L ${w} ${h} L ${controlPoints[0].x * w} ${h} Z`;
+        } else {
+            // Shade everything to the LEFT
+            unsafeD += ` L 0 ${controlPoints[controlPoints.length-1].y * h} L 0 ${h} L ${controlPoints[0].x * w} ${h} Z`;
+        }
+
+        svg.innerHTML = `
+            <path d="${unsafeD}" class="unsafe-overlay-tint" style="fill: rgba(220, 38, 38, 0.4);" />
+            <path d="${d}" stroke="#00ff00" stroke-width="5" fill="none" />
+        `;
+    });
+}
         // Camera Logic
         async function startCamera() {
             try {
@@ -229,6 +227,48 @@
         initPoints(4);
         const resizeObserver = new ResizeObserver(() => drawLines());
         document.querySelectorAll('.video-wrapper').forEach(div => resizeObserver.observe(div));
+        // This function should be called by your Python/AI backend via window.processDetection(x, y)
+window.processDetection = (personX, personY) => {
+    if (isUnsafe(personX, personY)) {
+        console.warn("VIOLATION: Person on tracks. Capturing...");
+        triggerFaceCapture();
+    }
+};
+
+async function triggerFaceCapture() {
+    const video = document.getElementById('monitor-video');
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0);
+    
+    // Convert to image and upload to Firebase
+    const faceDataUrl = canvas.toDataURL('image/jpeg');
+    
+    try {
+        const violationId = `VIO-${Date.now()}`;
+        await setDoc(doc(db, "violations", violationId), {
+            timestamp: new Date().toISOString(),
+            image_data: faceDataUrl,
+            status: "PENDING_FINE",
+            station: "STN-01"
+        });
+        
+        // Update the UI Sidebar
+        const feed = document.getElementById('alerts-feed');
+        feed.innerHTML = `
+            <div class="bg-red-900/20 border-l-4 border-red-600 p-2 mb-2 animate-pulse">
+                <div class="text-[10px] text-red-400 font-bold">INTRUSION DETECTED</div>
+                <img src="${faceDataUrl}" class="w-full h-20 object-cover mt-1 rounded">
+            </div>
+        ` + feed.innerHTML;
+        
+    } catch (e) {
+        console.error("Capture Save Failed", e);
+    }
+}
     </script>
 </body>
 </html>

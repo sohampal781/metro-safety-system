@@ -10,17 +10,12 @@
         body { background-color: #000; color: #ccc; overflow: hidden; font-family: 'Courier New', monospace; text-transform: uppercase; }
         .nav-btn { padding: 12px 24px; border-right: 1px solid #222; color: #555; font-weight: bold; background: #000; cursor: pointer; }
         .nav-btn.active { color: #0f0; background: #051a05; border-bottom: 2px solid #0f0; }
-        
         .video-wrapper { position: relative; width: 100%; height: 100%; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; }
         video { width: 100% !important; height: 100% !important; object-fit: cover; position: absolute; }
         svg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
-        
-        /* Fixed Sidebar Scroll for Point 4 to N */
         #slider-panel { display: block; overflow-y: auto; max-height: calc(100vh - 220px); padding-bottom: 40px; }
         #slider-panel::-webkit-scrollbar { width: 6px; }
         #slider-panel::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
-        #slider-panel::-webkit-scrollbar-thumb:hover { background: #00ff00; }
-
         .unsafe-overlay-tint { fill: rgba(220, 38, 38, 0.4); }
         .camera-error { background: repeating-linear-gradient(45deg, #000, #000 10px, #111 10px, #111 20px); display: flex; align-items: center; justify-content: center; }
     </style>
@@ -53,7 +48,11 @@
             <div class="video-wrapper"><video id="config-video" autoplay playsinline muted class="opacity-50"></video><svg id="config-overlay"></svg></div>
             <div class="bg-slate-900 border-l border-slate-700 p-4 flex flex-col">
                 <h3 class="font-bold mb-4 text-sm">ZONE PARAMETERS</h3>
+                <label class="text-[10px] text-slate-500 block mb-1">CONTROL POINTS (N)</label>
                 <input id="pointCount" type="range" min="2" max="10" value="4" class="w-full mb-4 accent-sky-500">
+                <div class="flex justify-between text-sky-400 font-mono text-[10px] mt-1 mb-4">
+                    <span>2 pts</span> <span id="pointCountLabel">4</span> <span>10 pts</span>
+                </div>
                 <div id="slider-panel" class="flex-1"></div>
                 <button onclick="window.saveConfig()" class="w-full bg-green-600 py-3 rounded font-bold mt-4 hover:bg-green-500 transition">LOCK ZONE</button>
             </div>
@@ -90,7 +89,6 @@
         // 1. DETECTION ENGINE
         window.isUnsafe = (pX, pY) => {
             if (!controlPoints.length) return false;
-            // Independent check: Unsafe if person enters opposite of safe side
             return sidePref === 'left' ? pX > controlPoints[0].x : pX < controlPoints[0].x;
         };
 
@@ -102,13 +100,14 @@
         window.triggerFaceCapture = async (type) => {
             const video = document.getElementById('monitor-video');
             const canvas = document.createElement('canvas');
+            if(!video.videoWidth) return;
             canvas.width = video.videoWidth; canvas.height = video.videoHeight;
             canvas.getContext('2d').drawImage(video, 0, 0);
             const img = canvas.toDataURL('image/jpeg', 0.6);
             try {
                 const id = `V-${Date.now()}`;
                 await setDoc(doc(db, "violations", id), { timestamp: new Date().toISOString(), image_data: img, type: type });
-            } catch (e) { console.error("Firebase Sync Error:", e); }
+            } catch (e) { console.error("Firebase Error:", e); }
         };
 
         window.deleteRecord = async (id) => {
@@ -124,14 +123,11 @@
                 const w = video.clientWidth; const h = video.clientHeight;
                 if (!svg || !w) return;
                 svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
-                
                 let d = `M ${controlPoints[0].x * w} ${controlPoints[0].y * h}`;
                 for (let i = 1; i < controlPoints.length; i++) d += ` L ${controlPoints[i].x * w} ${controlPoints[i].y * h}`;
-                
                 let shade = d;
-                if (sidePref === 'left') shade += ` L ${w} ${controlPoints[n-1].y*h} L ${w} ${h} L 0 ${h} L 0 ${controlPoints[0].y*h} Z`;
-                else shade += ` L 0 ${controlPoints[n-1].y*h} L 0 ${h} L ${w} ${h} L ${w} ${controlPoints[0].y*h} Z`;
-                
+                if (sidePref === 'left') shade += ` L ${w} ${controlPoints[controlPoints.length-1].y*h} L ${w} ${h} L 0 ${h} L 0 ${controlPoints[0].y*h} Z`;
+                else shade += ` L 0 ${controlPoints[controlPoints.length-1].y*h} L 0 ${h} L ${w} ${h} L ${w} ${controlPoints[0].y*h} Z`;
                 svg.innerHTML = `<path d="${shade}" class="unsafe-overlay-tint"/><path d="${d}" stroke="#0f0" stroke-width="5" fill="none"/>`;
             });
         };
@@ -150,8 +146,8 @@
                 const div = document.createElement('div');
                 div.className = "p-3 bg-white/5 border border-white/10 rounded mb-3";
                 div.innerHTML = `<div class="flex justify-between text-[10px] mb-2"><span class="text-green-500 font-bold">PT ${i+1}</span><span class="pos-label text-slate-500">X:${Math.round(pt.x*100)}% Y:${Math.round(pt.y*100)}%</span></div>
-                <input type="range" min="0" max="100" value="${pt.x*100}" oninput="window.updatePoint(${i}, 'x', this.value)" class="w-full h-1 accent-sky-500 mb-2 cursor-pointer">
-                <input type="range" min="0" max="100" value="${pt.y*100}" oninput="window.updatePoint(${i}, 'y', this.value)" class="w-full h-1 accent-red-500 cursor-pointer">`;
+                <input type="range" min="0" max="100" value="${pt.x*100}" oninput="window.updatePoint(${i}, 'x', this.value)" class="w-full h-1 accent-sky-500 mb-2">
+                <input type="range" min="0" max="100" value="${pt.y*100}" oninput="window.updatePoint(${i}, 'y', this.value)" class="w-full h-1 accent-red-500">`;
                 panel.appendChild(div);
             });
         };
@@ -169,24 +165,22 @@
             onSnapshot(query(collection(db, "violations"), orderBy("timestamp", "desc")), (snap) => {
                 const list = document.getElementById('prosecution-list');
                 const feed = document.getElementById('alerts-feed');
-                if(list) list.innerHTML = ""; 
-                if(feed) feed.innerHTML = "";
+                if(list) list.innerHTML = ""; if(feed) feed.innerHTML = "";
                 snap.forEach(doc => {
                     const d = doc.data();
                     const card = document.createElement('div');
                     card.className = "bg-slate-900 border border-slate-800 rounded overflow-hidden mb-4";
                     card.innerHTML = `<img src="${d.image_data}" class="w-full h-32 object-cover"><div class="p-3"><div class="flex justify-between text-[10px] mb-2"><span class="text-red-500 font-bold">${d.type}</span><span>${new Date(d.timestamp).toLocaleTimeString()}</span></div>
-                    <button onclick="window.deleteRecord('${doc.id}')" class="w-full bg-red-900/40 py-2 text-[10px] hover:bg-red-600 transition">DELETE RECORD</button></div>`;
+                    <button onclick="window.deleteRecord('${doc.id}')" class="w-full bg-red-900/40 py-2 text-[10px]">DELETE</button></div>`;
                     if(list) list.appendChild(card);
                     if(feed) feed.appendChild(card.cloneNode(true));
                 });
             });
         };
 
-        // 5. SYSTEM INIT
+        // 5. INIT
         window.saveConfig = () => document.getElementById('safety-side-picker').classList.remove('hidden');
         window.setSafetySide = (s) => { sidePref = s; window.drawLines(); document.getElementById('safety-side-picker').classList.add('hidden'); window.switchTab('monitor'); };
-        
         window.switchTab = (t) => {
             document.querySelectorAll('main > div').forEach(d => d.classList.add('hidden'));
             document.getElementById(`view-${t}`).classList.remove('hidden');
@@ -197,14 +191,13 @@
 
         document.getElementById('pointCount').oninput = (e) => { 
             n = parseInt(e.target.value); 
-            document.getElementById('pointCountLabel').innerText = n;
+            document.getElementById('pointCountLabel').innerText = n; // THIS NOW WORKS
             controlPoints = Array.from({length: n}, (_, i) => ({ x: i/(n-1), y: 0.5 })); 
             window.renderSliders(); 
             window.drawLines(); 
         };
         
         setInterval(() => { document.getElementById('clock').innerText = new Date().toLocaleTimeString(); }, 1000);
-        
         window.startCamera();
         window.startListeners();
         controlPoints = Array.from({length: 4}, (_, i) => ({ x: i/3, y: 0.5 }));

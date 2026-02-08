@@ -10,17 +10,24 @@
         body { background-color: #000; color: #ccc; overflow: hidden; font-family: 'Courier New', monospace; text-transform: uppercase; }
         .nav-btn { padding: 12px 24px; border-right: 1px solid #222; color: #555; font-weight: bold; background: #000; cursor: pointer; }
         .nav-btn.active { color: #0f0; background: #051a05; border-bottom: 2px solid #0f0; }
+        
         .video-wrapper { position: relative; width: 100%; height: 100%; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; }
         video { width: 100% !important; height: 100% !important; object-fit: cover; position: absolute; }
         svg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
+        
+        /* Fixed Sidebar Scroll for Point 4 to N */
         #slider-panel { display: block; overflow-y: auto; max-height: calc(100vh - 220px); padding-bottom: 40px; }
+        #slider-panel::-webkit-scrollbar { width: 6px; }
+        #slider-panel::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
+        #slider-panel::-webkit-scrollbar-thumb:hover { background: #00ff00; }
+
         .unsafe-overlay-tint { fill: rgba(220, 38, 38, 0.4); }
-        .camera-error { background: repeating-linear-gradient(45deg, #000, #000 10px, #111 10px, #111 20px); display: flex; align-items: center; justify-content: center; color: #333; }
+        .camera-error { background: repeating-linear-gradient(45deg, #000, #000 10px, #111 10px, #111 20px); display: flex; align-items: center; justify-content: center; }
     </style>
 </head>
 <body class="flex flex-col h-screen">
 
-    <header class="h-14 bg-black border-b border-slate-700 flex justify-between items-center px-4">
+    <header class="h-14 bg-black border-b border-slate-700 flex justify-between items-center px-4 shrink-0">
         <div class="flex items-center gap-4">
             <div class="text-xl font-bold text-white"><i class="fa-solid fa-subway text-sky-500 mr-2"></i>SURVEILLANCE <span class="text-green-500">COMMAND</span></div>
             <nav class="flex">
@@ -37,35 +44,32 @@
             <div class="video-wrapper">
                 <video id="monitor-video" autoplay playsinline muted></video>
                 <svg id="safety-overlay"></svg>
-                <button onclick="window.triggerFaceCapture('MANUAL_SNAP')" class="absolute bottom-6 right-6 bg-red-600 text-white p-4 rounded-full z-50 shadow-xl"><i class="fa-solid fa-camera"></i></button>
+                <button onclick="window.triggerFaceCapture('MANUAL_SNAP')" class="absolute bottom-6 right-6 bg-red-600 text-white p-4 rounded-full z-50 shadow-xl hover:scale-110 transition"><i class="fa-solid fa-camera"></i></button>
             </div>
             <div class="bg-slate-900 border-l border-slate-700 p-4 overflow-y-auto" id="alerts-feed"></div>
         </div>
 
         <div id="view-config" class="absolute inset-0 hidden grid grid-cols-[1fr_350px]">
-            <div class="video-wrapper">
-                <video id="config-video" autoplay playsinline muted class="opacity-50"></video>
-                <svg id="config-overlay"></svg>
-            </div>
+            <div class="video-wrapper"><video id="config-video" autoplay playsinline muted class="opacity-50"></video><svg id="config-overlay"></svg></div>
             <div class="bg-slate-900 border-l border-slate-700 p-4 flex flex-col">
-                <h3 class="font-bold mb-4">ZONE PARAMETERS</h3>
-                <input id="pointCount" type="range" min="2" max="10" value="4" class="w-full mb-4">
+                <h3 class="font-bold mb-4 text-sm">ZONE PARAMETERS</h3>
+                <input id="pointCount" type="range" min="2" max="10" value="4" class="w-full mb-4 accent-sky-500">
                 <div id="slider-panel" class="flex-1"></div>
-                <button onclick="window.saveConfig()" class="w-full bg-green-600 py-3 rounded font-bold mt-4">LOCK ZONE</button>
+                <button onclick="window.saveConfig()" class="w-full bg-green-600 py-3 rounded font-bold mt-4 hover:bg-green-500 transition">LOCK ZONE</button>
             </div>
         </div>
 
         <div id="view-prosecute" class="absolute inset-0 hidden bg-black p-6 overflow-y-auto">
-            <h2 class="text-xl font-bold mb-6">PROSECUTION LOG</h2>
+            <h2 class="text-xl font-bold mb-6 border-b border-slate-800 pb-2">PROSECUTION LOG</h2>
             <div id="prosecution-list" class="grid grid-cols-1 md:grid-cols-3 gap-6"></div>
         </div>
 
         <div id="safety-side-picker" class="hidden absolute inset-0 bg-black/80 flex items-center justify-center z-[2000]">
             <div class="bg-slate-900 p-8 rounded-xl text-center border border-slate-700">
-                <h3 class="mb-6 font-bold">WHICH SIDE IS SAFE?</h3>
+                <h3 class="mb-6 font-bold text-white">CALIBRATE SAFE SIDE</h3>
                 <div class="flex gap-4">
-                    <button onclick="window.setSafetySide('left')" class="p-6 bg-slate-800 rounded-lg border border-slate-600">LEFT</button>
-                    <button onclick="window.setSafetySide('right')" class="p-6 bg-slate-800 rounded-lg border border-slate-600">RIGHT</button>
+                    <button onclick="window.setSafetySide('left')" class="p-6 bg-slate-800 rounded-lg border border-slate-600 hover:bg-green-900/30">LEFT PLATFORM</button>
+                    <button onclick="window.setSafetySide('right')" class="p-6 bg-slate-800 rounded-lg border border-slate-600 hover:bg-green-900/30">RIGHT PLATFORM</button>
                 </div>
             </div>
         </div>
@@ -81,19 +85,20 @@
 
         let controlPoints = [];
         let n = 4;
-        let sidePreference = 'left';
+        let sidePref = 'left';
 
-        // Math & Detection
+        // 1. DETECTION ENGINE
         window.isUnsafe = (pX, pY) => {
             if (!controlPoints.length) return false;
-            return sidePreference === 'left' ? pX > controlPoints[0].x : pX < controlPoints[0].x;
+            // Independent check: Unsafe if person enters opposite of safe side
+            return sidePref === 'left' ? pX > controlPoints[0].x : pX < controlPoints[0].x;
         };
 
         window.processDetection = (x, y) => {
             if (window.isUnsafe(x, y)) window.triggerFaceCapture('AUTO_DETECTION');
         };
 
-        // Capture & Database
+        // 2. CAPTURE & DATABASE
         window.triggerFaceCapture = async (type) => {
             const video = document.getElementById('monitor-video');
             const canvas = document.createElement('canvas');
@@ -101,15 +106,16 @@
             canvas.getContext('2d').drawImage(video, 0, 0);
             const img = canvas.toDataURL('image/jpeg', 0.6);
             try {
-                await setDoc(doc(db, "violations", `V-${Date.now()}`), { timestamp: new Date().toISOString(), image_data: img, type: type });
-            } catch (e) { console.error(e); }
+                const id = `V-${Date.now()}`;
+                await setDoc(doc(db, "violations", id), { timestamp: new Date().toISOString(), image_data: img, type: type });
+            } catch (e) { console.error("Firebase Sync Error:", e); }
         };
 
         window.deleteRecord = async (id) => {
-            if(confirm("Delete record?")) await deleteDoc(doc(db, "violations", id));
+            if(confirm("Permanently delete this record?")) await deleteDoc(doc(db, "violations", id));
         };
 
-        // UI Drawing
+        // 3. UI & DRAWING
         window.drawLines = () => {
             const overlays = ['safety-overlay', 'config-overlay'];
             overlays.forEach(id => {
@@ -118,14 +124,17 @@
                 const w = video.clientWidth; const h = video.clientHeight;
                 if (!svg || !w) return;
                 svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+                
                 let d = `M ${controlPoints[0].x * w} ${controlPoints[0].y * h}`;
                 for (let i = 1; i < controlPoints.length; i++) d += ` L ${controlPoints[i].x * w} ${controlPoints[i].y * h}`;
+                
                 let shade = d;
-                if (sidePreference === 'left') shade += ` L ${w} ${controlPoints[controlPoints.length-1].y*h} L ${w} ${h} L 0 ${h} L 0 ${controlPoints[0].y*h} Z`;
-                else shade += ` L 0 ${controlPoints[controlPoints.length-1].y*h} L 0 ${h} L ${w} ${h} L ${w} ${controlPoints[0].y*h} Z`;
+                if (sidePref === 'left') shade += ` L ${w} ${controlPoints[n-1].y*h} L ${w} ${h} L 0 ${h} L 0 ${controlPoints[0].y*h} Z`;
+                else shade += ` L 0 ${controlPoints[n-1].y*h} L 0 ${h} L ${w} ${h} L ${w} ${controlPoints[0].y*h} Z`;
+                
                 svg.innerHTML = `<path d="${shade}" class="unsafe-overlay-tint"/><path d="${d}" stroke="#0f0" stroke-width="5" fill="none"/>`;
             });
-        }
+        };
 
         window.updatePoint = (i, axis, val) => {
             controlPoints[i][axis] = val / 100;
@@ -140,21 +149,21 @@
             controlPoints.forEach((pt, i) => {
                 const div = document.createElement('div');
                 div.className = "p-3 bg-white/5 border border-white/10 rounded mb-3";
-                div.innerHTML = `<div class="flex justify-between text-[10px] mb-2"><span class="text-green-500">PT ${i+1}</span><span class="pos-label">X:${Math.round(pt.x*100)}% Y:${Math.round(pt.y*100)}%</span></div>
-                <input type="range" min="0" max="100" value="${pt.x*100}" oninput="window.updatePoint(${i}, 'x', this.value)" class="w-full h-1 accent-sky-500 mb-2">
-                <input type="range" min="0" max="100" value="${pt.y*100}" oninput="window.updatePoint(${i}, 'y', this.value)" class="w-full h-1 accent-red-500">`;
+                div.innerHTML = `<div class="flex justify-between text-[10px] mb-2"><span class="text-green-500 font-bold">PT ${i+1}</span><span class="pos-label text-slate-500">X:${Math.round(pt.x*100)}% Y:${Math.round(pt.y*100)}%</span></div>
+                <input type="range" min="0" max="100" value="${pt.x*100}" oninput="window.updatePoint(${i}, 'x', this.value)" class="w-full h-1 accent-sky-500 mb-2 cursor-pointer">
+                <input type="range" min="0" max="100" value="${pt.y*100}" oninput="window.updatePoint(${i}, 'y', this.value)" class="w-full h-1 accent-red-500 cursor-pointer">`;
                 panel.appendChild(div);
             });
-        }
+        };
 
-        // Camera & Listeners
+        // 4. CAMERA & LISTENERS
         window.startCamera = async () => {
             try {
                 const s = await navigator.mediaDevices.getUserMedia({ video: true });
                 document.getElementById('monitor-video').srcObject = s;
                 document.getElementById('config-video').srcObject = s;
             } catch (e) { document.querySelectorAll('.video-wrapper').forEach(v => v.classList.add('camera-error')); }
-        }
+        };
 
         window.startListeners = () => {
             onSnapshot(query(collection(db, "violations"), orderBy("timestamp", "desc")), (snap) => {
@@ -165,18 +174,19 @@
                 snap.forEach(doc => {
                     const d = doc.data();
                     const card = document.createElement('div');
-                    card.className = "bg-slate-800 border border-slate-700 rounded overflow-hidden mb-3";
-                    card.innerHTML = `<img src="${d.image_data}" class="w-full h-32 object-cover"><div class="p-2"><div class="flex justify-between text-[10px] mb-2"><span>${d.type}</span><span>${new Date(d.timestamp).toLocaleTimeString()}</span></div>
-                    <button onclick="window.deleteRecord('${doc.id}')" class="w-full bg-red-900/40 py-1 text-[10px]">DELETE</button></div>`;
+                    card.className = "bg-slate-900 border border-slate-800 rounded overflow-hidden mb-4";
+                    card.innerHTML = `<img src="${d.image_data}" class="w-full h-32 object-cover"><div class="p-3"><div class="flex justify-between text-[10px] mb-2"><span class="text-red-500 font-bold">${d.type}</span><span>${new Date(d.timestamp).toLocaleTimeString()}</span></div>
+                    <button onclick="window.deleteRecord('${doc.id}')" class="w-full bg-red-900/40 py-2 text-[10px] hover:bg-red-600 transition">DELETE RECORD</button></div>`;
                     if(list) list.appendChild(card);
                     if(feed) feed.appendChild(card.cloneNode(true));
                 });
             });
-        }
+        };
 
-        // System Control
+        // 5. SYSTEM INIT
         window.saveConfig = () => document.getElementById('safety-side-picker').classList.remove('hidden');
-        window.setSafetySide = (s) => { sidePreference = s; window.drawLines(); document.getElementById('safety-side-picker').classList.add('hidden'); window.switchTab('monitor'); };
+        window.setSafetySide = (s) => { sidePref = s; window.drawLines(); document.getElementById('safety-side-picker').classList.add('hidden'); window.switchTab('monitor'); };
+        
         window.switchTab = (t) => {
             document.querySelectorAll('main > div').forEach(d => d.classList.add('hidden'));
             document.getElementById(`view-${t}`).classList.remove('hidden');
@@ -195,7 +205,6 @@
         
         setInterval(() => { document.getElementById('clock').innerText = new Date().toLocaleTimeString(); }, 1000);
         
-        // Start Services
         window.startCamera();
         window.startListeners();
         controlPoints = Array.from({length: 4}, (_, i) => ({ x: i/3, y: 0.5 }));

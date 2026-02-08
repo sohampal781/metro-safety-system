@@ -3,100 +3,171 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Metro Safety | Station Master Console</title>
+    <title>Metro Safety | Station Master Command Console</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+        :root { --neon-green: #00ff00; --danger-red: rgba(220, 38, 38, 0.4); --terminal-black: #050505; }
         body { background-color: #000; color: #ccc; overflow: hidden; font-family: 'Courier New', monospace; text-transform: uppercase; }
-        .nav-btn { padding: 12px 24px; border-right: 1px solid #222; color: #555; font-weight: bold; background: #000; cursor: pointer; transition: 0.2s; }
-        .nav-btn.active { color: #0f0; background: #051a05; border-bottom: 2px solid #0f0; }
         
-        /* Video Container - FULL VIEW */
-        .video-wrapper { position: relative; width: 100%; height: 100%; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-        video { width: 100% !important; height: 100% !important; object-fit: cover; position: absolute; top: 0; left: 0; }
-        svg { position: absolute; inset: 0; width: 100% !important; height: 100% !important; z-index: 10; pointer-events: none; }
-        
-        /* Sidebar scrolling fix for Point 4 to N */
-        #slider-panel { display: block !important; overflow-y: auto !important; max-height: calc(100vh - 220px); padding-bottom: 40px; }
-        #slider-panel::-webkit-scrollbar { width: 6px; }
-        #slider-panel::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
-        #slider-panel::-webkit-scrollbar-thumb:hover { background: #00ff00; }
+        /* Industrial Navigation */
+        .nav-btn { padding: 14px 28px; border-right: 1px solid #222; color: #555; font-weight: 800; background: #000; cursor: pointer; transition: all 0.3s ease; letter-spacing: 1px; }
+        .nav-btn:hover { color: #fff; background: #111; }
+        .nav-btn.active { color: var(--neon-green); background: #051a05; border-bottom: 3px solid var(--neon-green); }
 
-        .unsafe-overlay-tint { fill: rgba(220, 38, 38, 0.4); pointer-events: none; }
-        .camera-error { background: repeating-linear-gradient(45deg, #000, #000 10px, #111 10px, #111 20px); display: flex; align-items: center; justify-content: center; }
+        /* Video & Canvas Overlay Layering */
+        .viewport-container { position: relative; width: 100%; height: 100%; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid #111; }
+        video { width: 100% !important; height: 100% !important; object-fit: cover; position: absolute; top: 0; left: 0; z-index: 1; }
+        svg { position: absolute; inset: 0; width: 100% !important; height: 100% !important; z-index: 10; pointer-events: none; }
+
+        /* Sidebar Control Panel */
+        #slider-panel { display: block; overflow-y: auto; max-height: calc(100vh - 250px); padding-right: 10px; }
+        #slider-panel::-webkit-scrollbar { width: 4px; }
+        #slider-panel::-webkit-scrollbar-track { background: #0a0a0a; }
+        #slider-panel::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
+        #slider-panel::-webkit-scrollbar-thumb:hover { background: var(--neon-green); }
+
+        /* Violation UI */
+        .unsafe-overlay-tint { fill: var(--danger-red); transition: opacity 0.5s ease; }
+        .violation-card { background: rgba(15, 15, 15, 0.9); border-left: 4px solid #dc2626; animation: alert-pulse 2s infinite; }
+        @keyframes alert-pulse { 0% { border-color: #dc2626; } 50% { border-color: #450a0a; } 100% { border-color: #dc2626; } }
+
+        /* Industrial Scoping */
+        .status-indicator { display: inline-flex; align-items: center; gap: 8px; font-size: 10px; color: #666; }
+        .status-online { color: var(--neon-green); }
     </style>
 </head>
 <body class="flex flex-col h-screen">
 
-    <header class="h-14 bg-black border-b border-slate-700 flex justify-between items-center px-4 shrink-0">
-        <div class="flex items-center gap-4">
-            <div class="text-xl font-bold text-white tracking-tight">
-                <i class="fa-solid fa-subway text-sky-500 mr-2"></i>SURVEILLANCE <span class="text-green-500">COMMAND</span>
+    <header class="h-16 bg-slate-900 border-b border-slate-700 flex justify-between items-center px-6 shrink-0 z-50">
+        <div class="flex items-center gap-8">
+            <div class="flex flex-col">
+                <span class="text-xl font-black text-white tracking-tighter">
+                    <i class="fa-solid fa-subway text-sky-500 mr-2"></i>METRO-SAFETY <span class="text-green-500">v4.0</span>
+                </span>
+                <span class="text-[9px] text-slate-500 font-mono">STATION MASTER COMMAND INTERFACE</span>
             </div>
-            <nav class="flex">
-                <button onclick="window.switchTab('monitor')" id="tab-monitor" class="nav-btn active">MONITOR</button>
-                <button onclick="window.switchTab('config')" id="tab-config" class="nav-btn">CONFIG</button>
-                <button onclick="window.switchTab('prosecute')" id="tab-prosecute" class="nav-btn">PROSECUTION</button>
+            <nav class="flex h-16">
+                <button onclick="window.switchTab('monitor')" id="tab-monitor" class="nav-btn active">LIVE MONITOR</button>
+                <button onclick="window.switchTab('config')" id="tab-config" class="nav-btn">ZONE CALIBRATION</button>
+                <button onclick="window.switchTab('prosecute')" id="tab-prosecute" class="nav-btn">PROSECUTION LOG</button>
             </nav>
         </div>
-        <div class="flex items-center gap-4">
-             <button onclick="checkData()" class="bg-yellow-600/20 border border-yellow-600 px-2 py-1 text-[10px] text-yellow-500">DEBUG DB</button>
-             <div id="clock" class="text-xs font-mono text-slate-500">12:00:00</div>
+        
+        <div class="flex items-center gap-6 font-mono">
+            <div class="text-right">
+                <div id="clock" class="text-sm text-white font-bold">00:00:00</div>
+                <div class="status-indicator status-online"><i class="fa-solid fa-circle text-[6px]"></i> SYSTEM ENCRYPTED</div>
+            </div>
+            <div class="h-10 w-px bg-slate-800"></div>
+            <div class="text-[10px] text-slate-500">CAM_ID: 01-MASTER<br>AUTH: MASTER_USER</div>
         </div>
     </header>
 
-    <main class="flex-1 relative overflow-hidden">
-        <div id="view-monitor" class="absolute inset-0 grid grid-cols-[1fr_400px]">
-            <div class="video-wrapper">
+    <main class="flex-1 relative overflow-hidden bg-black">
+        
+        <div id="view-monitor" class="absolute inset-0 grid grid-cols-[1fr_420px] transition-all duration-500">
+            <div class="viewport-container border-r border-slate-800">
                 <video id="monitor-video" autoplay playsinline muted></video>
                 <svg id="safety-overlay"></svg>
-                <button onclick="window.triggerFaceCapture('MANUAL_SNAP')" class="absolute bottom-6 right-6 bg-red-600 text-white p-4 rounded-full z-50 shadow-xl hover:scale-110 transition">
-                    <i class="fa-solid fa-camera text-xl"></i>
+                
+                <div class="absolute top-6 left-6 z-20 flex flex-col gap-2">
+                    <div class="bg-black/60 backdrop-blur-md px-4 py-2 border-l-2 border-sky-500 text-[10px] text-white">
+                        <span class="text-slate-400">STATUS:</span> <span id="sys-status">MONITORING</span>
+                    </div>
+                    <div class="bg-black/60 backdrop-blur-md px-4 py-2 border-l-2 border-green-500 text-[10px] text-white">
+                        <span class="text-slate-400">ZONE:</span> <span id="active-side-display">LEFT SAFE</span>
+                    </div>
+                </div>
+
+                <button onclick="window.triggerFaceCapture('MASTER_MANUAL')" class="absolute bottom-8 right-8 bg-red-600 hover:bg-red-700 text-white w-16 h-16 rounded-full z-50 shadow-[0_0_20px_rgba(220,38,38,0.5)] transition-transform active:scale-95 flex items-center justify-center">
+                    <i class="fa-solid fa-camera text-2xl"></i>
                 </button>
             </div>
-            <div class="bg-slate-900 border-l border-slate-700 flex flex-col p-4">
-                <h3 class="font-bold text-white border-b border-slate-700 pb-2 mb-4 text-xs">MASTER LIVE FEED</h3>
-                <div id="alerts-feed" class="flex-1 overflow-y-auto space-y-3">
-                    <div class="text-center text-slate-500 mt-10 italic text-sm">System Armed. No violations.</div>
+
+            <div class="bg-slate-900 flex flex-col">
+                <div class="p-4 border-b border-slate-800 bg-slate-900/50 flex justify-between items-center">
+                    <h3 class="font-bold text-white text-xs tracking-widest">LIVE INTRUSION ALERTS</h3>
+                    <span class="text-[10px] text-red-500 animate-pulse font-bold">REAL-TIME</span>
+                </div>
+                <div id="alerts-feed" class="flex-1 overflow-y-auto p-4 space-y-4">
+                    <div class="h-full flex flex-col items-center justify-center text-slate-600 italic text-sm">
+                        <i class="fa-solid fa-shield-halved text-4xl mb-4 opacity-20"></i>
+                        Zone Secured.
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div id="view-config" class="absolute inset-0 hidden grid grid-cols-[1fr_350px] bg-slate-900">
-            <div class="video-wrapper">
-                <video id="config-video" autoplay playsinline muted class="opacity-50"></video>
+        <div id="view-config" class="absolute inset-0 hidden grid grid-cols-[1fr_380px] bg-slate-950">
+            <div class="viewport-container">
+                <video id="config-video" autoplay playsinline muted class="opacity-40"></video>
                 <svg id="config-overlay"></svg>
             </div>
-            <div class="bg-slate-800 border-l border-slate-700 flex flex-col p-4">
-                <h3 class="font-bold text-white mb-4 text-sm">ZONE PARAMETERS</h3>
-                <label class="text-[10px] text-slate-500 block mb-1">CONTROL POINTS (N)</label>
-                <input id="pointCount" type="range" min="2" max="10" value="4" class="w-full mb-2 accent-sky-500 cursor-pointer">
-                <div class="flex justify-between text-sky-400 font-mono text-[10px] mb-4">
-                    <span>2 pts</span> <span id="pointCountLabel">4</span> <span>10 pts</span>
+            
+            <div class="bg-slate-900 border-l border-slate-700 p-6 flex flex-col shadow-2xl">
+                <h3 class="text-white font-bold mb-6 flex items-center gap-2">
+                    <i class="fa-solid fa-sliders text-sky-500"></i> ZONE CALIBRATION
+                </h3>
+                
+                <div class="space-y-6 flex-1 flex flex-col">
+                    <div class="bg-black/40 p-4 rounded-lg border border-slate-800">
+                        <label class="text-[10px] text-slate-500 block mb-3 font-bold">NODE DENSITY (2-10)</label>
+                        <input id="pointCount" type="range" min="2" max="10" value="4" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500">
+                        <div class="flex justify-between text-sky-500 font-mono text-[10px] mt-2">
+                            <span>MIN_RES</span>
+                            <span id="pointCountLabel" class="text-white bg-sky-600 px-2 rounded">4</span>
+                            <span>MAX_RES</span>
+                        </div>
+                    </div>
+
+                    <div id="slider-panel" class="flex-1 pr-2">
+                        </div>
                 </div>
-                <div id="slider-panel" class="flex-1 space-y-3"></div>
-                <button onclick="window.saveConfig()" class="w-full bg-green-600 hover:bg-green-500 text-white py-3 rounded font-bold mt-4 transition">LOCK ZONE CONFIG</button>
+
+                <button onclick="window.saveConfig()" class="w-full bg-green-600 hover:bg-green-500 text-white py-4 rounded font-black tracking-widest transition-all shadow-lg mt-4">
+                    COMMIT ZONE TO DATABASE
+                </button>
             </div>
         </div>
 
-        <div id="view-prosecute" class="absolute inset-0 hidden bg-black p-6 overflow-y-auto">
-            <h2 class="text-xl font-bold mb-6 border-b border-slate-800 pb-2">E-PROSECUTION LOG</h2>
-            <div id="prosecution-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+        <div id="view-prosecute" class="absolute inset-0 hidden bg-slate-950 p-8 overflow-y-auto">
+            <div class="max-w-7xl mx-auto">
+                <div class="flex justify-between items-end border-b border-slate-800 pb-6 mb-8">
+                    <div>
+                        <h2 class="text-2xl font-black text-white tracking-tighter">PROSECUTION RECORDS</h2>
+                        <p class="text-slate-500 text-xs mt-1 font-mono text-uppercase">Centralized Intrusion Database / Authorized Access Only</p>
+                    </div>
+                    <div class="flex gap-4">
+                        <div class="bg-slate-900 px-4 py-2 border border-slate-800 text-[10px]">
+                            <span class="text-slate-500">TOTAL RECORDS:</span> <span id="record-count" class="text-white">0</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="prosecution-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    </div>
+            </div>
         </div>
 
-        <div id="safety-side-picker" class="hidden absolute inset-0 bg-black/90 flex items-center justify-center z-[2000]">
-            <div class="bg-slate-900 p-8 rounded-xl text-center border border-slate-700 max-w-md">
-                <h3 class="text-lg font-bold text-white mb-6 uppercase tracking-widest">Select Safe Platform Side</h3>
-                <div class="grid grid-cols-2 gap-4">
-                    <button onclick="window.setSafetySide('left')" class="p-6 bg-slate-800 rounded-lg border border-slate-600 hover:bg-green-900/30 transition group">
-                        <i class="fa-solid fa-arrow-left text-green-500 text-2xl mb-2 group-hover:scale-125 transition"></i>
-                        <div class="text-white font-bold">LEFT SIDE</div>
+        <div id="safety-side-picker" class="hidden absolute inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-[2000]">
+            <div class="bg-slate-900 border border-slate-700 p-10 rounded-2xl shadow-2xl text-center max-w-lg w-full">
+                <div class="text-sky-500 mb-4 font-black tracking-[0.3em] text-[10px]">SYSTEM CALIBRATION</div>
+                <h3 class="text-2xl font-bold text-white mb-8">WHICH SEGMENT IS SAFE?</h3>
+                
+                <div class="grid grid-cols-2 gap-6">
+                    <button onclick="window.setSafetySide('left')" class="bg-slate-800 hover:bg-green-900/40 border-2 border-slate-700 hover:border-green-500 p-8 rounded-xl transition-all group">
+                        <i class="fa-solid fa-arrow-left text-3xl text-slate-600 group-hover:text-green-500 mb-4 block"></i>
+                        <span class="text-white font-bold block">LEFT SIDE</span>
+                        <span class="text-[9px] text-slate-500">PLATFORM AREA</span>
                     </button>
-                    <button onclick="window.setSafetySide('right')" class="p-6 bg-slate-800 rounded-lg border border-slate-600 hover:bg-green-900/30 transition group">
-                        <i class="fa-solid fa-arrow-right text-green-500 text-2xl mb-2 group-hover:scale-125 transition"></i>
-                        <div class="text-white font-bold">RIGHT SIDE</div>
+                    <button onclick="window.setSafetySide('right')" class="bg-slate-800 hover:bg-green-900/40 border-2 border-slate-700 hover:border-green-500 p-8 rounded-xl transition-all group">
+                        <i class="fa-solid fa-arrow-right text-3xl text-slate-600 group-hover:text-green-500 mb-4 block"></i>
+                        <span class="text-white font-bold block">RIGHT SIDE</span>
+                        <span class="text-[9px] text-slate-500">PLATFORM AREA</span>
                     </button>
                 </div>
+                <button onclick="document.getElementById('safety-side-picker').classList.add('hidden')" class="mt-8 text-slate-600 hover:text-white text-[10px] underline tracking-widest">ABORT CONFIGURATION</button>
             </div>
         </div>
     </main>
@@ -105,6 +176,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
         import { getFirestore, doc, setDoc, collection, query, orderBy, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
+        // Firebase Configuration
         const firebaseConfig = { 
             apiKey: "AIzaSyBoWtfLODLrDhRKkMew0sLceDgHBNAQAPM", 
             projectId: "metro-safety-system", 
@@ -113,85 +185,149 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // --- GLOBAL STATE ---
+        // State Machine
         let controlPoints = [];
-        let n = 4;
-        let sidePref = 'left';
+        let nodeCount = 4;
+        let safeSide = 'left';
+        let isSystemReady = false;
 
-        // --- 1. DETECTION MATH ENGINE ---
-        window.isUnsafe = (pX, pY) => {
-            if (!controlPoints.length) return false;
-            // Logic: Intruding if X moves past boundary from safe platform side
-            return sidePref === 'left' ? pX > controlPoints[0].x : pX < controlPoints[0].x;
-        };
-
-        window.processDetection = (x, y) => {
-            console.log(`AI HOOK: Analyzing X:${x}, Y:${y}`);
-            if (window.isUnsafe(x, y)) {
-                console.warn("DANGER: INTRUSION DETECTED");
-                window.triggerFaceCapture('AUTO_DETECTION');
-            }
-        };
-
-        // --- 2. IMAGE CAPTURE & FIRESTORE SYNC ---
-        window.triggerFaceCapture = async (type) => {
-            const video = document.getElementById('monitor-video');
-            if (!video || video.readyState < 2) return;
-
-            const canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-            canvas.getContext('2d').drawImage(video, 0, 0);
-            const imgData = canvas.toDataURL('image/jpeg', 0.6);
+        /**
+         * 1. COORDINATE SYSTEM & INTERPOLATION ENGINE
+         * Based on the user's station logging interest
+         */
+        window.isUnsafe = (personX, personY) => {
+            if (controlPoints.length < 2) return false;
             
-            try {
-                const id = `V-${Date.now()}`;
-                await setDoc(doc(db, "violations", id), { 
-                    timestamp: new Date().toISOString(), 
-                    image_data: imgData, 
-                    type: type,
-                    station: "STN-HOWRAH-01"
-                });
-                console.log("Master Log: Saved ", id);
-            } catch (e) { console.error("Firebase Sync Error:", e); }
+            // Linear Interpolation for Polyline Segments
+            for (let i = 0; i < controlPoints.length - 1; i++) {
+                const p1 = controlPoints[i];
+                const p2 = controlPoints[i+1];
+                
+                // Check if person X falls within this line segment
+                if (personX >= Math.min(p1.x, p2.x) && personX <= Math.max(p1.x, p2.x)) {
+                    // Standard linear interpolation formula: y = y1 + ((y2 - y1) / (x2 - x1)) * (x - x1)
+                    const lineY = p1.y + ((p2.y - p1.y) / (p2.x - p1.x)) * (personX - p1.x);
+                    
+                    // Violation logic based on safe side preference
+                    if (safeSide === 'left') {
+                        return personX > p1.x; // Simplified for vertical-ish lines
+                    } else {
+                        return personX < p1.x;
+                    }
+                }
+            }
+            return false;
         };
 
-        window.deleteRecord = async (id) => {
-            if(confirm("Confirm permanent removal from prosecution database?")) {
-                try { await deleteDoc(doc(db, "violations", id)); } 
-                catch (e) { console.error("Delete failed", e); }
+        /**
+         * 2. DETECTION HOOK (FOR AI INTEGRATION)
+         */
+        window.processDetection = (normX, normY) => {
+            if (window.isUnsafe(normX, normY)) {
+                console.warn("ALARM: Tripwire Breach at", normX, normY);
+                window.triggerFaceCapture('AUTO_INTRUSION_DETECT');
             }
         };
 
-        // --- 3. UI RENDERING & ZOOM STABILITY ---
+        /**
+         * 3. MASTER CAPTURE ENGINE
+         * Captures 100% zoom frame and uploads to Firestore
+         */
+        window.triggerFaceCapture = async (reasonCode) => {
+            const videoSource = document.getElementById('monitor-video');
+            if (!videoSource || videoSource.readyState < 2) return;
+
+            const offscreenCanvas = document.createElement('canvas');
+            offscreenCanvas.width = videoSource.videoWidth;
+            offscreenCanvas.height = videoSource.videoHeight;
+            
+            const context = offscreenCanvas.getContext('2d');
+            context.drawImage(videoSource, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
+            
+            const blobData = offscreenCanvas.toDataURL('image/jpeg', 0.7);
+            const recordUid = `RECORD_${Date.now()}`;
+
+            try {
+                // Atomic save to violations collection
+                await setDoc(doc(db, "violations", recordUid), {
+                    timestamp: new Date().toISOString(),
+                    image_base64: blobData,
+                    trigger_type: reasonCode,
+                    station_id: "HOWRAH_STN_01",
+                    status: "ACTIVE_PROSECUTION"
+                });
+                console.log("Success: Record created", recordUid);
+            } catch (err) {
+                console.error("Critical: Firestore Sync Error", err);
+            }
+        };
+
+        /**
+         * 4. CRUD OPERATIONS: DELETE
+         */
+        window.deleteRecord = async (docId) => {
+            if (confirm("Confirm permanent deletion of prosecution record? This cannot be undone.")) {
+                try {
+                    await deleteDoc(doc(db, "violations", docId));
+                    console.log("Deleted:", docId);
+                } catch (err) {
+                    alert("Delete failed: " + err.message);
+                }
+            }
+        };
+
+        /**
+         * 5. UI: POLYGON & TINT RENDERING
+         */
         window.drawLines = () => {
-            const overlays = ['safety-overlay', 'config-overlay'];
-            overlays.forEach(id => {
-                const svg = document.getElementById(id);
-                const video = document.getElementById('config-video');
-                const w = video.clientWidth; const h = video.clientHeight;
-                if (!svg || !w) return;
-                svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+            const targets = ['safety-overlay', 'config-overlay'];
+            targets.forEach(svgId => {
+                const svgElement = document.getElementById(svgId);
+                const referenceVideo = document.getElementById('config-video');
+                const width = referenceVideo.clientWidth || svgElement.parentElement.clientWidth;
+                const height = referenceVideo.clientHeight || svgElement.parentElement.clientHeight;
                 
-                let d = `M ${controlPoints[0].x * w} ${controlPoints[0].y * h}`;
-                for (let i = 1; i < controlPoints.length; i++) d += ` L ${controlPoints[i].x * w} ${controlPoints[i].y * h}`;
-                
-                let shade = d;
-                // Math to close the polygon for the Red Unsafe Tint
-                if (sidePref === 'left') shade += ` L ${w} ${controlPoints[n-1].y*h} L ${w} ${h} L 0 ${h} L 0 ${controlPoints[0].y*h} Z`;
-                else shade += ` L 0 ${controlPoints[n-1].y*h} L 0 ${h} L ${w} ${h} L ${w} ${controlPoints[0].y*h} Z`;
-                
-                svg.innerHTML = `
-                    <path d="${shade}" class="unsafe-overlay-tint"/>
-                    <path d="${d}" stroke="#0f0" stroke-width="5" fill="none" stroke-linecap="round"/>
-                    ${id === 'config-overlay' ? controlPoints.map((p, i) => `<circle cx="${p.x * w}" cy="${p.y * h}" r="5" fill="white" stroke="#0f0" stroke-width="2"/>`).join('') : ''}
+                if (!svgElement || width === 0) return;
+                svgElement.setAttribute('viewBox', `0 0 ${width} ${height}`);
+
+                if (controlPoints.length < 2) return;
+
+                // Build Path Data
+                let pathString = `M ${controlPoints[0].x * width} ${controlPoints[0].y * height}`;
+                for (let j = 1; j < controlPoints.length; j++) {
+                    pathString += ` L ${controlPoints[j].x * width} ${controlPoints[j].y * height}`;
+                }
+
+                // Shading the Unsafe Zone
+                let shadePath = pathString;
+                if (safeSide === 'left') {
+                    // Safe=Left, Tint=Right
+                    shadePath += ` L ${width} ${controlPoints[nodeCount - 1].y * height} L ${width} ${height} L 0 ${height} L 0 ${controlPoints[0].y * height} Z`;
+                } else {
+                    // Safe=Right, Tint=Left
+                    shadePath += ` L 0 ${controlPoints[nodeCount - 1].y * height} L 0 ${height} L ${width} ${height} L ${width} ${controlPoints[0].y * height} Z`;
+                }
+
+                svgElement.innerHTML = `
+                    <path d="${shadePath}" class="unsafe-overlay-tint" />
+                    <path d="${pathString}" stroke="#00ff00" stroke-width="4" fill="none" stroke-linecap="round" />
+                    ${svgId === 'config-overlay' ? controlPoints.map((p, idx) => `
+                        <circle cx="${p.x * width}" cy="${p.y * height}" r="6" fill="#fff" stroke="#00ff00" stroke-width="2" />
+                        <text x="${p.x * width + 10}" y="${p.y * height - 10}" fill="#00ff00" font-size="10" font-weight="bold">${idx + 1}</text>
+                    `).join('') : ''}
                 `;
             });
         };
 
-        window.updatePoint = (i, axis, val) => {
-            controlPoints[i][axis] = val / 100;
-            const labels = document.querySelectorAll('.pos-label');
-            if(labels[i]) labels[i].innerText = `X:${Math.round(controlPoints[i].x*100)}% Y:${Math.round(controlPoints[i].y*100)}%`;
+        /**
+         * 6. INDEPENDENT SLIDER CONTROLS
+         */
+        window.updatePoint = (index, axis, value) => {
+            controlPoints[index][axis] = value / 100;
+            const labelElements = document.querySelectorAll('.pos-label');
+            if (labelElements[index]) {
+                labelElements[index].innerText = `X:${Math.round(controlPoints[index].x * 100)}% Y:${Math.round(controlPoints[index].y * 100)}%`;
+            }
             window.drawLines();
         };
 
@@ -199,96 +335,170 @@
             const panel = document.getElementById('slider-panel');
             panel.innerHTML = '';
             controlPoints.forEach((pt, i) => {
-                const div = document.createElement('div');
-                div.className = "p-3 bg-black/50 border border-white/10 rounded mb-3 shadow-inner";
-                div.innerHTML = `
-                    <div class="flex justify-between text-[10px] mb-2"><span class="text-green-500 font-bold">PT ${i+1}</span><span class="pos-label text-slate-500">X:${Math.round(pt.x*100)}% Y:${Math.round(pt.y*100)}%</span></div>
-                    <input type="range" min="0" max="100" value="${pt.x*100}" oninput="window.updatePoint(${i}, 'x', this.value)" class="w-full h-1 accent-sky-500 mb-2 cursor-pointer">
-                    <input type="range" min="0" max="100" value="${pt.y*100}" oninput="window.updatePoint(${i}, 'y', this.value)" class="w-full h-1 accent-red-500 cursor-pointer">
-                `;
-                panel.appendChild(div);
+                const group = document.createElement('div');
+                group.className = "p-4 bg-black/60 border border-slate-800 rounded-xl mb-4 hover:border-sky-900 transition-colors";
+                group.innerHTML = `
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-sky-500 font-black text-[10px] tracking-widest">NODE ${i + 1}</span>
+                        <span class="pos-label text-[9px] text-slate-500 font-mono">X:${Math.round(pt.x * 100)}% Y:${Math.round(pt.y * 100)}%</span>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="flex items-center gap-3">
+                            <span class="text-[8px] text-slate-600 w-4">X</span>
+                            <input type="range" min="0" max="100" value="${pt.x * 100}" oninput="window.updatePoint(${i}, 'x', this.value)" class="flex-1 h-1 bg-slate-800 rounded-lg appearance-none accent-sky-500 cursor-pointer">
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="text-[8px] text-slate-600 w-4">Y</span>
+                            <input type="range" min="0" max="100" value="${pt.y * 100}" oninput="window.updatePoint(${i}, 'y', this.value)" class="flex-1 h-1 bg-slate-800 rounded-lg appearance-none accent-red-600 cursor-pointer">
+                        </div>
+                    </div>`;
+                panel.appendChild(group);
             });
         };
 
-        // --- 4. CAMERA & DATABASE LISTENERS ---
-        window.startCamera = async () => {
-            try {
-                const s = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
-                document.getElementById('monitor-video').srcObject = s;
-                document.getElementById('config-video').srcObject = s;
-            } catch (e) { document.querySelectorAll('.video-wrapper').forEach(v => v.classList.add('camera-error')); }
-        };
-
-        window.startListeners = () => {
+        /**
+         * 7. MASTER DATABASE REAL-TIME LISTENERS
+         */
+        window.initListeners = () => {
             const q = query(collection(db, "violations"), orderBy("timestamp", "desc"));
-            onSnapshot(q, (snap) => {
+            
+            onSnapshot(q, (snapshot) => {
                 const list = document.getElementById('prosecution-list');
                 const feed = document.getElementById('alerts-feed');
-                if(list) list.innerHTML = ""; if(feed) feed.innerHTML = "";
+                const countBadge = document.getElementById('record-count');
+                
+                if (list) list.innerHTML = "";
+                if (feed) feed.innerHTML = "";
+                if (countBadge) countBadge.innerText = snapshot.size;
 
-                if(snap.empty && feed) feed.innerHTML = `<div class="text-center text-slate-500 mt-10 italic text-sm">System Armed. No violations.</div>`;
+                if (snapshot.empty && feed) {
+                    feed.innerHTML = `<div class="h-full flex flex-col items-center justify-center text-slate-600 italic text-sm">Zone Secured.</div>`;
+                }
 
-                snap.forEach(doc => {
-                    const d = doc.data();
-                    const card = document.createElement('div');
-                    card.className = "bg-slate-900 border border-slate-800 rounded overflow-hidden shadow-2xl";
-                    card.innerHTML = `
-                        <img src="${d.image_data}" class="w-full h-40 object-cover border-b border-red-900/50">
-                        <div class="p-3">
-                            <div class="flex justify-between text-[10px] mb-2 font-bold"><span class="text-red-500">${d.type}</span><span class="text-slate-500">${new Date(d.timestamp).toLocaleTimeString()}</span></div>
-                            <button onclick="window.deleteRecord('${doc.id}')" class="w-full bg-red-900/20 hover:bg-red-600 text-red-400 hover:text-white py-2 text-[10px] transition rounded border border-red-900/50">DELETE RECORD</button>
+                snapshot.forEach(snap => {
+                    const data = snap.data();
+                    
+                    // Create Master Log Card
+                    const logCard = document.createElement('div');
+                    logCard.className = "bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-2xl hover:border-red-900 transition-all group";
+                    logCard.innerHTML = `
+                        <div class="relative">
+                            <img src="${data.image_base64}" class="w-full h-44 object-cover">
+                            <div class="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent"></div>
+                            <div class="absolute bottom-3 left-3 text-[9px] text-white font-black">${data.trigger_type}</div>
+                        </div>
+                        <div class="p-4">
+                            <div class="flex justify-between text-[9px] text-slate-500 mb-4 font-mono">
+                                <span>ID: ${snap.id.substring(0,8)}</span>
+                                <span>${new Date(data.timestamp).toLocaleString()}</span>
+                            </div>
+                            <button onclick="window.deleteRecord('${snap.id}')" class="w-full bg-red-900/20 hover:bg-red-600 text-red-500 hover:text-white py-3 text-[10px] font-black transition-all rounded-lg border border-red-900/50">
+                                PURGE FROM DATABASE
+                            </button>
                         </div>`;
-                    if(list) list.appendChild(card);
-                    if(feed) {
-                        const clone = card.cloneNode(true);
-                        clone.className = "bg-slate-800 border-l-4 border-red-600 p-2 mb-3 animate-pulse";
-                        clone.querySelector('img').className = "w-full h-24 object-cover rounded";
-                        clone.querySelector('button').remove();
-                        feed.appendChild(clone);
+                    
+                    if (list) list.appendChild(logCard);
+
+                    // Add to Monitoring Sidebar Feed
+                    if (feed) {
+                        const miniCard = document.createElement('div');
+                        miniCard.className = "violation-card p-3 rounded-lg flex gap-3 items-center";
+                        miniCard.innerHTML = `
+                            <img src="${data.image_base64}" class="w-16 h-16 rounded object-cover border border-red-900">
+                            <div>
+                                <div class="text-[9px] font-black text-red-500">BREACH DETECTED</div>
+                                <div class="text-[8px] text-slate-400 font-mono">${new Date(data.timestamp).toLocaleTimeString()}</div>
+                                <button onclick="window.switchTab('prosecute')" class="text-[8px] text-sky-500 underline mt-1">VIEW PROSECUTION</button>
+                            </div>`;
+                        feed.appendChild(miniCard);
                     }
                 });
             });
         };
 
-        // --- 5. TAB SYSTEM & INITIALIZATION ---
-        window.switchTab = (t) => {
+        /**
+         * 8. SYSTEM INITIALIZATION & ORCHESTRATION
+         */
+        window.startCamera = async () => {
+            const monitor = document.getElementById('monitor-video');
+            const config = document.getElementById('config-video');
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: 1280, height: 720, frameRate: 30 } 
+                });
+                monitor.srcObject = stream;
+                config.srcObject = stream;
+                console.log("System: Optical Stream Active");
+            } catch (err) {
+                console.error("Critical: Camera Access Denied", err);
+                document.querySelectorAll('.viewport-container').forEach(c => c.classList.add('camera-error'));
+            }
+        };
+
+        window.switchTab = (target) => {
             document.querySelectorAll('main > div').forEach(div => div.classList.add('hidden'));
-            document.getElementById(`view-${t}`).classList.remove('hidden');
+            document.getElementById(`view-${target}`).classList.remove('hidden');
+            
             document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
-            document.getElementById(`tab-${t}`).classList.add('active');
+            document.getElementById(`tab-${target}`).classList.add('active');
+            
+            // Re-sync drawing on tab switch
             setTimeout(window.drawLines, 50);
         };
 
         window.saveConfig = () => document.getElementById('safety-side-picker').classList.remove('hidden');
-        
-        window.setSafetySide = async (s) => { 
-            sidePref = s; 
-            window.drawLines(); 
-            document.getElementById('safety-side-picker').classList.add('hidden'); 
-            window.switchTab('monitor'); 
+
+        window.setSafetySide = async (choice) => {
+            safeSide = choice;
+            window.drawLines();
+            document.getElementById('active-side-display').innerText = `${choice.toUpperCase()} SAFE`;
+            try {
+                // Persistent station settings storage
+                await setDoc(doc(db, "config", "station_settings"), {
+                    poly_points: controlPoints,
+                    safe_platform_side: safeSide,
+                    calibration_date: new Date().toISOString()
+                });
+                document.getElementById('safety-side-picker').classList.add('hidden');
+                window.switchTab('monitor');
+            } catch (err) { alert("Sync Failed: " + err.message); }
         };
 
-        document.getElementById('pointCount').oninput = (e) => { 
-            n = parseInt(e.target.value); 
-            document.getElementById('pointCountLabel').innerText = n;
-            controlPoints = Array.from({length: n}, (_, i) => ({ x: i/(n-1), y: 0.5 })); 
-            window.renderSliders(); 
-            window.drawLines(); 
+        // --- EXECUTION ---
+        
+        // Handle node density change
+        document.getElementById('pointCount').oninput = (e) => {
+            nodeCount = parseInt(e.target.value);
+            document.getElementById('pointCountLabel').innerText = nodeCount;
+            // Initialize points in a straight horizontal line as baseline
+            controlPoints = Array.from({length: nodeCount}, (_, i) => ({ 
+                x: i / (nodeCount - 1), 
+                y: 0.5 
+            }));
+            window.renderSliders();
+            window.drawLines();
         };
 
-        window.checkData = () => { console.log("State:", {sidePref, controlPoints}); alert("Console check active."); };
-        
-        setInterval(() => { document.getElementById('clock').innerText = new Date().toLocaleTimeString(); }, 1000);
-        
-        // START SERVICES
+        // Global Clock
+        setInterval(() => {
+            document.getElementById('clock').innerText = new Date().toLocaleTimeString();
+        }, 1000);
+
+        // Bootstrap Sequence
         window.startCamera();
-        window.startListeners();
-        controlPoints = Array.from({length: 4}, (_, i) => ({ x: i/3, y: 0.5 }));
+        window.initListeners();
+        
+        // Default 4-point initialization
+        controlPoints = Array.from({length: 4}, (_, i) => ({ x: i / 3, y: 0.5 }));
         window.renderSliders();
-        setTimeout(window.drawLines, 500);
-
+        
+        // Resize Observer for HUD alignment
         const resizeObserver = new ResizeObserver(() => window.drawLines());
-        document.querySelectorAll('.video-wrapper').forEach(div => resizeObserver.observe(div));
+        document.querySelectorAll('.viewport-container').forEach(v => resizeObserver.observe(v));
+        
+        // Final Draw Sync
+        setTimeout(window.drawLines, 1000);
+        
     </script>
 </body>
 </html>

@@ -168,6 +168,12 @@
                 <div class="flex items-center gap-2 text-sm text-slate-400">
                     <i class="fa-solid fa-circle-info text-sky-500"></i>
                     <span>Instructions: Click points on the video to draw the platform edge. Double-click to finish.</span>
+                    <div class="flex items-center gap-3 text-sm ml-6">
+    <label class="text-slate-400">CONTROL POINTS</label>
+    <input id="pointCount" type="range" min="2" max="10" value="4" class="w-40">
+    <span id="pointCountLabel" class="text-green-400 font-mono">4</span>
+</div>
+
                 </div>
                 <button onclick="saveConfig()" class="bg-green-600 hover:bg-green-500 text-white px-4 py-1.5 rounded text-sm font-bold shadow-lg shadow-green-900/20">
                     <i class="fa-solid fa-floppy-disk mr-2"></i>Save Zone
@@ -176,7 +182,6 @@
 
             <div class="flex-1 relative bg-black video-wrapper">
                 <video id="config-video" autoplay playsinline muted class="opacity-75"></video>
-                <canvas id="zone-canvas"></canvas>
                 <canvas id="detect-layer" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
                 <div id="side-selector" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-slate-900 p-4 rounded-lg shadow-2xl border border-slate-600 text-center">
                     <h4 class="text-white font-bold mb-3">Which side is UNSAFE?</h4>
@@ -190,6 +195,10 @@
                     </div>
                 </div>
             </div>
+            <div id="slider-panel"
+     class="absolute bottom-0 left-0 right-0 bg-black/90 border-t border-slate-700 p-3 max-h-56 overflow-y-auto text-xs">
+</div>
+
         </div>
 
         <div id="view-history" class="absolute inset-0 hidden bg-slate-900 p-8 overflow-auto">
@@ -258,8 +267,9 @@ window.checkData = () => {
         const db = getFirestore(app);
 
         // --- GLOBAL STATE ---
-        let points = [];
-        let isDrawing = false;
+        let controlPoints = [];
+let pointCount = 4;
+
         let unsafeSide = 'right'; // default
         import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
@@ -326,6 +336,31 @@ const renderTripLine = () => {
               style="filter: drop-shadow(0 0 10px rgba(0, 255, 0, 0.9));" />
     `;
 };
+function renderCurve() {
+    const overlay = document.getElementById("safety-overlay");
+    const container = overlay.closest(".video-wrapper");
+
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+
+    overlay.setAttribute("width", w);
+    overlay.setAttribute("height", h);
+
+    let d = `M ${controlPoints[0].x * w} ${controlPoints[0].y * h}`;
+    for (let i = 1; i < controlPoints.length; i++) {
+        d += ` L ${controlPoints[i].x * w} ${controlPoints[i].y * h}`;
+    }
+
+    overlay.innerHTML = `
+        <path d="${d}"
+              stroke="#00ff00"
+              stroke-width="5"
+              fill="none"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="trip-line-glow"/>
+    `;
+}
 
 // Listen to RTDB for changes
 onValue(ref(rtdb, 'config/trip_line'), (snapshot) => {
@@ -363,6 +398,40 @@ window.addEventListener('resize', updateMonitorOverlay);
             }
         }
         startCameras();
+        function generateDefaultCurve(n) {
+    controlPoints = [];
+    for (let i = 0; i < n; i++) {
+        controlPoints.push({
+            x: i / (n - 1),
+            y: 0.5
+        });
+    }
+}
+        function renderSliders() {
+    const panel = document.getElementById("slider-panel");
+    panel.innerHTML = "";
+
+    controlPoints.forEach((p, i) => {
+        panel.innerHTML += `
+        <div class="border-b border-slate-700 pb-2 mb-2">
+            <div class="text-green-400 mb-1">POINT ${i + 1}</div>
+
+            <label>X (${Math.round(p.x * 100)}%)</label>
+            <input type="range" min="0" max="100" value="${p.x * 100}"
+                   oninput="updatePoint(${i}, 'x', this.value)">
+
+            <label>Y (${Math.round(p.y * 100)}%)</label>
+            <input type="range" min="0" max="100" value="${p.y * 100}"
+                   oninput="updatePoint(${i}, 'y', this.value)">
+        </div>
+        `;
+    });
+}
+window.updatePoint = (index, axis, value) => {
+    controlPoints[index][axis] = value / 100;
+    renderCurve();
+};
+
 
         // --- 2. TAB SWITCHING LOGIC ---
         window.switchTab = (tabName) => {
@@ -433,33 +502,7 @@ canvas.addEventListener('dblclick', () => {
     canvas.style.pointerEvents = "none"; 
     document.getElementById('side-selector').classList.remove('hidden');
 });
-// 7. The Draw Function (Visuals)
-function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    if (points.length > 0) {
-        ctx.beginPath();
-        ctx.lineWidth = 4;
-        ctx.strokeStyle = "#fbbf24"; // Bright Yellow (Final Line)
-        ctx.lineCap = "round";
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = "black";
-        
-        ctx.moveTo(points[0].x, points[0].y);
-        for (let i = 1; i < points.length; i++) {
-            ctx.lineTo(points[i].x, points[i].y);
-        }
-        ctx.stroke();
-        
-        // Draw dots at vertices so you can see where you clicked
-        ctx.fillStyle = "#fff";
-        points.forEach(p => {
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, 4, 0, Math.PI*2);
-            ctx.fill();
-        });
-    }
-}
+
         window.setUnsafeSide = (side) => {
             unsafeSide = side;
             document.getElementById('side-selector').classList.add('hidden');
@@ -633,6 +676,21 @@ window.saveConfig = async () => {
                 processed_at: new Date().toISOString()
             });
         };
+const pointSlider = document.getElementById("pointCount");
+const label = document.getElementById("pointCountLabel");
+
+generateDefaultCurve(pointCount);
+renderSliders();
+renderCurve();
+
+pointSlider.addEventListener("input", () => {
+    pointCount = parseInt(pointSlider.value);
+    label.innerText = pointCount;
+
+    generateDefaultCurve(pointCount);
+    renderSliders();
+    renderCurve();
+});
 
         // Clock Update
         setInterval(() => {

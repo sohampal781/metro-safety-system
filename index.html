@@ -226,12 +226,12 @@ video {
     // --- STATE ---
     let controlPoints = [];
     let n = 4;
+    let safeSide = 'above';
 
-    // --- INITIALIZE POINTS (HORIZONTAL ALIGNMENT) ---
+    // --- INITIALIZE POINTS ---
     function initPoints(count) {
         controlPoints = [];
         for (let i = 0; i < count; i++) {
-            // X spreads out horizontally, Y stays centered
             controlPoints.push({ 
                 x: (i / (count - 1)), 
                 y: 0.5 
@@ -244,6 +244,8 @@ video {
     // --- RENDER DYNAMIC SLIDERS ---
     function renderSliders() {
         const panel = document.getElementById('slider-panel');
+        // We do not clear innerHTML here to prevent slider "flicker" while moving
+        // Instead, we update the labels and values if they exist, or build new ones
         panel.innerHTML = '';
         
         controlPoints.forEach((pt, i) => {
@@ -252,17 +254,17 @@ video {
             group.innerHTML = `
                 <div class="flex justify-between items-center mb-2">
                     <span class="text-green-500 font-bold text-[10px]">POINT ${i + 1}</span>
-                    <span class="text-[9px] text-slate-500 font-mono">POS: ${Math.round(pt.x*100)}% | ${Math.round(pt.y*100)}%</span>
+                    <span class="text-[9px] text-slate-500 font-mono">X: ${Math.round(pt.x*100)}% | Y: ${Math.round(pt.y*100)}%</span>
                 </div>
                 <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <label class="text-[9px] text-slate-400 block">X (LEFT-RIGHT)</label>
+                        <label class="text-[9px] text-slate-400 block">HORIZONTAL (X)</label>
                         <input type="range" min="0" max="100" value="${pt.x * 100}" 
                             oninput="window.updatePoint(${i}, 'x', this.value)" 
                             class="w-full h-1 bg-slate-700 appearance-none accent-sky-500">
                     </div>
                     <div>
-                        <label class="text-[9px] text-slate-400 block">Y (UP-DOWN)</label>
+                        <label class="text-[9px] text-slate-400 block">VERTICAL (Y)</label>
                         <input type="range" min="0" max="100" value="${pt.y * 100}" 
                             oninput="window.updatePoint(${i}, 'y', this.value)" 
                             class="w-full h-1 bg-slate-700 appearance-none accent-red-500">
@@ -272,127 +274,84 @@ video {
             panel.appendChild(group);
         });
     }
-function drawLines() {
-    const overlays = ['safety-overlay', 'config-overlay'];
-    
-    overlays.forEach(id => {
-        const svg = document.getElementById(id);
-        if (!svg) return;
 
-        // Force overlay to match the exact displayed size of the video
-        const rect = svg.parentElement.getBoundingClientRect();
-        const w = rect.width;
-        const h = rect.height;
+    // --- CORE DRAWING LOGIC (Fixed for 100% Zoom & Anti-Zigzag) ---
+    function drawLines() {
+        const overlays = ['safety-overlay', 'config-overlay'];
+        
+        overlays.forEach(id => {
+            const svg = document.getElementById(id);
+            if (!svg) return;
 
-        svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+            // Anchor drawing to the video's actual client dimensions
+            const video = document.getElementById('config-video');
+            const w = video.clientWidth || svg.parentElement.clientWidth;
+            const h = video.clientHeight || svg.parentElement.clientHeight;
 
-        if (controlPoints.length < 2) return;
+            svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
 
-        // Calculate path using normalized coordinates (0.0 to 1.0) 
-        // multiplied by the ACTUAL pixels of the container
-        let d = `M ${controlPoints[0].x * w} ${controlPoints[0].y * h}`;
-        for (let i = 1; i < controlPoints.length; i++) {
-            d += ` L ${controlPoints[i].x * w} ${controlPoints[i].y * h}`;
-        }
+            if (controlPoints.length < 2) return;
 
-        svg.innerHTML = `
-            <path d="${d}" 
-                  stroke="#00ff00" 
-                  stroke-width="4" 
-                  fill="none" 
-                  stroke-linecap="round" 
-                  stroke-linejoin="round" 
-                  style="filter: drop-shadow(0 0 8px rgba(0,255,0,0.8))" />
-            ${controlPoints.map(p => `
-                <circle cx="${p.x * w}" cy="${p.y * h}" r="4" fill="white" stroke="#00ff00" stroke-width="1" />
-            `).join('')}
-        `;
-    });
-}
+            // Generate SVG Path
+            let d = `M ${controlPoints[0].x * w} ${controlPoints[0].y * h}`;
+            for (let i = 1; i < controlPoints.length; i++) {
+                d += ` L ${controlPoints[i].x * w} ${controlPoints[i].y * h}`;
+            }
+
+            svg.innerHTML = `
+                <path d="${d}" 
+                      stroke="#00ff00" 
+                      stroke-width="5" 
+                      fill="none" 
+                      stroke-linecap="round" 
+                      stroke-linejoin="round" 
+                      style="filter: drop-shadow(0 0 10px rgba(0,255,0,0.9))" />
+                ${controlPoints.map(p => `
+                    <circle cx="${p.x * w}" cy="${p.y * h}" r="5" fill="white" stroke="#00ff00" stroke-width="2" />
+                `).join('')}
+            `;
+        });
+    }
+
+    // --- EXPOSED WINDOW FUNCTIONS ---
     window.updatePoint = (index, axis, val) => {
         controlPoints[index][axis] = val / 100;
+        
+        // ANTI-ZIGZAG: Sort points by X so the line always flows left-to-right
+        controlPoints.sort((a, b) => a.x - b.x);
+        
+        // Refresh UI
         drawLines();
+        renderSliders(); 
     };
 
-  let safeSide = 'above'; // Global state
-
-// 1. Initiate the Save Process (The "Lock")
-window.saveConfig = () => {
-    if (controlPoints.length < 2) return alert("Define the line first.");
-    // Show the side picker instead of saving immediately
-    document.getElementById('safety-side-picker').classList.remove('hidden');
-};
-
-// 2. Finalize Safety side and upload to Firebase
-window.setSafetySide = async (side) => {
-    safeSide = side;
-    document.getElementById('safety-side-picker').classList.add('hidden');
-
-    const configData = {
-        station_id: "STN-01",
-        poly_points: controlPoints,
-        safe_side: safeSide,
-        updated_at: new Date().toISOString()
+    window.saveConfig = () => {
+        if (controlPoints.length < 2) return alert("Define the line first.");
+        document.getElementById('safety-side-picker').classList.remove('hidden');
     };
 
-    try {
-        await setDoc(doc(db, "config", "station_settings"), configData);
-        alert(`SYSTEM LOCKED: ${side.toUpperCase()} is SAFE. Monitoring for intruders...`);
-        window.switchTab('monitor');
-    } catch (e) {
-        alert("Sync Error: " + e.message);
-    }
-};
+    window.setSafetySide = async (side) => {
+        safeSide = side;
+        document.getElementById('safety-side-picker').classList.add('hidden');
 
-/**
- * CORE DETECTION ALGORITHM
- * Determines if a point (person) is on the unsafe side of the line segments
- */
-function isUnsafe(personX, personY) {
-    // Find which line segment the person is "above" or "below" based on X coordinate
-    for (let i = 0; i < controlPoints.length - 1; i++) {
-        let p1 = controlPoints[i];
-        let p2 = controlPoints[i+1];
+        try {
+            await setDoc(doc(db, "config", "station_settings"), {
+                station_id: "STN-01",
+                poly_points: controlPoints,
+                safe_side: safeSide,
+                updated_at: new Date().toISOString()
+            });
+            alert(`SYSTEM LOCKED: ${side.toUpperCase()} IS SAFE`);
+            window.switchTab('monitor');
+        } catch (e) { alert("Sync Error: " + e.message); }
+    };
 
-        if (personX >= p1.x && personX <= p2.x) {
-            // Linear interpolation to find the Y of the line at this specific X
-            const lineY = p1.y + (p2.y - p1.y) * (personX - p1.x) / (p2.x - p1.x);
-            
-            if (safeSide === 'above') {
-                return personY > lineY; // If safe is above, then below (greater Y) is unsafe
-            } else {
-                return personY < lineY; // If safe is below, then above (smaller Y) is unsafe
-            }
-        }
-    }
-    return false;
-}
-
-// 3. Simulated Detection Hook (Connect this to your AI/Python output)
-window.processDetection = (detectedX, detectedY) => {
-    if (isUnsafe(detectedX, detectedY)) {
-        console.warn("VIOLATION DETECTED! Capturing Face...");
-        triggerFaceCapture();
-    }
-};
-
-async function triggerFaceCapture() {
-    const video = document.getElementById('monitor-video');
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0);
-    
-    const faceData = canvas.toDataURL('image/jpeg');
-    // Here you would upload faceData to Firebase Storage/Firestore
-    console.log("Face Data captured successfully.");
-}
     window.switchTab = (tab) => {
         document.getElementById('view-monitor').classList.toggle('hidden', tab !== 'monitor');
         document.getElementById('view-config').classList.toggle('hidden', tab !== 'config');
         document.getElementById('tab-monitor').classList.toggle('active', tab === 'monitor');
         document.getElementById('tab-config').classList.toggle('active', tab === 'config');
-        setTimeout(drawLines, 50); // Small delay to ensure container size is correct
+        setTimeout(drawLines, 50);
     };
 
     // --- INITIALIZATION ---
@@ -403,21 +362,15 @@ async function triggerFaceCapture() {
     };
 
     window.addEventListener('resize', drawLines);
-    initPoints(4); // Start with 4 horizontal points
-    
-    // Video Access
+    initPoints(4); 
+
     navigator.mediaDevices.getUserMedia({ video: true }).then(s => {
         document.getElementById('monitor-video').srcObject = s;
         document.getElementById('config-video').srcObject = s;
     });
-    const resizeObserver = new ResizeObserver(() => {
-    drawLines();
-});
 
-// Start observing the video containers
-document.querySelectorAll('.video-wrapper').forEach(div => {
-    resizeObserver.observe(div);
-});
+    const resizeObserver = new ResizeObserver(() => drawLines());
+    document.querySelectorAll('.video-wrapper').forEach(div => resizeObserver.observe(div));
 </script>
     <script src="https://cdn.tailwindcss.com"></script>
 </body>

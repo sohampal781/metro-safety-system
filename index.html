@@ -40,21 +40,34 @@
             background: #051a05;
             border-bottom: 2px solid #00ff00;
         }
-
-        /* Video Container - FULL VIEW */
-        .video-wrapper {
-    position: relative !important;
-    overflow: hidden;
+       .video-wrapper {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden; /* Prevents sliders from pushing the video */
 }
-        
-        video { 
-            width: auto; height: auto; 
-            max-width: 100%; max-height: 100%;
-            object-fit: contain; 
-        }
 
-        /* LAYERS */
-        /* The Drawing Canvas */
+video {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover; /* Ensures video fills the area without zooming out */
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+#config-overlay, #safety-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100% !important;
+    height: 100% !important;
+    z-index: 10;
+}
         #zone-canvas {
             position: absolute; 
             top: 0; 
@@ -259,36 +272,43 @@
             panel.appendChild(group);
         });
     }
+function drawLines() {
+    const overlays = ['safety-overlay', 'config-overlay'];
+    
+    overlays.forEach(id => {
+        const svg = document.getElementById(id);
+        if (!svg) return;
 
-    // --- DRAW LINE LOGIC ---
-    function drawLines() {
-        ['safety-overlay', 'config-overlay'].forEach(id => {
-            const svg = document.getElementById(id);
-            if (!svg) return;
-            
-            const w = svg.clientWidth || svg.parentNode.clientWidth;
-            const h = svg.clientHeight || svg.parentNode.clientHeight;
-            
-            if (controlPoints.length < 2) return;
+        // Force overlay to match the exact displayed size of the video
+        const rect = svg.parentElement.getBoundingClientRect();
+        const w = rect.width;
+        const h = rect.height;
 
-            // Generate Path Data
-            let d = `M ${controlPoints[0].x * w} ${controlPoints[0].y * h}`;
-            for (let i = 1; i < controlPoints.length; i++) {
-                d += ` L ${controlPoints[i].x * w} ${controlPoints[i].y * h}`;
-            }
+        svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
 
-            svg.innerHTML = `
-                <path d="${d}" stroke="#00ff00" stroke-width="5" fill="none" 
-                stroke-linecap="round" stroke-linejoin="round" 
-                style="filter: drop-shadow(0 0 10px rgba(0,255,0,0.9))" />
-                ${controlPoints.map(p => `
-                    <circle cx="${p.x * w}" cy="${p.y * h}" r="5" fill="#fff" stroke="#00ff00" stroke-width="2" />
-                `).join('')}
-            `;
-        });
-    }
+        if (controlPoints.length < 2) return;
 
-    // --- WINDOW GLOBALS ---
+        // Calculate path using normalized coordinates (0.0 to 1.0) 
+        // multiplied by the ACTUAL pixels of the container
+        let d = `M ${controlPoints[0].x * w} ${controlPoints[0].y * h}`;
+        for (let i = 1; i < controlPoints.length; i++) {
+            d += ` L ${controlPoints[i].x * w} ${controlPoints[i].y * h}`;
+        }
+
+        svg.innerHTML = `
+            <path d="${d}" 
+                  stroke="#00ff00" 
+                  stroke-width="4" 
+                  fill="none" 
+                  stroke-linecap="round" 
+                  stroke-linejoin="round" 
+                  style="filter: drop-shadow(0 0 8px rgba(0,255,0,0.8))" />
+            ${controlPoints.map(p => `
+                <circle cx="${p.x * w}" cy="${p.y * h}" r="4" fill="white" stroke="#00ff00" stroke-width="1" />
+            `).join('')}
+        `;
+    });
+}
     window.updatePoint = (index, axis, val) => {
         controlPoints[index][axis] = val / 100;
         drawLines();
@@ -390,6 +410,14 @@ async function triggerFaceCapture() {
         document.getElementById('monitor-video').srcObject = s;
         document.getElementById('config-video').srcObject = s;
     });
+    const resizeObserver = new ResizeObserver(() => {
+    drawLines();
+});
+
+// Start observing the video containers
+document.querySelectorAll('.video-wrapper').forEach(div => {
+    resizeObserver.observe(div);
+});
 </script>
     <script src="https://cdn.tailwindcss.com"></script>
 </body>

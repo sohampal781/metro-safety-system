@@ -16,14 +16,14 @@
         video { width: 100% !important; height: 100% !important; object-fit: cover; position: absolute; top: 0; left: 0; }
         svg { position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 10; pointer-events: none; }
 
-        /* Independent Sidebar Scrolling */
+        /* Independent Sidebar Scrolling Fix */
         #slider-panel { display: block !important; overflow-y: auto !important; max-height: calc(100vh - 220px); padding-bottom: 40px; }
         #slider-panel::-webkit-scrollbar { width: 6px; }
         #slider-panel::-webkit-scrollbar-track { background: #0a0a0a; }
         #slider-panel::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
         #slider-panel::-webkit-scrollbar-thumb:hover { background: #00ff00; }
 
-        .unsafe-overlay-tint { fill: rgba(220, 38, 38, 0.3); pointer-events: none; }
+        .unsafe-overlay-tint { fill: rgba(220, 38, 38, 0.4); pointer-events: none; }
         .camera-error { background: repeating-linear-gradient(45deg, #000, #000 10px, #050505 10px, #050505 20px); display: flex; align-items: center; justify-content: center; color: #333; font-size: 10px; }
     </style>
 </head>
@@ -52,8 +52,10 @@
                 <svg id="safety-overlay"></svg>
             </div>
             <div class="bg-slate-800 border-l border-slate-700 flex flex-col p-4">
-                <h3 class="font-bold text-white border-b border-slate-700 pb-2 mb-4 text-sm">LIVE VIOLATIONS</h3>
-                <div id="alerts-feed" class="text-center text-slate-500 mt-10 italic text-sm">System Armed. No violations.</div>
+                <h3 class="font-bold text-white border-b border-slate-700 pb-2 mb-4 text-sm">MASTER VIOLATION FEED</h3>
+                <div id="alerts-feed" class="flex-1 overflow-y-auto space-y-3">
+                    <div class="text-center text-slate-500 mt-10 italic text-sm">System Armed. No violations.</div>
+                </div>
             </div>
         </div>
 
@@ -92,191 +94,154 @@
     </main>
 
     <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-    import { getFirestore, doc, setDoc, collection } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { getFirestore, doc, setDoc, collection, query, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
-    const firebaseConfig = { 
-        apiKey: "AIzaSyBoWtfLODLrDhRKkMew0sLceDgHBNAQAPM", 
-        projectId: "metro-safety-system", 
-        databaseURL: "https://metro-safety-system-default-rtdb.firebaseio.com" 
-    };
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+        const firebaseConfig = { 
+            apiKey: "AIzaSyBoWtfLODLrDhRKkMew0sLceDgHBNAQAPM", 
+            projectId: "metro-safety-system", 
+            databaseURL: "https://metro-safety-system-default-rtdb.firebaseio.com" 
+        };
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
 
-    let controlPoints = [];
-    let n = 4;
-    let sidePreference = 'left';
+        let controlPoints = [];
+        let n = 4;
+        let sidePreference = 'left'; 
 
-    function initPoints(count) {
-        controlPoints = Array.from({length: count}, (_, i) => ({ x: i / (count - 1), y: 0.5 }));
-        renderSliders();
-        drawLines();
-    }
-
-    window.updatePoint = (index, axis, val) => {
-        controlPoints[index][axis] = val / 100;
-        const labels = document.querySelectorAll('.pos-label');
-        if(labels[index]) labels[index].innerText = `X:${Math.round(controlPoints[index].x*100)}% Y:${Math.round(controlPoints[index].y*100)}%`;
-        drawLines();
-    };
-
-    function renderSliders() {
-        const panel = document.getElementById('slider-panel');
-        panel.innerHTML = '';
-        controlPoints.forEach((pt, i) => {
-            const group = document.createElement('div');
-            group.className = "p-3 bg-black/40 border border-slate-700 rounded-lg mb-4";
-            group.innerHTML = `
-                <div class="flex justify-between items-center mb-2">
-                    <span class="text-green-500 font-bold text-[10px]">POINT ${i + 1}</span>
-                    <span class="pos-label text-[9px] text-slate-500 font-mono">X:${Math.round(pt.x*100)}% Y:${Math.round(pt.y*100)}%</span>
-                </div>
-                <div class="space-y-3">
-                    <input type="range" min="0" max="100" value="${pt.x * 100}" oninput="window.updatePoint(${i}, 'x', this.value)" class="w-full h-1 bg-slate-700 appearance-none accent-sky-500">
-                    <input type="range" min="0" max="100" value="${pt.y * 100}" oninput="window.updatePoint(${i}, 'y', this.value)" class="w-full h-1 bg-slate-700 appearance-none accent-red-500">
-                </div>`;
-            panel.appendChild(group);
-        });
-    }
-
-    function drawLines() {
-        const overlays = ['safety-overlay', 'config-overlay'];
-        overlays.forEach(id => {
-            const svg = document.getElementById(id);
-            const video = document.getElementById('config-video');
-            const w = video.clientWidth || svg.parentElement.clientWidth;
-            const h = video.clientHeight || svg.parentElement.clientHeight;
-            
-            if (!svg || controlPoints.length < 2) return;
-            svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
-
-            let d = `M ${controlPoints[0].x * w} ${controlPoints[0].y * h}`;
-            for (let i = 1; i < controlPoints.length; i++) d += ` L ${controlPoints[i].x * w} ${controlPoints[i].y * h}`;
-
-            let unsafeD = d;
-            if (sidePreference === 'left') {
-                unsafeD += ` L ${w} ${controlPoints[controlPoints.length-1].y * h} L ${w} ${h} L ${controlPoints[0].x * w} ${h} Z`;
-            } else {
-                unsafeD += ` L 0 ${controlPoints[controlPoints.length-1].y * h} L 0 ${h} L ${controlPoints[0].x * w} ${h} Z`;
-            }
-
-            svg.innerHTML = `
-                <path d="${unsafeD}" class="unsafe-overlay-tint" style="fill: rgba(220, 38, 38, 0.4);" />
-                <path d="${d}" stroke="#00ff00" stroke-width="5" fill="none" />
-            `;
-        });
-    }
-
-    // --- CORE MATH: Detection Logic ---
-    function isUnsafe(personX, personY) {
-        for (let i = 0; i < controlPoints.length - 1; i++) {
-            let p1 = controlPoints[i];
-            let p2 = controlPoints[i+1];
-            if (personX >= p1.x && personX <= p2.x) {
-                const lineY = p1.y + (p2.y - p1.y) * (personX - p1.x) / (p2.x - p1.x);
-                // Trigger violation if person Y is deeper into the track area than the line Y
-                return sidePreference === 'left' ? personY > lineY : personY < lineY;
-            }
+        function initPoints(count) {
+            controlPoints = Array.from({length: count}, (_, i) => ({ x: i / (count - 1), y: 0.5 }));
+            renderSliders();
+            drawLines();
         }
-        return false;
-    }
 
-    window.processDetection = (pX, pY) => {
-        if (isUnsafe(pX, pY)) {
-            console.warn("DANGER: Line Crossing Detected!");
-            triggerFaceCapture();
-        }
-    };
+        window.updatePoint = (index, axis, val) => {
+            controlPoints[index][axis] = val / 100;
+            const labels = document.querySelectorAll('.pos-label');
+            if(labels[index]) {
+                labels[index].innerText = `X:${Math.round(controlPoints[index].x*100)}% Y:${Math.round(controlPoints[index].y*100)}%`;
+            }
+            drawLines();
+        };
 
-    async function triggerFaceCapture() {
-        const video = document.getElementById('monitor-video');
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-        canvas.getContext('2d').drawImage(video, 0, 0);
-        
-        const faceDataUrl = canvas.toDataURL('image/jpeg', 0.7);
-        try {
-            const violationId = `VIO-${Date.now()}`;
-            await setDoc(doc(db, "violations", violationId), {
-                timestamp: new Date().toISOString(),
-                image_data: faceDataUrl,
-                status: "UNAUTHORIZED_TRACK_ACCESS",
-                station: "HOWRAH_STN_01"
-            });
-            
-            const feed = document.getElementById('alerts-feed');
-            feed.innerHTML = `
-                <div class="bg-red-900/40 border border-red-500 p-2 mb-2 rounded animate-pulse">
-                    <div class="flex justify-between text-[8px] text-red-400 mb-1">
-                        <span>VIOLATION: TRACK ACCESS</span>
-                        <span>${new Date().toLocaleTimeString()}</span>
+        function renderSliders() {
+            const panel = document.getElementById('slider-panel');
+            panel.innerHTML = '';
+            controlPoints.forEach((pt, i) => {
+                const group = document.createElement('div');
+                group.className = "p-3 bg-black/40 border border-slate-700 rounded-lg mb-4";
+                group.innerHTML = `
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-green-500 font-bold text-[10px]">POINT ${i + 1}</span>
+                        <span class="pos-label text-[9px] text-slate-500 font-mono">X:${Math.round(pt.x*100)}% Y:${Math.round(pt.y*100)}%</span>
                     </div>
-                    <img src="${faceDataUrl}" class="w-full h-24 object-cover rounded">
-                </div>` + feed.innerHTML;
-        } catch (e) { console.error(e); }
-    }
+                    <div class="space-y-3">
+                        <input type="range" min="0" max="100" value="${pt.x * 100}" oninput="window.updatePoint(${i}, 'x', this.value)" class="w-full h-1 bg-slate-700 appearance-none accent-sky-500">
+                        <input type="range" min="0" max="100" value="${pt.y * 100}" oninput="window.updatePoint(${i}, 'y', this.value)" class="w-full h-1 bg-slate-700 appearance-none accent-red-500">
+                    </div>`;
+                panel.appendChild(group);
+            });
+        }
 
-    async function startCamera() {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
-            document.getElementById('monitor-video').srcObject = stream;
-            document.getElementById('config-video').srcObject = stream;
-        } catch (err) { document.querySelectorAll('.video-wrapper').forEach(v => v.classList.add('camera-error')); }
-    }
+        function drawLines() {
+            const overlays = ['safety-overlay', 'config-overlay'];
+            overlays.forEach(id => {
+                const svg = document.getElementById(id);
+                const video = document.getElementById('config-video');
+                const w = video.clientWidth || svg.parentElement.clientWidth;
+                const h = video.clientHeight || svg.parentElement.clientHeight;
+                svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
 
-    window.saveConfig = () => document.getElementById('safety-side-picker').classList.remove('hidden');
+                if (controlPoints.length < 2) return;
 
-    window.setSafetySide = async (side) => {
-        sidePreference = side;
-        drawLines();
-        try {
-            await setDoc(doc(db, "config", "station_settings"), { poly_points: controlPoints, safe_side: sidePreference, updated_at: new Date().toISOString() });
-            document.getElementById('safety-side-picker').classList.add('hidden');
-            window.switchTab('monitor');
-        } catch (e) { alert("Sync Failed: " + e.message); }
-    };
+                let d = `M ${controlPoints[0].x * w} ${controlPoints[0].y * h}`;
+                for (let i = 1; i < controlPoints.length; i++) d += ` L ${controlPoints[i].x * w} ${controlPoints[i].y * h}`;
 
-    window.switchTab = (tab) => {
-        document.getElementById('view-monitor').classList.toggle('hidden', tab !== 'monitor');
-        document.getElementById('view-config').classList.toggle('hidden', tab !== 'config');
-        document.getElementById('tab-monitor').classList.toggle('active', tab === 'monitor');
-        document.getElementById('tab-config').classList.toggle('active', tab === 'config');
-        setTimeout(drawLines, 50);
-    };
+                let unsafeD = d;
+                if (sidePreference === 'left') {
+                    unsafeD += ` L ${w} ${controlPoints[controlPoints.length-1].y * h} L ${w} ${h} L ${controlPoints[0].x * w} ${h} Z`;
+                } else {
+                    unsafeD += ` L 0 ${controlPoints[controlPoints.length-1].y * h} L 0 ${h} L ${controlPoints[0].x * w} ${h} Z`;
+                }
 
-    document.getElementById('pointCount').oninput = (e) => {
-        n = parseInt(e.target.value);
-        document.getElementById('pointCountLabel').innerText = n;
-        initPoints(n);
-    };
+                svg.innerHTML = `
+                    <path d="${unsafeD}" class="unsafe-overlay-tint" />
+                    <path d="${d}" stroke="#00ff00" stroke-width="5" fill="none" stroke-linecap="round" />
+                    ${controlPoints.map(p => `<circle cx="${p.x * w}" cy="${p.y * h}" r="4" fill="white" />`).join('')}`;
+            });
+        }
 
-    window.addEventListener('resize', drawLines);
-    setInterval(() => { document.getElementById('clock').innerText = new Date().toLocaleTimeString(); }, 1000);
-    
-    startCamera();
-    initPoints(4);
-    // This listener runs only on the Master Portal interface
-onSnapshot(query(collection(db, "violations"), orderBy("timestamp", "desc")), (snapshot) => {
-    const feed = document.getElementById('alerts-feed');
-    feed.innerHTML = ""; // Clear for Master review
+        // --- MASTER PORTAL LIVE VIOLATION LISTENER ---
+        function startViolationListener() {
+            const q = query(collection(db, "violations"), orderBy("timestamp", "desc"));
+            onSnapshot(q, (snapshot) => {
+                const feed = document.getElementById('alerts-feed');
+                feed.innerHTML = "";
+                if (snapshot.empty) {
+                    feed.innerHTML = `<div class="text-center text-slate-500 mt-10 italic text-sm">System Armed. No violations.</div>`;
+                    return;
+                }
+                snapshot.forEach(snap => {
+                    const data = snap.data();
+                    const card = document.createElement('div');
+                    card.className = "bg-red-900/30 border border-red-600/50 p-3 mb-3 rounded-lg animate-pulse";
+                    card.innerHTML = `
+                        <div class="flex justify-between text-[8px] text-red-400 font-bold mb-2">
+                            <span>ID: ${snap.id.substring(0,8)}</span>
+                            <span>${new Date(data.timestamp).toLocaleTimeString()}</span>
+                        </div>
+                        <img src="${data.image_data}" class="w-full h-32 object-cover rounded border border-red-900 mb-2">
+                        <div class="text-[10px] text-white">STATUS: TRACK INTRUSION</div>
+                    `;
+                    feed.prepend(card);
+                });
+            });
+        }
 
-    snapshot.forEach(snap => {
-        const data = snap.data();
-        const card = document.createElement('div');
-        card.className = "bg-red-900/40 border border-red-500 p-2 mb-3 rounded shadow-lg";
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
+                document.getElementById('monitor-video').srcObject = stream;
+                document.getElementById('config-video').srcObject = stream;
+            } catch (err) {
+                document.querySelectorAll('.video-wrapper').forEach(v => v.classList.add('camera-error'));
+            }
+        }
+
+        window.saveConfig = () => document.getElementById('safety-side-picker').classList.remove('hidden');
+
+        window.setSafetySide = async (side) => {
+            sidePreference = side;
+            drawLines();
+            try {
+                await setDoc(doc(db, "config", "station_settings"), { poly_points: controlPoints, safe_side: sidePreference, updated_at: new Date().toISOString() });
+                document.getElementById('safety-side-picker').classList.add('hidden');
+                window.switchTab('monitor');
+            } catch (e) { console.error("Save Error:", e); }
+        };
+
+        window.switchTab = (tab) => {
+            document.getElementById('view-monitor').classList.toggle('hidden', tab !== 'monitor');
+            document.getElementById('view-config').classList.toggle('hidden', tab !== 'config');
+            document.getElementById('tab-monitor').classList.toggle('active', tab === 'monitor');
+            document.getElementById('tab-config').classList.toggle('active', tab === 'config');
+            setTimeout(drawLines, 50);
+        };
+
+        document.getElementById('pointCount').oninput = (e) => {
+            n = parseInt(e.target.value);
+            document.getElementById('pointCountLabel').innerText = n;
+            initPoints(n);
+        };
+
+        window.addEventListener('resize', drawLines);
+        setInterval(() => { document.getElementById('clock').innerText = new Date().toLocaleTimeString(); }, 1000);
         
-        // Display face data and metadata for the Master
-        card.innerHTML = `
-            <div class="flex justify-between text-[9px] text-red-400 font-bold mb-2">
-                <span>ID: ${snap.id.substring(0,8)}</span>
-                <span>${new Date(data.timestamp).toLocaleTimeString()}</span>
-            </div>
-            <img src="${data.image_data}" class="w-full h-32 object-cover rounded border border-red-900">
-            <div class="mt-2 text-[10px] text-white">Status: ${data.status}</div>
-        `;
-        feed.appendChild(card);
-    });
-});
-</script>
+        startCamera();
+        initPoints(4);
+        startViolationListener();
+        const resizeObserver = new ResizeObserver(() => drawLines());
+        document.querySelectorAll('.video-wrapper').forEach(div => resizeObserver.observe(div));
+    </script>
 </body>
 </html>

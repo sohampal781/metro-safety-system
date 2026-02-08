@@ -177,6 +177,24 @@
                 </button>
             </div>
         </div>
+        <div id="safety-side-picker" class="hidden absolute inset-0 bg-black/80 flex items-center justify-center z-[2000]">
+    <div class="bg-slate-900 border border-slate-700 p-6 rounded-xl shadow-2xl text-center max-w-sm">
+        <i class="fa-solid fa-shield-halved text-4xl text-sky-500 mb-4"></i>
+        <h3 class="text-xl font-bold text-white mb-2">Define Safe Zone</h3>
+        <p class="text-slate-400 text-sm mb-6">Which side of the green line is the SAFE PLATFORM?</p>
+        
+        <div class="grid grid-cols-2 gap-4">
+            <button onclick="setSafetySide('above')" class="bg-slate-800 hover:bg-sky-900 border border-slate-600 p-4 rounded-lg transition group">
+                <div class="text-white font-bold group-hover:text-sky-400">ABOVE / LEFT</div>
+                <div class="text-[10px] text-slate-500">Platform is here</div>
+            </button>
+            <button onclick="setSafetySide('below')" class="bg-slate-800 hover:bg-red-900 border border-slate-600 p-4 rounded-lg transition group">
+                <div class="text-white font-bold group-hover:text-red-400">BELOW / RIGHT</div>
+                <div class="text-[10px] text-slate-500">Track is here</div>
+            </button>
+        </div>
+    </div>
+</div>
     </div>
 </main>
 <script type="module">
@@ -276,20 +294,79 @@
         drawLines();
     };
 
-    window.saveConfig = async () => {
-        const configData = {
-            station_id: "STN-01",
-            poly_points: controlPoints,
-            orientation: "horizontal",
-            updated_at: new Date().toISOString()
-        };
-        try {
-            await setDoc(doc(db, "config", "station_settings"), configData);
-            alert("HORIZONTAL ZONE SAVED SUCCESSFULLY");
-            window.switchTab('monitor');
-        } catch (e) { alert("Error saving: " + e.message); }
+  let safeSide = 'above'; // Global state
+
+// 1. Initiate the Save Process (The "Lock")
+window.saveConfig = () => {
+    if (controlPoints.length < 2) return alert("Define the line first.");
+    // Show the side picker instead of saving immediately
+    document.getElementById('safety-side-picker').classList.remove('hidden');
+};
+
+// 2. Finalize Safety side and upload to Firebase
+window.setSafetySide = async (side) => {
+    safeSide = side;
+    document.getElementById('safety-side-picker').classList.add('hidden');
+
+    const configData = {
+        station_id: "STN-01",
+        poly_points: controlPoints,
+        safe_side: safeSide,
+        updated_at: new Date().toISOString()
     };
 
+    try {
+        await setDoc(doc(db, "config", "station_settings"), configData);
+        alert(`SYSTEM LOCKED: ${side.toUpperCase()} is SAFE. Monitoring for intruders...`);
+        window.switchTab('monitor');
+    } catch (e) {
+        alert("Sync Error: " + e.message);
+    }
+};
+
+/**
+ * CORE DETECTION ALGORITHM
+ * Determines if a point (person) is on the unsafe side of the line segments
+ */
+function isUnsafe(personX, personY) {
+    // Find which line segment the person is "above" or "below" based on X coordinate
+    for (let i = 0; i < controlPoints.length - 1; i++) {
+        let p1 = controlPoints[i];
+        let p2 = controlPoints[i+1];
+
+        if (personX >= p1.x && personX <= p2.x) {
+            // Linear interpolation to find the Y of the line at this specific X
+            const lineY = p1.y + (p2.y - p1.y) * (personX - p1.x) / (p2.x - p1.x);
+            
+            if (safeSide === 'above') {
+                return personY > lineY; // If safe is above, then below (greater Y) is unsafe
+            } else {
+                return personY < lineY; // If safe is below, then above (smaller Y) is unsafe
+            }
+        }
+    }
+    return false;
+}
+
+// 3. Simulated Detection Hook (Connect this to your AI/Python output)
+window.processDetection = (detectedX, detectedY) => {
+    if (isUnsafe(detectedX, detectedY)) {
+        console.warn("VIOLATION DETECTED! Capturing Face...");
+        triggerFaceCapture();
+    }
+};
+
+async function triggerFaceCapture() {
+    const video = document.getElementById('monitor-video');
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    
+    const faceData = canvas.toDataURL('image/jpeg');
+    // Here you would upload faceData to Firebase Storage/Firestore
+    console.log("Face Data captured successfully.");
+}
     window.switchTab = (tab) => {
         document.getElementById('view-monitor').classList.toggle('hidden', tab !== 'monitor');
         document.getElementById('view-config').classList.toggle('hidden', tab !== 'config');

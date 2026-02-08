@@ -10,47 +10,48 @@
         :root { --neon-green: #00ff00; --danger-red: rgba(220, 38, 38, 0.4); --terminal-black: #050505; }
         body { background-color: #000; color: #ccc; overflow: hidden; font-family: 'Courier New', monospace; text-transform: uppercase; }
         
-        /* Industrial Navigation */
         .nav-btn { padding: 14px 28px; border-right: 1px solid #222; color: #555; font-weight: 800; background: #000; cursor: pointer; transition: all 0.3s ease; letter-spacing: 1px; }
         .nav-btn:hover { color: #fff; background: #111; }
         .nav-btn.active { color: var(--neon-green); background: #051a05; border-bottom: 3px solid var(--neon-green); }
 
-        /* Video & Canvas Overlay Layering */
         .viewport-container { position: relative; width: 100%; height: 100%; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid #111; }
         video { width: 100% !important; height: 100% !important; object-fit: cover; position: absolute; top: 0; left: 0; z-index: 1; }
         svg { position: absolute; inset: 0; width: 100% !important; height: 100% !important; z-index: 10; pointer-events: none; }
 
-        /* FIXED: Sidebar Control Panel Layout */
-        #config-sidebar-container {
-            display: flex;
-            flex-direction: column;
+        /* CRITICAL FIX: Locked Sidebar Layout */
+        #config-view-container {
+            display: grid;
+            grid-template-cols: 1fr 380px;
             height: 100%;
         }
 
-        #slider-panel { 
-            display: block !important; 
-            overflow-y: auto !important; 
-            flex: 1; /* This allows the panel to take remaining space and scroll */
-            padding-right: 10px; 
-            margin-bottom: 10px; 
+        .sidebar-locked {
+            display: flex;
+            flex-direction: column;
+            height: 100%; /* Fixes the height to the screen */
+            background: #0f172a; /* Slate 900 */
+            border-left: 1px solid #334155;
+            padding: 1.5rem;
         }
 
+        #slider-panel { 
+            flex: 1; /* This takes up all available middle space */
+            overflow-y: auto !important; 
+            margin: 1rem 0;
+            padding-right: 10px;
+        }
+
+        /* Scrollbar styling */
         #slider-panel::-webkit-scrollbar { width: 4px; }
         #slider-panel::-webkit-scrollbar-track { background: #0a0a0a; }
         #slider-panel::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
         #slider-panel::-webkit-scrollbar-thumb:hover { background: var(--neon-green); }
 
-        /* Violation UI */
         .unsafe-overlay-tint { fill: var(--danger-red); transition: opacity 0.5s ease; }
         .violation-card { background: rgba(15, 15, 15, 0.9); border-left: 4px solid #dc2626; animation: alert-pulse 2s infinite; }
         @keyframes alert-pulse { 0% { border-color: #dc2626; } 50% { border-color: #450a0a; } 100% { border-color: #dc2626; } }
 
-        /* Industrial Scoping */
-        .status-indicator { display: inline-flex; align-items: center; gap: 8px; font-size: 10px; color: #666; }
-        .status-online { color: var(--neon-green); }
-
-        /* Modal Styling */
-        #image-modal img { max-height: 80vh; object-fit: contain; box-shadow: 0 0 50px rgba(220, 38, 38, 0.5); }
+        #image-modal img { max-height: 80vh; object-fit: contain; }
     </style>
 </head>
 <body class="flex flex-col h-screen">
@@ -73,254 +74,121 @@
         <div class="flex items-center gap-6 font-mono">
             <div class="text-right">
                 <div id="clock" class="text-sm text-white font-bold">00:00:00</div>
-                <div class="status-indicator status-online"><i class="fa-solid fa-circle text-[6px]"></i> SYSTEM ENCRYPTED</div>
+                <div class="text-[10px] text-green-500 font-bold uppercase">System Online</div>
             </div>
-            <div class="h-10 w-px bg-slate-800"></div>
-            <div class="text-[10px] text-slate-500">CAM_ID: 01-MASTER<br>AUTH: MASTER_USER</div>
         </div>
     </header>
 
     <main class="flex-1 relative overflow-hidden bg-black">
         
-        <div id="view-monitor" class="absolute inset-0 grid grid-cols-[1fr_420px] transition-all duration-500">
+        <div id="view-monitor" class="absolute inset-0 grid grid-cols-[1fr_420px]">
             <div class="viewport-container border-r border-slate-800">
                 <video id="monitor-video" autoplay playsinline muted></video>
                 <svg id="safety-overlay"></svg>
-                
-                <div class="absolute top-6 left-6 z-20 flex flex-col gap-2">
-                    <div class="bg-black/60 backdrop-blur-md px-4 py-2 border-l-2 border-sky-500 text-[10px] text-white">
-                        <span class="text-slate-400">STATUS:</span> <span id="sys-status">MONITORING</span>
-                    </div>
-                    <div class="bg-black/60 backdrop-blur-md px-4 py-2 border-l-2 border-green-500 text-[10px] text-white">
-                        <span class="text-slate-400">ZONE:</span> <span id="active-side-display">LEFT SAFE</span>
-                    </div>
-                </div>
-
-                <button onclick="window.triggerFaceCapture('MASTER_MANUAL')" class="absolute bottom-8 right-8 bg-red-600 hover:bg-red-700 text-white w-16 h-16 rounded-full z-50 shadow-[0_0_20px_rgba(220,38,38,0.5)] transition-transform active:scale-95 flex items-center justify-center">
+                <button onclick="window.triggerFaceCapture('MANUAL')" class="absolute bottom-8 right-8 bg-red-600 text-white w-16 h-16 rounded-full z-50 flex items-center justify-center shadow-lg">
                     <i class="fa-solid fa-camera text-2xl"></i>
                 </button>
             </div>
-
             <div class="bg-slate-900 flex flex-col">
-                <div class="p-4 border-b border-slate-800 bg-slate-900/50 flex justify-between items-center">
-                    <h3 class="font-bold text-white text-xs tracking-widest">LIVE INTRUSION ALERTS</h3>
-                    <span class="text-[10px] text-red-500 animate-pulse font-bold">REAL-TIME</span>
-                </div>
-                <div id="alerts-feed" class="flex-1 overflow-y-auto p-4 space-y-4">
-                    <div class="h-full flex flex-col items-center justify-center text-slate-600 italic text-sm">
-                        <i class="fa-solid fa-shield-halved text-4xl mb-4 opacity-20"></i>
-                        Zone Secured.
-                    </div>
-                </div>
+                <div class="p-4 border-b border-slate-800 text-white text-xs font-bold tracking-widest">LIVE INTRUSION ALERTS</div>
+                <div id="alerts-feed" class="flex-1 overflow-y-auto p-4 space-y-4"></div>
             </div>
         </div>
 
-        <div id="view-config" class="absolute inset-0 hidden grid grid-cols-[1fr_380px] bg-slate-950">
-            <div class="viewport-container">
-                <video id="config-video" autoplay playsinline muted class="opacity-40"></video>
-                <svg id="config-overlay"></svg>
-            </div>
-            
-            <div class="bg-slate-900 border-l border-slate-700 p-6 shadow-2xl">
-                <div id="config-sidebar-container">
-                    <h3 class="text-white font-bold mb-6 flex items-center gap-2">
-                        <i class="fa-solid fa-sliders text-sky-500"></i> ZONE CALIBRATION
-                    </h3>
-                    
-                    <div class="bg-black/40 p-4 rounded-lg border border-slate-800 mb-4">
-                        <label class="text-[10px] text-slate-500 block mb-3 font-bold">NODE DENSITY (2-10)</label>
-                        <input id="pointCount" type="range" min="2" max="10" value="4" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500">
-                        <div class="flex justify-between text-sky-500 font-mono text-[10px] mt-2">
-                            <span>MIN_RES</span>
-                            <span id="pointCountLabel" class="text-white bg-sky-600 px-2 rounded">4</span>
-                            <span>MAX_RES</span>
+        <div id="view-config" class="absolute inset-0 hidden">
+            <div id="config-view-container">
+                <div class="viewport-container">
+                    <video id="config-video" autoplay playsinline muted class="opacity-40"></video>
+                    <svg id="config-overlay"></svg>
+                </div>
+                
+                <div class="sidebar-locked">
+                    <div class="shrink-0">
+                        <h3 class="text-white font-bold mb-6 flex items-center gap-2">
+                            <i class="fa-solid fa-sliders text-sky-500"></i> ZONE CALIBRATION
+                        </h3>
+                        
+                        <div class="bg-black/40 p-4 rounded-lg border border-slate-800">
+                            <label class="text-[10px] text-slate-500 block mb-3 font-bold uppercase">Node Density (2-10)</label>
+                            <input id="pointCount" type="range" min="2" max="10" value="4" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500">
+                            <div class="flex justify-between text-sky-500 font-mono text-[10px] mt-2">
+                                <span>MIN</span>
+                                <span id="pointCountLabel" class="text-white bg-sky-600 px-2 rounded">4</span>
+                                <span>MAX</span>
+                            </div>
                         </div>
                     </div>
 
                     <div id="slider-panel">
                         </div>
 
-                    <button onclick="window.saveConfig()" class="w-full bg-green-600 hover:bg-green-500 text-white py-4 rounded font-black tracking-widest transition-all shadow-lg mt-2">
-                        COMMIT ZONE TO DATABASE
-                    </button>
+                    <div class="shrink-0 pt-2">
+                        <button onclick="window.saveConfig()" class="w-full bg-green-600 hover:bg-green-500 text-white py-4 rounded font-black tracking-widest transition-all shadow-lg">
+                            COMMIT ZONE TO DATABASE
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
 
         <div id="view-prosecute" class="absolute inset-0 hidden bg-slate-950 p-8 overflow-y-auto">
             <div class="max-w-7xl mx-auto">
-                <div class="flex justify-between items-end border-b border-slate-800 pb-6 mb-8">
-                    <div>
-                        <h2 class="text-2xl font-black text-white tracking-tighter">PROSECUTION RECORDS</h2>
-                        <p class="text-slate-500 text-xs mt-1 font-mono text-uppercase">Centralized Intrusion Database / Authorized Access Only</p>
-                    </div>
-                    <div class="flex gap-4">
-                        <div class="bg-slate-900 px-4 py-2 border border-slate-800 text-[10px]">
-                            <span class="text-slate-500">TOTAL RECORDS:</span> <span id="record-count" class="text-white">0</span>
-                        </div>
-                    </div>
-                </div>
-                <div id="prosecution-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    </div>
+                <h2 class="text-2xl font-black text-white border-b border-slate-800 pb-4 mb-8">PROSECUTION RECORDS</h2>
+                <div id="prosecution-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"></div>
             </div>
         </div>
 
         <div id="safety-side-picker" class="hidden absolute inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-[2000]">
-            <div class="bg-slate-900 border border-slate-700 p-10 rounded-2xl shadow-2xl text-center max-w-lg w-full">
-                <div class="text-sky-500 mb-4 font-black tracking-[0.3em] text-[10px]">SYSTEM CALIBRATION</div>
+            <div class="bg-slate-900 border border-slate-700 p-10 rounded-2xl text-center max-w-lg w-full">
                 <h3 class="text-2xl font-bold text-white mb-8">WHICH SEGMENT IS SAFE?</h3>
                 <div class="grid grid-cols-2 gap-6">
-                    <button onclick="window.setSafetySide('left')" class="bg-slate-800 hover:bg-green-900/40 border-2 border-slate-700 hover:border-green-500 p-8 rounded-xl transition-all group">
-                        <i class="fa-solid fa-arrow-left text-3xl text-slate-600 group-hover:text-green-500 mb-4 block"></i>
-                        <span class="text-white font-bold block">LEFT SIDE</span>
+                    <button onclick="window.setSafetySide('left')" class="bg-slate-800 hover:bg-green-900/40 border-2 border-slate-700 p-8 rounded-xl transition-all">
+                        <i class="fa-solid fa-arrow-left text-3xl mb-4 block"></i>
+                        <span class="text-white font-bold">LEFT SIDE</span>
                     </button>
-                    <button onclick="window.setSafetySide('right')" class="bg-slate-800 hover:bg-green-900/40 border-2 border-slate-700 hover:border-green-500 p-8 rounded-xl transition-all group">
-                        <i class="fa-solid fa-arrow-right text-3xl text-slate-600 group-hover:text-green-500 mb-4 block"></i>
-                        <span class="text-white font-bold block">RIGHT SIDE</span>
+                    <button onclick="window.setSafetySide('right')" class="bg-slate-800 hover:bg-green-900/40 border-2 border-slate-700 p-8 rounded-xl transition-all">
+                        <i class="fa-solid fa-arrow-right text-3xl mb-4 block"></i>
+                        <span class="text-white font-bold">RIGHT SIDE</span>
                     </button>
                 </div>
-                <button onclick="document.getElementById('safety-side-picker').classList.add('hidden')" class="mt-8 text-slate-600 hover:text-white text-[10px] underline tracking-widest">ABORT CONFIGURATION</button>
             </div>
         </div>
     </main>
-
-    <div id="image-modal" class="hidden fixed inset-0 bg-black/95 z-[5000] flex flex-col items-center justify-center p-10">
-        <button onclick="document.getElementById('image-modal').classList.add('hidden')" class="absolute top-10 right-10 text-white text-4xl hover:text-red-500 transition-colors">&times;</button>
-        <div class="relative max-w-5xl w-full">
-            <img id="modal-img" src="" class="w-full h-auto border-4 border-red-600 rounded-lg shadow-[0_0_50px_rgba(220,38,38,0.5)]">
-            <div id="modal-meta" class="mt-6 text-center text-sky-400 font-mono text-lg tracking-widest"></div>
-        </div>
-    </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
         import { getFirestore, doc, setDoc, collection, query, orderBy, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
-        // Firebase Configuration
-        const firebaseConfig = { 
-            apiKey: "AIzaSyBoWtfLODLrDhRKkMew0sLceDgHBNAQAPM", 
-            projectId: "metro-safety-system", 
-            databaseURL: "https://metro-safety-system-default-rtdb.firebaseio.com" 
-        };
+        const firebaseConfig = { apiKey: "AIzaSyBoWtfLODLrDhRKkMew0sLceDgHBNAQAPM", projectId: "metro-safety-system" };
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // State Machine
         let controlPoints = [];
         let nodeCount = 4;
         let safeSide = 'left';
 
-        /**
-         * 1. INTRUSION LOGIC
-         */
-        window.isUnsafe = (pX, pY) => {
-            if (controlPoints.length < 2) return false;
-            const pts = [...controlPoints].sort((a, b) => a.x - b.x);
-            
-            for (let i = 0; i < pts.length - 1; i++) {
-                const p1 = pts[i];
-                const p2 = pts[i+1];
-                if (pX >= p1.x && pX <= p2.x) {
-                    return safeSide === 'left' ? pX > p1.x : pX < p1.x;
-                }
-            }
-            return false;
-        };
-
-        /**
-         * 2. REAL-TIME DATA LISTENER
-         */
         window.initListeners = () => {
             const q = query(collection(db, "violations"), orderBy("timestamp", "desc"));
-            
             onSnapshot(q, (snapshot) => {
                 const list = document.getElementById('prosecution-list');
                 const feed = document.getElementById('alerts-feed');
-                const recordCount = document.getElementById('record-count');
-                
                 if (list) list.innerHTML = "";
                 if (feed) feed.innerHTML = "";
-                if (recordCount) recordCount.innerText = snapshot.size;
 
                 snapshot.forEach(docSnap => {
                     const d = docSnap.data();
-                    const recordId = docSnap.id;
-
-                    // Prosecution Card
                     const card = document.createElement('div');
-                    card.className = "bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-2xl hover:border-red-900 transition-all group";
+                    card.className = "bg-slate-900 border border-slate-800 rounded-xl overflow-hidden";
                     card.innerHTML = `
-                        <div class="relative">
-                            <img src="${d.image_base64 || d.image_data}" class="w-full h-44 object-cover cursor-zoom-in" 
-                                 onclick='window.openPreview(${JSON.stringify(d)})'>
-                            <div class="absolute bottom-3 left-3 text-[9px] text-white font-black bg-black/50 px-2 py-1">${d.trigger_type || d.type}</div>
-                        </div>
+                        <img src="${d.image_base64}" class="w-full h-40 object-cover">
                         <div class="p-4">
-                            <div class="flex justify-between text-[9px] text-slate-500 mb-4 font-mono">
-                                <span>ID: ${recordId.substring(0,8)}</span>
-                                <span>${new Date(d.timestamp).toLocaleString()}</span>
-                            </div>
-                            <button onclick="window.deleteRecord('${recordId}')" class="w-full bg-red-900/20 hover:bg-red-600 text-red-500 hover:text-white py-3 text-[10px] font-black transition-all rounded-lg border border-red-900/50">PURGE FROM DATABASE</button>
+                            <div class="text-[10px] text-red-500 font-bold mb-2">${d.trigger_type}</div>
+                            <button onclick="window.deleteRecord('${docSnap.id}')" class="w-full bg-red-900/20 text-red-500 py-2 text-[10px] rounded">PURGE</button>
                         </div>`;
-                    
                     if (list) list.appendChild(card);
-                    
-                    // Alert Feed Mini Card
-                    if (feed) {
-                        const miniCard = document.createElement('div');
-                        miniCard.className = "violation-card p-3 rounded-lg flex gap-3 items-center";
-                        miniCard.innerHTML = `
-                            <img src="${d.image_base64 || d.image_data}" class="w-16 h-16 rounded object-cover border border-red-900">
-                            <div>
-                                <div class="text-[9px] font-black text-red-500">BREACH DETECTED</div>
-                                <div class="text-[8px] text-slate-400 font-mono">${new Date(d.timestamp).toLocaleTimeString()}</div>
-                                <button onclick="window.switchTab('prosecute')" class="text-[8px] text-sky-500 underline mt-1">VIEW PROSECUTION</button>
-                            </div>`;
-                        feed.appendChild(miniCard);
-                    }
+                    if (feed) feed.appendChild(card.cloneNode(true));
                 });
             });
-        };
-
-        /**
-         * 3. UI & CAPTURE FUNCTIONS
-         */
-        window.openPreview = (data) => {
-            const modal = document.getElementById('image-modal');
-            document.getElementById('modal-img').src = data.image_base64 || data.image_data;
-            document.getElementById('modal-meta').innerText = `BREACH DETECTED: ${new Date(data.timestamp).toLocaleString()}`;
-            modal.classList.remove('hidden');
-        };
-
-        window.triggerFaceCapture = async (reasonCode) => {
-            const videoSource = document.getElementById('monitor-video');
-            if (!videoSource || videoSource.readyState < 2) return;
-
-            const offscreenCanvas = document.createElement('canvas');
-            offscreenCanvas.width = videoSource.videoWidth;
-            offscreenCanvas.height = videoSource.videoHeight;
-            const context = offscreenCanvas.getContext('2d');
-            context.drawImage(videoSource, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
-            
-            const blobData = offscreenCanvas.toDataURL('image/jpeg', 0.7);
-            const recordUid = `RECORD_${Date.now()}`;
-
-            try {
-                await setDoc(doc(db, "violations", recordUid), {
-                    timestamp: new Date().toISOString(),
-                    image_base64: blobData,
-                    trigger_type: reasonCode,
-                    station_id: "HOWRAH_STN_01",
-                    status: "ACTIVE_PROSECUTION"
-                });
-            } catch (err) { console.error("Firestore Error", err); }
-        };
-
-        window.deleteRecord = async (docId) => {
-            if (confirm("Confirm permanent deletion?")) {
-                try { await deleteDoc(doc(db, "violations", docId)); } 
-                catch (err) { alert("Delete failed: " + err.message); }
-            }
         };
 
         window.updatePoint = (index, axis, value) => {
@@ -335,15 +203,15 @@
             panel.innerHTML = '';
             controlPoints.forEach((pt, i) => {
                 const group = document.createElement('div');
-                group.className = "p-4 bg-black/60 border border-slate-800 rounded-xl mb-4 hover:border-sky-900 transition-colors";
+                group.className = "p-4 bg-black/60 border border-slate-800 rounded-xl mb-4";
                 group.innerHTML = `
                     <div class="flex justify-between items-center mb-3">
                         <span class="text-sky-500 font-black text-[10px]">NODE ${i + 1}</span>
                         <span class="pos-label text-[9px] text-slate-500 font-mono">X:${Math.round(pt.x * 100)}% Y:${Math.round(pt.y * 100)}%</span>
                     </div>
                     <div class="space-y-4">
-                        <input type="range" min="0" max="100" value="${pt.x * 100}" oninput="window.updatePoint(${i}, 'x', this.value)" class="w-full h-1 bg-slate-800 rounded-lg appearance-none accent-sky-500 cursor-pointer">
-                        <input type="range" min="0" max="100" value="${pt.y * 100}" oninput="window.updatePoint(${i}, 'y', this.value)" class="w-full h-1 bg-slate-800 rounded-lg appearance-none accent-red-600 cursor-pointer">
+                        <input type="range" min="0" max="100" value="${pt.x * 100}" oninput="window.updatePoint(${i}, 'x', this.value)" class="w-full h-1 bg-slate-800 appearance-none accent-sky-500">
+                        <input type="range" min="0" max="100" value="${pt.y * 100}" oninput="window.updatePoint(${i}, 'y', this.value)" class="w-full h-1 bg-slate-800 appearance-none accent-red-600">
                     </div>`;
                 panel.appendChild(group);
             });
@@ -351,31 +219,24 @@
 
         window.drawLines = () => {
             const targets = ['safety-overlay', 'config-overlay'];
-            targets.forEach(svgId => {
-                const svgElement = document.getElementById(svgId);
-                const referenceVideo = document.getElementById('config-video');
-                const width = referenceVideo.clientWidth || svgElement.parentElement.clientWidth;
-                const height = referenceVideo.clientHeight || svgElement.parentElement.clientHeight;
+            targets.forEach(id => {
+                const svg = document.getElementById(id);
+                const parent = svg.parentElement;
+                const w = parent.clientWidth, h = parent.clientHeight;
+                if (w === 0) return;
+                svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
                 
-                if (!svgElement || width === 0) return;
-                svgElement.setAttribute('viewBox', `0 0 ${width} ${height}`);
+                let path = `M ${controlPoints[0].x * w} ${controlPoints[0].y * h}`;
+                for (let j = 1; j < controlPoints.length; j++) path += ` L ${controlPoints[j].x * w} ${controlPoints[j].y * h}`;
 
-                let pathString = `M ${controlPoints[0].x * width} ${controlPoints[0].y * height}`;
-                for (let j = 1; j < controlPoints.length; j++) {
-                    pathString += ` L ${controlPoints[j].x * width} ${controlPoints[j].y * height}`;
-                }
+                let shade = path;
+                if (safeSide === 'left') shade += ` L ${w} ${controlPoints[nodeCount-1].y * h} L ${w} ${h} L 0 ${h} L 0 ${controlPoints[0].y * h} Z`;
+                else shade += ` L 0 ${controlPoints[nodeCount-1].y * h} L 0 ${h} L ${w} ${h} L ${w} ${controlPoints[0].y * h} Z`;
 
-                let shadePath = pathString;
-                if (safeSide === 'left') {
-                    shadePath += ` L ${width} ${controlPoints[nodeCount - 1].y * height} L ${width} ${height} L 0 ${height} L 0 ${controlPoints[0].y * height} Z`;
-                } else {
-                    shadePath += ` L 0 ${controlPoints[nodeCount - 1].y * height} L 0 ${height} L ${width} ${height} L ${width} ${controlPoints[0].y * height} Z`;
-                }
-
-                svgElement.innerHTML = `
-                    <path d="${shadePath}" class="unsafe-overlay-tint" />
-                    <path d="${pathString}" stroke="#00ff00" stroke-width="4" fill="none" />
-                    ${svgId === 'config-overlay' ? controlPoints.map(p => `<circle cx="${p.x * width}" cy="${p.y * height}" r="6" fill="#fff" stroke="#00ff00" stroke-width="2" />`).join('') : ''}
+                svg.innerHTML = `
+                    <path d="${shade}" class="unsafe-overlay-tint" />
+                    <path d="${path}" stroke="#00ff00" stroke-width="4" fill="none" />
+                    ${id === 'config-overlay' ? controlPoints.map(p => `<circle cx="${p.x*w}" cy="${p.y*h}" r="5" fill="white" />`).join('') : ''}
                 `;
             });
         };
@@ -392,20 +253,11 @@
 
         window.setSafetySide = async (choice) => {
             safeSide = choice;
-            window.drawLines();
-            document.getElementById('active-side-display').innerText = `${choice.toUpperCase()} SAFE`;
-            try {
-                await setDoc(doc(db, "config", "station_settings"), {
-                    poly_points: controlPoints,
-                    safe_platform_side: safeSide,
-                    calibration_date: new Date().toISOString()
-                });
-                document.getElementById('safety-side-picker').classList.add('hidden');
-                window.switchTab('monitor');
-            } catch (err) { alert("Sync Failed: " + err.message); }
+            await setDoc(doc(db, "config", "station_settings"), { points: controlPoints, safeSide: safeSide });
+            document.getElementById('safety-side-picker').classList.add('hidden');
+            window.switchTab('monitor');
         };
 
-        // Node Density Handler
         document.getElementById('pointCount').oninput = (e) => {
             nodeCount = parseInt(e.target.value);
             document.getElementById('pointCountLabel').innerText = nodeCount;
@@ -414,22 +266,17 @@
             window.drawLines();
         };
 
-        // Bootstrap Sequence
-        const init = async () => {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                document.getElementById('monitor-video').srcObject = stream;
-                document.getElementById('config-video').srcObject = stream;
-            } catch (err) { console.error("Camera Error", err); }
-
-            controlPoints = Array.from({length: 4}, (_, i) => ({ x: i / 3, y: 0.5 }));
-            window.renderSliders();
-            window.initListeners();
-            setInterval(() => { document.getElementById('clock').innerText = new Date().toLocaleTimeString(); }, 1000);
-            setTimeout(window.drawLines, 1000);
-        };
-
-        init();
+        // Execution
+        controlPoints = Array.from({length: 4}, (_, i) => ({ x: i / 3, y: 0.5 }));
+        window.renderSliders();
+        window.initListeners();
+        setInterval(() => document.getElementById('clock').innerText = new Date().toLocaleTimeString(), 1000);
+        
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
+            document.getElementById('monitor-video').srcObject = stream;
+            document.getElementById('config-video').srcObject = stream;
+        } catch(e) { console.error("Camera access denied"); }
     </script>
 </body>
 </html>

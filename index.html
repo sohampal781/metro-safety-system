@@ -129,580 +129,186 @@
         </div>
     </header>
 
-    <main class="flex-1 relative overflow-hidden">
-        
-        <div id="view-monitor" class="absolute inset-0 grid grid-cols-[1fr_400px]">
-            <div class="video-wrapper relative group">
-                <video id="monitor-video" autoplay playsinline muted></video>
-                <svg id="safety-overlay" class="absolute inset-0 w-full h-full pointer-events-none"></svg>
-                
-                <div class="absolute top-4 left-4 bg-black/60 backdrop-blur px-3 py-1 rounded border-l-4 border-sky-500 text-xs text-white">
-                    Monitoring Zone: <span id="zone-status-text">Active</span>
-                </div>
-            </div>
-
-            <div class="bg-slate-800 border-l border-slate-700 flex flex-col">
-                <div class="p-4 bg-slate-900 border-b border-slate-700 flex justify-between items-center">
-                    <h3 class="font-bold text-white">Live Violations</h3>
-                    <span class="bg-red-900/50 text-red-400 text-xs px-2 py-1 rounded">Real-time</span>
-                </div>
-                
-                <div id="alerts-feed" class="flex-1 overflow-y-auto p-4 space-y-3">
-                    <div class="text-center text-slate-500 mt-10 italic text-sm">
-                        Waiting for detection from Python backend...
-                    </div>
-                </div>
+<main class="flex-1 relative overflow-hidden">
+    <div id="view-monitor" class="absolute inset-0 grid grid-cols-[1fr_400px]">
+        <div class="video-wrapper relative group bg-black flex items-center justify-center">
+            <video id="monitor-video" autoplay playsinline muted class="w-full h-full object-contain"></video>
+            <svg id="safety-overlay" class="absolute inset-0 w-full h-full pointer-events-none"></svg>
+            <div class="absolute top-4 left-4 bg-black/60 backdrop-blur px-3 py-1 rounded border-l-4 border-sky-500 text-xs text-white">
+                Monitoring Zone: <span id="zone-status-text" class="text-green-400">ACTIVE</span>
             </div>
         </div>
 
-        <div id="view-config" class="absolute inset-0 hidden flex flex-col bg-slate-900">
-            <div class="h-12 bg-slate-800 border-b border-slate-700 flex items-center px-4 gap-4 justify-between">
-                <div class="flex gap-2">
-                    <button onclick="startDrawing()" class="bg-sky-600 hover:bg-sky-500 text-white px-3 py-1.5 rounded text-sm font-semibold transition">
-                        <i class="fa-solid fa-pencil mr-2"></i>New Curve
-                    </button>
-                    <button onclick="clearZone()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-1.5 rounded text-sm font-semibold transition">
-                        <i class="fa-solid fa-trash mr-2"></i>Clear
-                    </button>
-                </div>
-                <div class="flex items-center gap-2 text-sm text-slate-400">
-                    <i class="fa-solid fa-circle-info text-sky-500"></i>
-                    <span>Instructions: Click points on the video to draw the platform edge. Double-click to finish.</span>
-                    <div class="flex items-center gap-3 text-sm ml-6">
-    <label class="text-slate-400">CONTROL POINTS</label>
-    <input id="pointCount" type="range" min="2" max="10" value="4" class="w-40">
-    <span id="pointCountLabel" class="text-green-400 font-mono">4</span>
-</div>
-
-                </div>
-                <button onclick="saveConfig()" class="bg-green-600 hover:bg-green-500 text-white px-4 py-1.5 rounded text-sm font-bold shadow-lg shadow-green-900/20">
-                    <i class="fa-solid fa-floppy-disk mr-2"></i>Save Zone
-                </button>
+        <div class="bg-slate-800 border-l border-slate-700 flex flex-col">
+            <div class="p-4 bg-slate-900 border-b border-slate-700 flex justify-between items-center">
+                <h3 class="font-bold text-white">Live Violations</h3>
+                <span class="bg-red-900/50 text-red-400 text-xs px-2 py-1 rounded">Real-time</span>
             </div>
-
-            <div class="flex-1 relative bg-black video-wrapper">
-                <video id="config-video" autoplay playsinline muted class="opacity-75"></video>
-                <canvas id="detect-layer" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
-                <div id="side-selector" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-slate-900 p-4 rounded-lg shadow-2xl border border-slate-600 text-center">
-                    <h4 class="text-white font-bold mb-3">Which side is UNSAFE?</h4>
-                    <div class="flex gap-3">
-                        <button onclick="setUnsafeSide('left')" class="bg-red-900/50 border border-red-500 hover:bg-red-800 text-red-200 px-4 py-2 rounded">
-                            <i class="fa-solid fa-arrow-left mr-2"></i>Left / Top
-                        </button>
-                        <button onclick="setUnsafeSide('right')" class="bg-red-900/50 border border-red-500 hover:bg-red-800 text-red-200 px-4 py-2 rounded">
-                            Right / Bottom<i class="fa-solid fa-arrow-right ml-2"></i>
-                        </button>
-                    </div>
-                </div>
+            <div id="alerts-feed" class="flex-1 overflow-y-auto p-4 space-y-3">
+                <div class="text-center text-slate-500 mt-10 italic text-sm">System Armed. No violations.</div>
             </div>
-            <div id="slider-panel"
-     class="absolute bottom-0 left-0 right-0 bg-black/90 border-t border-slate-700 p-3 max-h-56 overflow-y-auto text-xs">
-</div>
-
-        </div>
-
-        <div id="view-history" class="absolute inset-0 hidden bg-slate-900 p-8 overflow-auto">
-            <h2 class="text-2xl font-bold text-white mb-6">Violation Log (Past 24h)</h2>
-            <table class="w-full text-left border-collapse">
-                <thead>
-                    <tr class="text-slate-400 border-b border-slate-700">
-                        <th class="p-3">Time</th>
-                        <th class="p-3">ID</th>
-                        <th class="p-3">Status</th>
-                        <th class="p-3">Action</th>
-                    </tr>
-                </thead>
-                <tbody id="history-table" class="text-slate-300">
-                    </tbody>
-            </table>
-        </div>
-<div id="view-register" class="absolute inset-0 hidden bg-slate-900 p-8">
-    <div class="max-w-md mx-auto bg-slate-800 p-6 rounded-lg border border-slate-700">
-        <h3 class="text-xl font-bold text-white mb-4">Register New Personnel</h3>
-        <div class="space-y-4">
-            <div>
-                <label class="block text-xs text-slate-500 mb-1">RFID TAG ID</label>
-                <input type="text" id="reg-rfid" class="w-full bg-black border border-slate-600 p-2 text-green-500 font-mono" placeholder="Scan Tag...">
-            </div>
-            <div>
-                <label class="block text-xs text-slate-500 mb-1">Full Name</label>
-                <input type="text" id="reg-name" class="w-full bg-black border border-slate-600 p-2 text-white" placeholder="Enter Name">
-            </div>
-            <button onclick="saveUser()" class="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-2 rounded">
-                COMPLETE REGISTRATION
-            </button>
         </div>
     </div>
-</div>
-<script>
-window.checkData = () => {
-    console.log("Current Points Array:", points);
-    const overlay = document.getElementById('safety-overlay');
-    console.log("Overlay Dimensions:", overlay.clientWidth, "x", overlay.clientHeight);
-    alert("Check the browser console (F12) to see if points exist!");
-};
-</script>
-    </main>
 
-    <script type="module">
-    // Force the drawing canvas to be on top so you can see the line
-    const zoneCanvas = document.getElementById('zone-canvas');
-    if(zoneCanvas) {
-        zoneCanvas.style.zIndex = "999"; 
-        zoneCanvas.style.pointerEvents = "auto";
-    }
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getFirestore, collection, query, orderBy, onSnapshot, doc, updateDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
-
-        const firebaseConfig = {
-    apiKey: "AIzaSyBoWtfLODLrDhRKkMew0sLceDgHBNAQAPM",
-    authDomain: "metro-safety-system.firebaseapp.com",
-    projectId: "metro-safety-system",
-    storageBucket: "metro-safety-system.appspot.com",
-    messagingSenderId: "783283638023",
-    appId: "1:783283638023:web:52d0d7ab6c6d7e1677bfa2",
-    databaseURL: "https://metro-safety-system-default-rtdb.firebaseio.com" // Added
-};
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-
-        // --- GLOBAL STATE ---
-        let controlPoints = [];
-let pointCount = 4;
-
-        let unsafeSide = 'right'; // default
-        import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
-
-const rtdb = getDatabase(app);
-// Ensure 'points' is global
-let globalTripPoints = []; 
-
-const updateMonitorOverlay = () => {
-    const overlay = document.getElementById('safety-overlay');
-    const container = overlay.parentElement;
-    
-    if (!overlay || globalTripPoints.length < 2) return;
-
-    // 1. Match overlay size to the actual video container
-    const w = container.clientWidth;
-    const h = container.clientHeight;
-    overlay.setAttribute('width', w);
-    overlay.setAttribute('height', h);
-
-    // 2. Build the Path
-    let d = `M ${globalTripPoints[0].x * w} ${globalTripPoints[0].y * h}`;
-    for (let i = 1; i < globalTripPoints.length; i++) {
-        d += ` L ${globalTripPoints[i].x * w} ${globalTripPoints[i].y * h}`;
-    }
-
-    // 3. Update the SVG
-    overlay.innerHTML = `
-        <path d="${d}" 
-              stroke="#00ff00" 
-              stroke-width="4" 
-              fill="none" 
-              stroke-linecap="round"
-              style="filter: drop-shadow(0 0 8px rgba(0, 255, 0, 0.8));" />
-    `;
-};
-// Ensure this is inside your <script type="module">
-let tripPoints = [];
-
-const renderTripLine = () => {
-    const overlay = document.getElementById('safety-overlay');
-    const container = overlay.closest('.video-wrapper');
-    
-    if (!overlay || !container || tripPoints.length < 2) return;
-
-    // Force dimensions to match container
-    const w = container.offsetWidth;
-    const h = container.offsetHeight;
-    overlay.setAttribute('width', w);
-    overlay.setAttribute('height', h);
-    overlay.style.display = "block"; // Override "Hidden" status
-
-    // Create the SVG Path
-    let d = `M ${tripPoints[0].x * w} ${tripPoints[0].y * h}`;
-    for (let i = 1; i < tripPoints.length; i++) {
-        d += ` L ${tripPoints[i].x * w} ${tripPoints[i].y * h}`;
-    }
-
-    overlay.innerHTML = `
-        <path d="${d}" 
-              stroke="#00ff00" 
-              stroke-width="5" 
-              fill="none" 
-              stroke-linecap="round"
-              style="filter: drop-shadow(0 0 10px rgba(0, 255, 0, 0.9));" />
-    `;
-};
-function renderCurve() {
-    const overlay = document.getElementById("safety-overlay");
-    const container = overlay.closest(".video-wrapper");
-
-    const w = container.clientWidth;
-    const h = container.clientHeight;
-
-    overlay.setAttribute("width", w);
-    overlay.setAttribute("height", h);
-
-    let d = `M ${controlPoints[0].x * w} ${controlPoints[0].y * h}`;
-    for (let i = 1; i < controlPoints.length; i++) {
-        d += ` L ${controlPoints[i].x * w} ${controlPoints[i].y * h}`;
-    }
-
-    overlay.innerHTML = `
-        <path d="${d}"
-              stroke="#00ff00"
-              stroke-width="5"
-              fill="none"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              class="trip-line-glow"/>
-    `;
-}
-
-// Listen to RTDB for changes
-onValue(ref(rtdb, 'config/trip_line'), (snapshot) => {
-    const data = snapshot.val();
-    if (data && data.poly_points) {
-        tripPoints = data.poly_points; // Store normalized coordinates
-        renderTripLine();
-    } else {
-        console.warn("No trip_line data found at 'config/trip_line'");
-    }
-});
-
-// Re-draw when window is resized
-window.addEventListener('resize', renderTripLine);
-// Listen for Database Changes
-onValue(ref(rtdb, 'config/trip_line'), (snapshot) => {
-    const data = snapshot.val();
-    if (data && data.poly_points) {
-        globalTripPoints = data.poly_points;
-        updateMonitorOverlay();
-    }
-});
-
-// Auto-resize the line when the window changes
-window.addEventListener('resize', updateMonitorOverlay);
-        // --- 1. VIDEO SETUP (Simulating RTSP with Webcam) ---
-        async function startCameras() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                document.getElementById('monitor-video').srcObject = stream;
-                document.getElementById('config-video').srcObject = stream;
-            } catch (e) {
-                console.error("Camera failed", e);
-                alert("Camera access denied. In production, this would be an RTSP stream.");
-            }
-        }
-        startCameras();
-        function generateDefaultCurve(n) {
-    controlPoints = [];
-    for (let i = 0; i < n; i++) {
-        controlPoints.push({
-            x: i / (n - 1),
-            y: 0.5
-        });
-    }
-}
-        function renderSliders() {
-    const panel = document.getElementById("slider-panel");
-    panel.innerHTML = "";
-
-    controlPoints.forEach((p, i) => {
-        panel.innerHTML += `
-        <div class="border-b border-slate-700 pb-2 mb-2">
-            <div class="text-green-400 mb-1">POINT ${i + 1}</div>
-
-            <label>X (${Math.round(p.x * 100)}%)</label>
-            <input type="range" min="0" max="100" value="${p.x * 100}"
-                   oninput="updatePoint(${i}, 'x', this.value)">
-
-            <label>Y (${Math.round(p.y * 100)}%)</label>
-            <input type="range" min="0" max="100" value="${p.y * 100}"
-                   oninput="updatePoint(${i}, 'y', this.value)">
+    <div id="view-config" class="absolute inset-0 hidden grid grid-cols-[1fr_350px] bg-slate-900">
+        <div class="relative bg-black flex items-center justify-center overflow-hidden">
+            <video id="config-video" autoplay playsinline muted class="opacity-50 w-full h-full object-contain"></video>
+            <svg id="config-overlay" class="absolute inset-0 w-full h-full pointer-events-none"></svg>
         </div>
-        `;
-    });
-}
-window.updatePoint = (index, axis, value) => {
-    controlPoints[index][axis] = value / 100;
-    renderCurve();
-};
 
+        <div class="bg-slate-800 border-l border-slate-700 flex flex-col">
+            <div class="p-4 bg-slate-900 border-b border-slate-700">
+                <h3 class="font-bold text-white mb-4">Zone Parameters</h3>
+                <label class="text-[10px] text-slate-500 block mb-1">CONTROL POINTS (N)</label>
+                <input id="pointCount" type="range" min="2" max="10" value="4" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500">
+                <div class="flex justify-between text-sky-400 font-mono text-xs mt-1">
+                    <span>2 pts</span>
+                    <span id="pointCountLabel">4</span>
+                    <span>10 pts</span>
+                </div>
+            </div>
 
-        // --- 2. TAB SWITCHING LOGIC ---
-        window.switchTab = (tabName) => {
-            // Hide all views
-            ['monitor', 'config', 'history'].forEach(t => {
-                document.getElementById(`view-${t}`).classList.add('hidden');
-                document.getElementById(`tab-${t}`).classList.remove('active');
-            });
-            // Show selected
-            document.getElementById(`view-${tabName}`).classList.remove('hidden');
-            document.getElementById(`tab-${tabName}`).classList.add('active');
-            
-            // If switching to monitor, redraw the safety overlay
-            if(tabName === 'monitor') renderSafetyOverlay();
-        };
+            <div id="slider-panel" class="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-800/50">
+                </div>
 
-// --- FIND THE "DRAWING LOGIC" SECTION AND REPLACE WITH THIS ---
+            <div class="p-4 bg-slate-900 border-t border-slate-700 space-y-2">
+                <button onclick="saveConfig()" class="w-full bg-green-600 hover:bg-green-500 text-white py-2 rounded font-bold transition">
+                    <i class="fa-solid fa-floppy-disk mr-2"></i>SAVE CONFIGURATION
+                </button>
+            </div>
+        </div>
+    </div>
+</main>
 
-// 1. Get elements
-const canvas = document.getElementById('zone-canvas');
-const ctx = canvas.getContext('2d');
-const videoContainer = document.querySelector('.video-wrapper'); // We need the container
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+    import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
-// 2. Resize function - Force canvas to match container size exactly
-function resizeCanvas() {
-    if(videoContainer) {
-        canvas.width = videoContainer.offsetWidth;
-        canvas.height = videoContainer.offsetHeight;
-        draw(); // Redraw if we resize
-    }
-}
-window.addEventListener('resize', resizeCanvas);
-// 3. Start Drawing Action
-window.startDrawing = () => {
-    const container = document.querySelector('.video-wrapper');
-    canvas.width = container.offsetWidth;
-    canvas.height = container.offsetHeight;
-
-    points = [];
-    isDrawing = true;
-    
-    // UI Updates
-    document.getElementById('side-selector').classList.add('hidden');
-    canvas.style.pointerEvents = "auto"; // CRITICAL: Allow clicks
-    canvas.style.zIndex = "1000";       // Ensure it is on the very top
-    
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    alert("DRAWING MODE: Click to add points. Double-click to finish.");
-};
-
-// Handle clicks for adding points
-canvas.addEventListener('mousedown', (e) => {
-    if(!isDrawing) return;
-    
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    points.push({ x, y });
-    draw(); 
-});
-
-// Double click to end
-canvas.addEventListener('dblclick', () => {
-    if(!isDrawing) return;
-    isDrawing = false;
-    // Keep canvas visible but stop taking clicks so buttons work
-    canvas.style.pointerEvents = "none"; 
-    document.getElementById('side-selector').classList.remove('hidden');
-});
-
-        window.setUnsafeSide = (side) => {
-            unsafeSide = side;
-            document.getElementById('side-selector').classList.add('hidden');
-            alert(`Zone Configured! The ${side.toUpperCase()} side is now marked as DANGER.`);
-        };
-window.saveConfig = async () => {
-    if (points.length < 2) return alert("Please draw a line first.");
-
-    const configData = {
-        station_id: "STN-01",
-        poly_points: points.map(p => ({
-            x: p.x / canvas.width,
-            y: p.y / canvas.height
-        })),
-        unsafe_side: unsafeSide,
-        updated_at: new Date().toISOString()
+    const firebaseConfig = {
+        apiKey: "AIzaSyBoWtfLODLrDhRKkMew0sLceDgHBNAQAPM",
+        projectId: "metro-safety-system",
+        databaseURL: "https://metro-safety-system-default-rtdb.firebaseio.com"
     };
 
-    try {
-        await setDoc(doc(db, "config", "station_settings"), configData);
-        alert("ZONE SAVED!");
-        // Use window. prefix to ensure it hits the global scope
-        window.switchTab('monitor'); 
-    } catch (e) {
-        console.error("Save failed:", e);
-    }
-};
-     window.saveUser = async () => {
-    const rfid = document.getElementById('reg-rfid').value.trim();
-    const name = document.getElementById('reg-name').value.trim();
-    
-    if(!rfid || !name) return alert("Government Standard: All fields required.");
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
 
-    try {
-        // Save to 'registered_users' node
-        await set(ref(rtdb, `registered_users/${rfid}`), {
-            name: name,
-            timestamp: new Date().toISOString()
+    // --- STATE ---
+    let controlPoints = [];
+    let n = 4;
+
+    // --- INITIALIZE POINTS ---
+    function initPoints(count) {
+        controlPoints = [];
+        for (let i = 0; i < count; i++) {
+            controlPoints.push({ x: (i / (count - 1)), y: 0.5 });
+        }
+        renderSliders();
+        drawLines();
+    }
+
+    // --- RENDER DYNAMIC SLIDERS ---
+    function renderSliders() {
+        const panel = document.getElementById('slider-panel');
+        panel.innerHTML = '';
+        
+        controlPoints.forEach((pt, i) => {
+            const group = document.createElement('div');
+            group.className = "p-3 bg-black/30 border border-slate-700 rounded-lg space-y-2";
+            group.innerHTML = `
+                <div class="flex justify-between items-center mb-1">
+                    <span class="text-sky-500 font-bold text-[10px]">NODE ${i + 1}</span>
+                    <span class="text-[9px] text-slate-500 font-mono">${Math.round(pt.x*100)},${Math.round(pt.y*100)}</span>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[9px] text-slate-400 flex justify-between">X-AXIS <span>${Math.round(pt.x*100)}%</span></label>
+                    <input type="range" min="0" max="100" value="${pt.x * 100}" 
+                        oninput="window.updatePoint(${i}, 'x', this.value)" 
+                        class="w-full h-1 bg-slate-700 appearance-none accent-green-500">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[9px] text-slate-400 flex justify-between">Y-AXIS <span>${Math.round(pt.y*100)}%</span></label>
+                    <input type="range" min="0" max="100" value="${pt.y * 100}" 
+                        oninput="window.updatePoint(${i}, 'y', this.value)" 
+                        class="w-full h-1 bg-slate-700 appearance-none accent-green-500">
+                </div>
+            `;
+            panel.appendChild(group);
         });
-        alert(`SUCCESS: Tag ${rfid} assigned to ${name}`);
-        document.getElementById('reg-rfid').value = "";
-        document.getElementById('reg-name').value = "";
-    } catch (e) {
-        console.error("Registry failed:", e);
     }
-};
-// --- 4. LIVE MONITOR OVERLAY (Green Box Auto-Detect) ---
-        const detectCanvas = document.getElementById('detect-layer');
-        const dCtx = detectCanvas.getContext('2d');
-        
-        // Resize detect canvas to match video
-        function resizeDetectCanvas() {
-            if(detectCanvas) {
-                detectCanvas.width = detectCanvas.parentElement.offsetWidth;
-                detectCanvas.height = detectCanvas.parentElement.offsetHeight;
-            }
-        }
-        window.addEventListener('resize', resizeDetectCanvas);
 
-        // Animation Loop for "Auto Detect" Green Box
-        let boxX = 0, boxY = 0;
-        let speedX = 2, speedY = 1.5;
-        
-        function animateDetection() {
-            resizeDetectCanvas();
-            dCtx.clearRect(0, 0, detectCanvas.width, detectCanvas.height);
+    // --- DRAW LINE LOGIC ---
+    function drawLines() {
+        ['safety-overlay', 'config-overlay'].forEach(id => {
+            const svg = document.getElementById(id);
+            if (!svg) return;
             
-            const w = detectCanvas.width;
-            const h = detectCanvas.height;
+            const w = svg.clientWidth || svg.parentNode.clientWidth;
+            const h = svg.clientHeight || svg.parentNode.clientHeight;
             
-            // Initialize box position if 0
-            if(boxX === 0) { boxX = w/2 - 100; boxY = h/2 - 100; }
+            if (controlPoints.length < 2) return;
 
-            // Move the box slightly (Simulating "Scanning")
-            boxX += speedX;
-            boxY += speedY;
-            
-            // Bounce off edges (Keep box inside view)
-            if(boxX > w - 250 || boxX < 50) speedX *= -1;
-            if(boxY > h - 250 || boxY < 50) speedY *= -1;
-
-            // Draw Green Detection Box
-            dCtx.strokeStyle = "#00ff00"; // Bright Green
-            dCtx.lineWidth = 2;
-            dCtx.strokeRect(boxX, boxY, 200, 200);
-
-            // Draw "Corners" for a Pro Look
-            dCtx.strokeStyle = "#4ade80";
-            dCtx.lineWidth = 4;
-            const size = 200;
-            const len = 30; // corner length
-            
-            dCtx.beginPath();
-            // Top Left
-            dCtx.moveTo(boxX, boxY + len); dCtx.lineTo(boxX, boxY); dCtx.lineTo(boxX + len, boxY);
-            // Top Right
-            dCtx.moveTo(boxX + size - len, boxY); dCtx.lineTo(boxX + size, boxY); dCtx.lineTo(boxX + size, boxY + len);
-            // Bottom Right
-            dCtx.moveTo(boxX + size, boxY + size - len); dCtx.lineTo(boxX + size, boxY + size); dCtx.lineTo(boxX + size - len, boxY + size);
-            // Bottom Left
-            dCtx.moveTo(boxX + len, boxY + size); dCtx.lineTo(boxX, boxY + size); dCtx.lineTo(boxX, boxY + size - len);
-            dCtx.stroke();
-
-            // Text Label
-            dCtx.fillStyle = "#00ff00";
-            dCtx.font = "bold 12px monospace";
-            dCtx.fillText("AUTO-DETECT: SCANNING", boxX + 5, boxY - 8);
-
-            requestAnimationFrame(animateDetection);
-        }
-
-        // Start animation immediately
-        setInterval(resizeDetectCanvas, 1000); // Check size periodically
-        animateDetection();
-        // --- 5. REAL-TIME ALERTS (Listener) ---
-        const alertsFeed = document.getElementById('alerts-feed');
-        const historyTable = document.getElementById('history-table');
-
-        // Listen for ANY change in 'violations' collection
-        const q = query(collection(db, "violations"), orderBy("time", "desc"));
-        
-        onSnapshot(q, (snapshot) => {
-            alertsFeed.innerHTML = "";
-            historyTable.innerHTML = "";
-
-            if(snapshot.empty) {
-                alertsFeed.innerHTML = `<div class="text-center text-slate-500 mt-10">System Armed. No violations.</div>`;
+            let d = `M ${controlPoints[0].x * w} ${controlPoints[0].y * h}`;
+            for (let i = 1; i < controlPoints.length; i++) {
+                d += ` L ${controlPoints[i].x * w} ${controlPoints[i].y * h}`;
             }
 
-            snapshot.forEach(snap => {
-                const data = snap.data();
-                const id = snap.id;
-                
-                // 1. Add to Sidebar (Only Pending/Recent)
-                if(!data.approved) {
-                    const card = document.createElement('div');
-                    card.className = "bg-slate-700 rounded p-3 border-l-4 border-red-500 shadow-md animate-pulse";
-                    card.innerHTML = `
-                        <div class="flex justify-between text-xs text-slate-400 mb-2">
-                            <span>CAM-01</span>
-                            <span>${data.time.split(' ')[1]}</span>
-                        </div>
-                        <img src="${data.face_url || 'https://placehold.co/300x200?text=No+Signal'}" class="w-full h-32 object-cover bg-black mb-2 rounded">
-                        <div class="flex justify-between items-center">
-                            <span class="text-white font-mono text-sm">${data.rfid || 'Detecting ID...'}</span>
-                            <button onclick="window.approveFine('${id}')" class="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1.5 rounded font-bold">
-                                FINE
-                            </button>
-                        </div>
-                    `;
-                    alertsFeed.appendChild(card);
-                }
-
-                // 2. Add to History Table
-                const row = document.createElement('tr');
-                row.className = "border-b border-slate-700 hover:bg-slate-800";
-                row.innerHTML = `
-                    <td class="p-3 text-sm">${data.time}</td>
-                    <td class="p-3 font-mono text-sky-400">${data.rfid || 'UNK'}</td>
-                    <td class="p-3"><span class="px-2 py-0.5 rounded text-xs ${data.approved ? 'bg-green-900 text-green-400' : 'bg-red-900 text-red-400'}">${data.approved ? 'RESOLVED' : 'PENDING'}</span></td>
-                    <td class="p-3 text-xs text-slate-500">${data.approved ? 'Auto-Debited' : '-'}</td>
-                `;
-                historyTable.appendChild(row);
-            });
+            svg.innerHTML = `
+                <path d="${d}" stroke="#00ff00" stroke-width="4" fill="none" 
+                stroke-linecap="round" stroke-linejoin="round" 
+                style="filter: drop-shadow(0 0 8px rgba(0,255,0,0.8))" />
+                ${controlPoints.map(p => `<circle cx="${p.x * w}" cy="${p.y * h}" r="4" fill="#fff" />`).join('')}
+            `;
         });
+    }
 
-        // Global function for the button
-        window.approveFine = async (docId) => {
-            await updateDoc(doc(db, "violations", docId), {
-                approved: true,
-                processed_at: new Date().toISOString()
-            });
+    // --- WINDOW GLOBALS ---
+    window.updatePoint = (index, axis, val) => {
+        controlPoints[index][axis] = val / 100;
+        drawLines();
+        // Update specific label text without re-rendering all sliders for performance
+        renderSliders(); 
+    };
+
+    window.saveConfig = async () => {
+        const configData = {
+            station_id: "STN-01",
+            poly_points: controlPoints,
+            updated_at: new Date().toISOString()
         };
-const pointSlider = document.getElementById("pointCount");
-const label = document.getElementById("pointCountLabel");
+        try {
+            await setDoc(doc(db, "config", "station_settings"), configData);
+            alert("ZONE CONFIGURATION UPLOADED TO CLOUD");
+            window.switchTab('monitor');
+        } catch (e) { console.error(e); }
+    };
 
-generateDefaultCurve(pointCount);
-renderSliders();
-renderCurve();
+    window.switchTab = (tab) => {
+        document.getElementById('view-monitor').classList.toggle('hidden', tab !== 'monitor');
+        document.getElementById('view-config').classList.toggle('hidden', tab !== 'config');
+        document.getElementById('tab-monitor').classList.toggle('active', tab === 'monitor');
+        document.getElementById('tab-config').classList.toggle('active', tab === 'config');
+        drawLines();
+    };
 
-pointSlider.addEventListener("input", () => {
-    pointCount = parseInt(pointSlider.value);
-    label.innerText = pointCount;
+    // --- LISTENERS ---
+    document.getElementById('pointCount').oninput = (e) => {
+        n = parseInt(e.target.value);
+        document.getElementById('pointCountLabel').innerText = n;
+        initPoints(n);
+    };
 
-    generateDefaultCurve(pointCount);
-    renderSliders();
-    renderCurve();
-});
+    window.addEventListener('resize', drawLines);
 
-        // Clock Update
-        setInterval(() => {
-            document.getElementById('clock').innerText = new Date().toLocaleTimeString();
-        }, 1000);     
-        window.checkData = () => {
-    console.log("Current Points Array:", points);
-    const overlay = document.getElementById('safety-overlay');
-    console.log("Overlay Dimensions:", overlay.clientWidth, "x", overlay.clientHeight);
-    alert("Check the browser console (F12) to see if points exist!");
-};
-    </script>
+    // Initial Start
+    initPoints(4);
+    
+    // Start Webcam
+    navigator.mediaDevices.getUserMedia({ video: true }).then(s => {
+        document.getElementById('monitor-video').srcObject = s;
+        document.getElementById('config-video').srcObject = s;
+    });
+</script>
     <script src="https://cdn.tailwindcss.com"></script>
 </body>
 </html>

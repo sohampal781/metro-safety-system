@@ -28,7 +28,6 @@
             overflow: hidden;
         }
 
-        /* --- Sidebar UI --- */
         #sidebar {
             width: 350px;
             background: var(--panel);
@@ -63,7 +62,6 @@
         #start-btn { background: var(--accent); color: black; font-weight: bold; margin-top: 10px; }
         #start-btn.active { background: var(--danger); color: white; }
 
-        /* --- Main Viewport --- */
         #viewport {
             flex-grow: 1;
             position: relative;
@@ -73,9 +71,23 @@
             background: #000;
         }
 
-        video, canvas { position: absolute; width: 100%; height: 100%; object-fit: contain; }
+        /* Essential for visibility */
+        video { 
+            position: absolute; 
+            width: 100%; 
+            height: 100%; 
+            object-fit: cover; 
+            transform: scaleX(-1); /* Mirror for natural feel */
+        }
+        canvas { 
+            position: absolute; 
+            width: 100%; 
+            height: 100%; 
+            object-fit: cover; 
+            z-index: 10;
+            transform: scaleX(-1);
+        }
 
-        /* --- Fine Tab --- */
         #fine-tab {
             width: 300px;
             background: var(--panel);
@@ -116,14 +128,13 @@
             </select>
         </div>
 
-        <div id="slider-container">
-            </div>
+        <div id="slider-container"></div>
 
         <button id="start-btn">LOCK & START MONITORING</button>
     </div>
 
     <div id="viewport">
-        <video id="input-video" playsinline></video>
+        <video id="input-video" autoplay muted playsinline></video>
         <canvas id="output-canvas"></canvas>
     </div>
 
@@ -145,9 +156,8 @@
         let isMonitoring = false;
         let linePoints = [];
         let breachStartTime = null;
-        const BREACH_THRESHOLD = 1500; // 1.5 Seconds
+        const BREACH_THRESHOLD = 1500; 
 
-        // --- Initialize Sliders ---
         function updateSliders() {
             if (isMonitoring) return;
             sliderContainer.innerHTML = '';
@@ -156,13 +166,13 @@
             
             for (let i = 0; i < count; i++) {
                 const x = (i / (count - 1)) * 100;
-                const y = 50;
+                const y = 80; // Default lower position for platform line
                 linePoints.push({ x, y });
 
                 const div = document.createElement('div');
                 div.className = 'control-group';
                 div.innerHTML = `
-                    <label>Point ${i+1} (X, Y)</label>
+                    <label>Point ${i+1} (X: ${x}%, Y: ${y}%)</label>
                     <input type="range" data-idx="${i}" data-axis="x" value="${x}">
                     <input type="range" data-idx="${i}" data-axis="y" value="${y}">
                 `;
@@ -174,40 +184,16 @@
             const idx = e.target.dataset.idx;
             const axis = e.target.dataset.axis;
             linePoints[idx][axis] = parseFloat(e.target.value);
+            e.target.previousElementSibling.innerText = `Point ${parseInt(idx)+1} (${linePoints[idx].x}%, ${linePoints[idx].y}%)`;
         });
 
         pointCountInput.addEventListener('change', updateSliders);
         updateSliders();
 
-        // --- Core Logic: Side Detection ---
         function getSide(px, py, x1, y1, x2, y2) {
-            // Cross Product Math
             return (px - x1) * (y2 - y1) - (py - y1) * (x2 - x1);
         }
 
-        function checkViolation(hipX, hipY) {
-            // Find the segment the person is closest to horizontally
-            let segmentIdx = 0;
-            for(let i=0; i < linePoints.length - 1; i++) {
-                if(hipX >= linePoints[i].x && hipX <= linePoints[i+1].x) {
-                    segmentIdx = i;
-                    break;
-                }
-            }
-
-            const p1 = linePoints[segmentIdx];
-            const p2 = linePoints[segmentIdx + 1] || p1;
-            
-            const side = getSide(hipX, hipY, p1.x, p1.y, p2.x, p2.y);
-            const safeConfig = document.getElementById('safe-side').value;
-
-            // In Canvas Y increases downwards.
-            // Simplified logic: side > 0 is "one side", side < 0 is "other"
-            if (safeConfig === 'left') return side < 0;
-            return side > 0;
-        }
-
-        // --- MediaPipe Setup ---
         const pose = new Pose({
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
         });
@@ -215,13 +201,18 @@
         pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5 });
 
         pose.onResults((results) => {
+            // Resize canvas to match video stream
+            canvasElement.width = videoElement.videoWidth;
+            canvasElement.height = videoElement.videoHeight;
+
             canvasCtx.save();
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
             
             // Draw Virtual Line
             canvasCtx.beginPath();
             canvasCtx.strokeStyle = 'yellow';
-            canvasCtx.lineWidth = 5;
+            canvasCtx.lineWidth = 8;
+            canvasCtx.lineJoin = 'round';
             linePoints.forEach((p, i) => {
                 const cx = (p.x / 100) * canvasElement.width;
                 const cy = (p.y / 100) * canvasElement.height;
@@ -231,24 +222,36 @@
             canvasCtx.stroke();
 
             if (results.poseLandmarks && isMonitoring) {
-                // Get Hips Center
                 const leftHip = results.poseLandmarks[23];
                 const rightHip = results.poseLandmarks[24];
                 const centerX = ((leftHip.x + rightHip.x) / 2) * 100;
                 const centerY = ((leftHip.y + rightHip.y) / 2) * 100;
 
-                const isBreached = checkViolation(centerX, centerY);
+                let segmentIdx = 0;
+                for(let i=0; i < linePoints.length - 1; i++) {
+                    if(centerX >= Math.min(linePoints[i].x, linePoints[i+1].x) && 
+                       centerX <= Math.max(linePoints[i].x, linePoints[i+1].x)) {
+                        segmentIdx = i;
+                        break;
+                    }
+                }
+
+                const p1 = linePoints[segmentIdx];
+                const p2 = linePoints[segmentIdx + 1] || p1;
+                const side = getSide(centerX, centerY, p1.x, p1.y, p2.x, p2.y);
+                const safeConfig = document.getElementById('safe-side').value;
+
+                // Mathematical side detection (Corrected for mirrored view)
+                const isBreached = safeConfig === 'left' ? side > 0 : side < 0;
 
                 if (isBreached) {
                     if (!breachStartTime) breachStartTime = Date.now();
                     const elapsed = Date.now() - breachStartTime;
-
-                    statusDisplay.innerText = "BREACH DETECTED";
+                    statusDisplay.innerText = `BREACH DETECTED (${(elapsed/1000).toFixed(1)}s)`;
                     statusDisplay.className = "status-card status-breach";
-
                     if (elapsed > BREACH_THRESHOLD) {
                         captureViolation();
-                        breachStartTime = Date.now() + 10000; // Cooldown 10s
+                        breachStartTime = Date.now() + 5000; // Cooldown
                     }
                 } else {
                     breachStartTime = null;
@@ -256,64 +259,61 @@
                     statusDisplay.className = "status-card status-safe";
                 }
 
-                // Draw Hip Tracking Dot
                 canvasCtx.fillStyle = isBreached ? 'red' : 'lime';
                 canvasCtx.beginPath();
-                canvasCtx.arc((centerX/100)*canvasElement.width, (centerY/100)*canvasElement.height, 8, 0, 2*Math.PI);
+                canvasCtx.arc((centerX/100)*canvasElement.width, (centerY/100)*canvasElement.height, 12, 0, 2*Math.PI);
                 canvasCtx.fill();
             }
             canvasCtx.restore();
         });
 
         function captureViolation() {
-            // Draw current video frame + canvas overlay to a temp canvas
             const tempCanvas = document.createElement('canvas');
             tempCanvas.width = canvasElement.width;
             tempCanvas.height = canvasElement.height;
             const ctx = tempCanvas.getContext('2d');
-            ctx.drawImage(videoElement, 0, 0, tempCanvas.width, tempCanvas.height);
+            
+            // Mirror back for the capture
+            ctx.translate(tempCanvas.width, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(videoElement, 0, 0);
             ctx.drawImage(canvasElement, 0, 0);
 
             const dataUrl = tempCanvas.toDataURL('image/jpeg');
-            const timestamp = new Date().toLocaleTimeString();
-
             const card = document.createElement('div');
             card.className = 'fine-card';
             card.innerHTML = `
                 <img src="${dataUrl}">
-                <div><strong>Violation @ ${timestamp}</strong></div>
+                <strong>Violation @ ${new Date().toLocaleTimeString()}</strong>
                 <div class="fine-actions">
                     <button class="btn-small" onclick="this.parentElement.parentElement.remove()">Delete</button>
-                    <a href="${dataUrl}" download="violation.jpg" style="flex:1"><button class="btn-small">Save</button></a>
+                    <a href="${dataUrl}" download="fine.jpg"><button class="btn-small">Download</button></a>
                 </div>
             `;
             violationList.prepend(card);
         }
 
-        // --- UI Controls ---
         startBtn.onclick = () => {
             isMonitoring = !isMonitoring;
-            if (isMonitoring) {
-                startBtn.innerText = "STOP MONITORING";
-                startBtn.classList.add('active');
-                pointCountInput.disabled = true;
-                sliderContainer.querySelectorAll('input').forEach(i => i.disabled = true);
-            } else {
-                startBtn.innerText = "LOCK & START MONITORING";
-                startBtn.classList.remove('active');
-                pointCountInput.disabled = false;
-                sliderContainer.querySelectorAll('input').forEach(i => i.disabled = false);
-            }
+            startBtn.innerText = isMonitoring ? "STOP MONITORING" : "LOCK & START MONITORING";
+            startBtn.classList.toggle('active');
+            pointCountInput.disabled = isMonitoring;
+            sliderContainer.querySelectorAll('input').forEach(i => i.disabled = isMonitoring);
         };
 
-        const camera = new Camera(videoElement, {
-            onFrame: async () => {
-                canvasElement.width = videoElement.videoWidth;
-                canvasElement.height = videoElement.videoHeight;
-                await pose.send({image: videoElement});
-            }
-        });
-        camera.start();
+        // --- NEW IMPROVED CAMERA START ---
+        async function startCamera() {
+            const camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    await pose.send({image: videoElement});
+                },
+                width: 1280,
+                height: 720
+            });
+            camera.start();
+        }
+
+        startCamera();
     </script>
 </body>
 </html>

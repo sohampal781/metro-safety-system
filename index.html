@@ -18,6 +18,7 @@
             --bg: #0a0b10;
             --panel: #161b22;
             --border: #30363d;
+            --police-blue: #1a237e;
         }
 
         body {
@@ -103,7 +104,9 @@
             background: var(--accent); color: black; font-weight: bold; border: none; cursor: pointer; margin-top: 10px;
         }
 
-        .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .delete-btn {
+            background: #ff4444; color: white; font-size: 10px; padding: 5px; margin-top: 5px; border: none; border-radius: 4px; cursor: pointer;
+        }
 
         /* --- VIEWPORT --- */
         #viewport {
@@ -123,24 +126,42 @@
             transform: scaleX(-1);
         }
 
-        /* --- LOGS --- */
-        #fine-tab {
-            width: 320px;
-            background: var(--panel);
-            border-left: 1px solid var(--border);
-            padding: 15px;
+        /* --- CHALLAN TAB OVERLAY --- */
+        #challan-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--bg);
+            z-index: 500;
+            display: none;
+            padding: 40px;
+            box-sizing: border-box;
             overflow-y: auto;
         }
 
-        .violation-card {
-            background: #0d1117;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 10px;
-            margin-bottom: 15px;
+        .challan-header {
+            border-bottom: 2px solid var(--police-blue);
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
-        .violation-card img { width: 100%; border-radius: 4px; margin-bottom: 8px; }
+        .challan-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 25px;
+        }
+
+        .challan-card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 15px;
+            border-top: 5px solid var(--danger);
+        }
+
+        .challan-card img { width: 100%; border-radius: 8px; margin-bottom: 10px; }
 
         .angle-status {
             display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 10px;
@@ -157,6 +178,7 @@
         <div class="tabs">
             <button id="tab-mon" class="tab-btn active" onclick="switchUI('monitor')">MONITOR</button>
             <button id="tab-reg" class="tab-btn" onclick="switchUI('register')">REGISTER</button>
+            <button id="tab-cha" class="tab-btn" onclick="switchUI('challan')">CHALLAN</button>
         </div>
 
         <div id="monitor-ui" class="content-area">
@@ -197,15 +219,28 @@
             </div>
 
             <button id="save-reg-btn" class="action-btn" onclick="saveRegistration()">FINALIZE REGISTRATION</button>
+            
+            <div id="user-list" style="margin-top:20px; font-size:12px;">
+                <h4>Registered Database</h4>
+                <div id="db-items"></div>
+            </div>
         </div>
     </div>
 
     <div id="viewport">
         <video id="input-video" autoplay muted playsinline></video>
         <canvas id="output-canvas"></canvas>
+
+        <div id="challan-overlay">
+            <div class="challan-header">
+                <h1>METRO POLICE E-CHALLAN SYSTEM</h1>
+                <button class="action-btn" style="width:100px; margin:0;" onclick="switchUI('monitor')">CLOSE</button>
+            </div>
+            <div id="challan-grid" class="challan-grid"></div>
+        </div>
     </div>
 
-    <div id="fine-tab">
+    <div id="fine-tab" style="display:none;">
         <h4 style="margin-top:0; color: var(--accent);">VIOLATION FEED</h4>
         <div id="violation-list"></div>
     </div>
@@ -220,6 +255,7 @@
         const startBtn = document.getElementById('start-btn');
         const statusDisplay = document.getElementById('status-display');
         const violationList = document.getElementById('violation-list');
+        const challanGrid = document.getElementById('challan-grid');
 
         let isMonitoring = false;
         let linePoints = [];
@@ -231,9 +267,15 @@
         function switchUI(mode) {
             document.getElementById('monitor-ui').style.display = mode === 'monitor' ? 'block' : 'none';
             document.getElementById('register-ui').style.display = mode === 'register' ? 'block' : 'none';
+            document.getElementById('challan-overlay').style.display = mode === 'challan' ? 'block' : 'none';
+            
             document.getElementById('tab-mon').classList.toggle('active', mode === 'monitor');
             document.getElementById('tab-reg').classList.toggle('active', mode === 'register');
+            document.getElementById('tab-cha').classList.toggle('active', mode === 'challan');
+            
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            if(mode === 'challan') renderChallans();
+            if(mode === 'register') renderUserList();
         }
 
         function updateSliders() {
@@ -280,15 +322,12 @@
             canvasElement.height = videoElement.videoHeight;
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-            // 1. MONITORING LOGIC
             if (document.getElementById('monitor-ui').style.display !== 'none') {
                 drawSafetyLine();
                 if (results.poseLandmarks && isMonitoring) {
                     checkSafetyBreach(results.poseLandmarks);
                 }
             } 
-            
-            // 2. AUTO-REGISTRATION LOGIC (Runs only in Register Tab)
             else if (document.getElementById('register-ui').style.display !== 'none') {
                 autoCaptureLogic();
             }
@@ -310,8 +349,6 @@
             const hip = landmarks[23]; 
             const px = hip.x * 100;
             const py = hip.y * 100;
-            
-            // Simplified side detection based on segment
             const side = (px - linePoints[0].x) * (linePoints[linePoints.length-1].y - linePoints[0].y) - 
                          (py - linePoints[0].y) * (linePoints[linePoints.length-1].x - linePoints[0].x);
             
@@ -334,14 +371,11 @@
             }
         }
 
-        // --- AUTOMATED REGISTRATION (NO BUTTONS) ---
         async function autoCaptureLogic() {
             if (capturedDescriptors.length >= 4) return;
-            
             const det = await faceapi.detectSingleFace(videoElement).withFaceLandmarks().withFaceDescriptor();
             if (!det) return;
 
-            // Check uniqueness
             let isTooSimilar = false;
             for (let existing of capturedDescriptors) {
                 if (faceapi.euclideanDistance(det.descriptor, existing) < 0.25) {
@@ -365,56 +399,103 @@
             if (!name || capturedDescriptors.length < 4) return alert("Please provide name and allow 4 angle captures.");
 
             const rfid = "METRO-" + Math.floor(Math.random() * 90000 + 10000);
-            const data = { name, mobile, face: Array.from(capturedDescriptors[0]) };
+            const data = { 
+                name, 
+                mobile, 
+                descriptors: capturedDescriptors.map(d => Array.from(d)) 
+            };
             localStorage.setItem(rfid, JSON.stringify(data));
-            
             alert(`SUCCESS!\nPerson: ${name}\nGenerated RFID: ${rfid}`);
             location.reload();
         }
 
-        // --- VIOLATION & AUTO-MATCHING ---
         function triggerViolationCapture() {
             const tempCanvas = document.createElement('canvas');
             tempCanvas.width = videoElement.videoWidth;
             tempCanvas.height = videoElement.videoHeight;
-            const ctx = tempCanvas.getContext('2d');
-            ctx.drawImage(videoElement, 0, 0);
+            tempCanvas.getContext('2d').drawImage(videoElement, 0, 0);
             const dataUrl = tempCanvas.toDataURL('image/jpeg');
-
-            const card = document.createElement('div');
-            card.className = 'violation-card';
-            card.innerHTML = `
-                <img src="${dataUrl}">
-                <div style="font-size:11px; margin-bottom:10px;">Breach @ ${new Date().toLocaleTimeString()}</div>
-                <button class="action-btn" style="font-size:10px; padding:5px;" onclick="autoMatchViolation('${dataUrl}')">IDENTIFY & FINE</button>
-            `;
-            violationList.prepend(card);
+            const id = "VIOL-" + Date.now();
+            localStorage.setItem(id, JSON.stringify({id, img: dataUrl, time: new Date().toLocaleString()}));
         }
 
-        async function autoMatchViolation(imgUrl) {
+        function renderChallans() {
+            challanGrid.innerHTML = "";
+            Object.keys(localStorage).forEach(key => {
+                if(key.startsWith("VIOL-")) {
+                    const viol = JSON.parse(localStorage.getItem(key));
+                    const card = document.createElement('div');
+                    card.className = 'challan-card';
+                    card.id = `card-${viol.id}`;
+                    card.innerHTML = `
+                        <img src="${viol.img}">
+                        <div style="font-size:11px; margin-bottom:10px;">Breach: ${viol.time}</div>
+                        <div id="match-info-${viol.id}"></div>
+                        <button class="action-btn" onclick="judgeViolation('${viol.id}', '${viol.img}')">IDENTIFY & FINE</button>
+                        <button class="delete-btn" onclick="deleteRecord('${viol.id}')">DELETE RECORD</button>
+                    `;
+                    challanGrid.prepend(card);
+                }
+            });
+        }
+
+        async function judgeViolation(id, imgUrl) {
             const img = await faceapi.fetchImage(imgUrl);
             const det = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
-            if (!det) return alert("Face not clear in capture!");
+            if (!det) return alert("Face blurred in capture.");
 
             let bestMatch = { score: 0, rfid: null, data: null };
 
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (!key.startsWith("METRO-")) continue;
-                
-                const user = JSON.parse(localStorage.getItem(key));
-                const distance = faceapi.euclideanDistance(det.descriptor, new Float32Array(user.face));
-                const match = (1 - distance) * 100;
-
-                if (match > bestMatch.score) {
-                    bestMatch = { score: match, rfid: key, data: user };
+            Object.keys(localStorage).forEach(key => {
+                if(key.startsWith("METRO-")) {
+                    const user = JSON.parse(localStorage.getItem(key));
+                    user.descriptors.forEach(desc => {
+                        const dist = faceapi.euclideanDistance(det.descriptor, new Float32Array(desc));
+                        const match = (1 - dist) * 100;
+                        if (match > bestMatch.score) {
+                            bestMatch = { score: match, rfid: key, data: user };
+                        }
+                    });
                 }
-            }
+            });
 
+            const display = document.getElementById(`match-info-${id}`);
             if (bestMatch.score >= 85) {
-                alert(`MATCH CONFIRMED (${bestMatch.score.toFixed(1)}%)\nUser: ${bestMatch.data.name}\nRFID: ${bestMatch.rfid}\n\nSMS Alert sent to ${bestMatch.data.mobile}`);
+                display.innerHTML = `<div style="color:var(--success); font-weight:bold; margin-bottom:5px;">
+                    MATCH: ${bestMatch.score.toFixed(1)}% - ${bestMatch.data.name}</div>
+                    <button class="action-btn" style="background:var(--success)" onclick="alert('Fine Charged!')">SEND CHALLAN</button>`;
             } else {
-                alert(`No Match Found (Highest: ${bestMatch.score.toFixed(1)}%). Manual verification needed.`);
+                display.innerHTML = `<div style="color:orange; font-size:11px; margin-bottom:5px;">
+                    LOW MATCH: ${bestMatch.score.toFixed(1)}%. Check manually.</div>
+                    <input type="text" id="manual-${id}" placeholder="Enter RFID Manually" style="font-size:10px; padding:5px; margin-bottom:5px;">
+                    <button class="action-btn" onclick="manualFine('${id}', '${bestMatch.score.toFixed(1)}')">MANUAL VERIFY</button>`;
+            }
+        }
+
+        function manualFine(id, score) {
+            const rfid = document.getElementById(`manual-${id}`).value;
+            const user = JSON.parse(localStorage.getItem(rfid));
+            if(!user) return alert("RFID Not Found!");
+            alert(`Fine generated for ${user.name}. (AI match was ${score}%)`);
+        }
+
+        function renderUserList() {
+            const container = document.getElementById('db-items');
+            container.innerHTML = "";
+            Object.keys(localStorage).forEach(key => {
+                if(key.startsWith("METRO-")) {
+                    const u = JSON.parse(localStorage.getItem(key));
+                    container.innerHTML += `<div style="padding:5px; border-bottom:1px solid #333; display:flex; justify-content:space-between;">
+                        ${u.name} (${key}) <span style="color:red; cursor:pointer;" onclick="deleteRecord('${key}')">✖</span></div>`;
+                }
+            });
+        }
+
+        function deleteRecord(key) {
+            if(confirm("Delete this record permanently?")) {
+                localStorage.removeItem(key);
+                if(key.startsWith("METRO-")) renderUserList();
+                else renderChallans();
             }
         }
 

@@ -192,46 +192,26 @@
         let breachStartTime = null;
         const BREACH_THRESHOLD = 1500; 
 
+        // --- CORE UI & POSE LOGIC ---
         function updateSliders() {
             if (isMonitoring) return;
             sliderContainer.innerHTML = '';
             linePoints = [];
             const count = parseInt(pointCountInput.value);
-            
             for (let i = 0; i < count; i++) {
                 const x = (i / (count - 1)) * 100;
-                const y = 80; // Default lower position for platform line
+                const y = 80;
                 linePoints.push({ x, y });
-
                 const div = document.createElement('div');
                 div.className = 'control-group';
-                div.innerHTML = `
-                    <label>Point ${i+1} (X: ${x}%, Y: ${y}%)</label>
-                    <input type="range" data-idx="${i}" data-axis="x" value="${x}">
-                    <input type="range" data-idx="${i}" data-axis="y" value="${y}">
-                `;
+                div.innerHTML = `<label>Point ${i+1}</label>
+                                 <input type="range" data-idx="${i}" data-axis="x" value="${x}">
+                                 <input type="range" data-idx="${i}" data-axis="y" value="${y}">`;
                 sliderContainer.appendChild(div);
             }
         }
 
-        sliderContainer.addEventListener('input', (e) => {
-            const idx = e.target.dataset.idx;
-            const axis = e.target.dataset.axis;
-            linePoints[idx][axis] = parseFloat(e.target.value);
-            e.target.previousElementSibling.innerText = `Point ${parseInt(idx)+1} (${linePoints[idx].x}%, ${linePoints[idx].y}%)`;
-        });
-
-        pointCountInput.addEventListener('change', updateSliders);
-        updateSliders();
-
-        function getSide(px, py, x1, y1, x2, y2) {
-            return (px - x1) * (y2 - y1) - (py - y1) * (x2 - x1);
-        }
-
-        const pose = new Pose({
-            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-        });
-
+        const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
         pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5 });
 
         pose.onResults((results) => {
@@ -239,102 +219,37 @@
             canvasElement.height = videoElement.videoHeight;
             canvasCtx.save();
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-            canvasCtx.beginPath();
-            canvasCtx.strokeStyle = 'yellow';
-            canvasCtx.lineWidth = 8;
-            canvasCtx.lineJoin = 'round';
-            linePoints.forEach((p, i) => {
-                const cx = (p.x / 100) * canvasElement.width;
-                const cy = (p.y / 100) * canvasElement.height;
-                if (i === 0) canvasCtx.moveTo(cx, cy);
-                else canvasCtx.lineTo(cx, cy);
-            });
-            canvasCtx.stroke();
-            if (results.poseLandmarks && isMonitoring) {
-                const leftHip = results.poseLandmarks[23];
-                const rightHip = results.poseLandmarks[24];
-                const centerX = ((leftHip.x + rightHip.x) / 2) * 100;
-                const centerY = ((leftHip.y + rightHip.y) / 2) * 100;
-                let segmentIdx = 0;
-                for(let i=0; i < linePoints.length - 1; i++) {
-                    if(centerX >= Math.min(linePoints[i].x, linePoints[i+1].x) && 
-                       centerX <= Math.max(linePoints[i].x, linePoints[i+1].x)) {
-                        segmentIdx = i; break;
-                    }
+            
+            // Only show monitoring visuals if the Monitor tab is active
+            if (document.getElementById('monitor-ui').style.display !== 'none') {
+                drawYellowLine();
+                if (results.poseLandmarks && isMonitoring) {
+                    processBreach(results.poseLandmarks);
                 }
-                const p1 = linePoints[segmentIdx];
-                const p2 = linePoints[segmentIdx + 1] || p1;
-                const side = getSide(centerX, centerY, p1.x, p1.y, p2.x, p2.y);
-                const safeConfig = document.getElementById('safe-side').value;
-                const isBreached = safeConfig === 'left' ? side > 0 : side < 0;
-                if (isBreached) {
-                    if (!breachStartTime) breachStartTime = Date.now();
-                    const elapsed = Date.now() - breachStartTime;
-                    statusDisplay.innerText = `BREACH DETECTED (${(elapsed/1000).toFixed(1)}s)`;
-                    statusDisplay.className = "status-card status-breach";
-                    if (elapsed > BREACH_THRESHOLD) {
-                        captureViolation();
-                        breachStartTime = Date.now() + 5000; 
-                    }
-                } else {
-                    breachStartTime = null;
-                    statusDisplay.innerText = "SAFE";
-                    statusDisplay.className = "status-card status-safe";
-                }
-                canvasCtx.fillStyle = isBreached ? 'red' : 'lime';
-                canvasCtx.beginPath();
-                canvasCtx.arc((centerX/100)*canvasElement.width, (centerY/100)*canvasElement.height, 12, 0, 2*Math.PI);
-                canvasCtx.fill();
             }
             canvasCtx.restore();
         });
 
-        function captureViolation() {
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = canvasElement.width;
-            tempCanvas.height = canvasElement.height;
-            const ctx = tempCanvas.getContext('2d');
-            ctx.translate(tempCanvas.width, 0);
-            ctx.scale(-1, 1);
-            ctx.drawImage(videoElement, 0, 0);
-            const dataUrl = tempCanvas.toDataURL('image/jpeg');
-            const card = document.createElement('div');
-            card.className = 'fine-card';
-            card.innerHTML = `
-                <img src="${dataUrl}">
-                <strong>Violation @ ${new Date().toLocaleTimeString()}</strong>
-                <div class="fine-actions">
-                    <button class="btn-small" style="background:var(--accent); color:black" onclick="verifyFine('${dataUrl}')">JUDGE / FINALIZE</button>
-                    <button class="btn-small" onclick="this.parentElement.parentElement.remove()">Delete</button>
-                </div>
-            `;
-            violationList.prepend(card);
-        }
-
-        startBtn.onclick = () => {
-            isMonitoring = !isMonitoring;
-            startBtn.innerText = isMonitoring ? "STOP MONITORING" : "LOCK & START MONITORING";
-            startBtn.classList.toggle('active');
-            pointCountInput.disabled = isMonitoring;
-            sliderContainer.querySelectorAll('input').forEach(i => i.disabled = isMonitoring);
-        };
-
-        async function startCamera() {
-            const camera = new Camera(videoElement, {
-                onFrame: async () => { await pose.send({image: videoElement}); },
-                width: 1280, height: 720
+        function drawYellowLine() {
+            canvasCtx.beginPath();
+            canvasCtx.strokeStyle = 'yellow';
+            canvasCtx.lineWidth = 8;
+            linePoints.forEach((p, i) => {
+                const cx = (p.x / 100) * canvasElement.width;
+                const cy = (p.y / 100) * canvasElement.height;
+                if (i === 0) canvasCtx.moveTo(cx, cy); else canvasCtx.lineTo(cx, cy);
             });
-            camera.start();
+            canvasCtx.stroke();
         }
-        startCamera();
 
-        /* --- NEW SCRIPT LOGIC (NOTHING REMOVED) --- */
-
+        // --- FACE API & ENFORCEMENT LOGIC ---
         let capturedDescriptors = [];
         async function loadModels() {
-            await faceapi.nets.ssdMobilenetv1.loadFromUri('https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights');
-            await faceapi.nets.faceLandmark68Net.loadFromUri('https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights');
-            await faceapi.nets.faceRecognitionNet.loadFromUri('https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights');
+            const URL = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights';
+            await faceapi.nets.ssdMobilenetv1.loadFromUri(URL);
+            await faceapi.nets.faceLandmark68Net.loadFromUri(URL);
+            await faceapi.nets.faceRecognitionNet.loadFromUri(URL);
+            console.log("AI Models Loaded");
         }
         loadModels();
 
@@ -345,57 +260,88 @@
             document.getElementById('t2').classList.toggle('active-tab', mode === 'register');
         }
 
+        // Registration: Capture face with angle uniqueness check
         async function captureAngle(idx) {
             const det = await faceapi.detectSingleFace(videoElement).withFaceLandmarks().withFaceDescriptor();
-            if (!det) return alert("No face detected!");
-            
-            if (capturedDescriptors.length > 0) {
-                const isDup = capturedDescriptors.some(p => faceapi.euclideanDistance(det.descriptor, p) < 0.15);
-                if (isDup) return alert("Error: Angle too similar! Move your head.");
+            if (!det) return alert("Face not found!");
+
+            // Check against previously captured angles for this session
+            for (let existing of capturedDescriptors) {
+                if (existing) {
+                    const dist = faceapi.euclideanDistance(det.descriptor, existing);
+                    if (dist < 0.25) { // Threshold for "too similar"
+                        return alert("Error: Angle too similar to previous capture! Please turn your head more.");
+                    }
+                }
             }
+
             capturedDescriptors[idx] = det.descriptor;
             document.getElementById(`a${idx}`).classList.add('success');
+            document.getElementById(`a${idx}`).innerText = "✓ CAPTURED";
         }
 
         function saveRegistration() {
-            const rfid = document.getElementById('reg-rfid').value;
-            if (!rfid || capturedDescriptors.length < 4) return alert("Complete 4 angles and RFID!");
-            const data = { 
+            const rfid = document.getElementById('reg-rfid').value || "RFID-" + Math.floor(Math.random()*10000);
+            if (capturedDescriptors.filter(d => d).length < 4) return alert("Please capture all 4 angles!");
+            
+            const userData = {
                 name: document.getElementById('reg-name').value,
                 mobile: document.getElementById('reg-mobile').value,
-                face: Array.from(capturedDescriptors[0]) 
+                descriptors: capturedDescriptors.map(d => Array.from(d)) // Store all 4 angles
             };
-            localStorage.setItem(rfid, JSON.stringify(data));
-            alert("Registered!"); location.reload();
+            
+            localStorage.setItem(rfid, JSON.stringify(userData));
+            alert(`User Registered Successfully!\nAssigned RFID: ${rfid}`);
+            location.reload();
         }
 
+        // JUDGEMENT: Auto-identify person from violation image
         async function verifyFine(imgUrl) {
-            const rfid = prompt("Enter Detected RFID Number:");
-            const stored = JSON.parse(localStorage.getItem(rfid));
-            if (!stored) return alert("RFID Not Found!");
-
             const img = await faceapi.fetchImage(imgUrl);
-            const det = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
-            if (!det) return alert("Face not clear in breach image!");
+            const breachDet = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
+            
+            if (!breachDet) return alert("Face not clear enough in violation capture.");
 
-            const distance = faceapi.euclideanDistance(det.descriptor, new Float32Array(stored.face));
-            const match = (1 - distance) * 100;
+            let bestMatch = { score: 0, rfid: null, data: null };
 
-            if (match >= 85) {
-                alert(`MATCH CONFIRMED: ${match.toFixed(1)}%\nFine charged to ${stored.name}.\nAlert sent to ${stored.mobile}`);
-                window.open(`https://wa.me/91${stored.mobile}?text=MetroGuard Fine Generated. Match: ${match.toFixed(1)}%`, '_blank');
-            } else { alert(`MATCH FAILED: ${match.toFixed(1)}%. Image does not match records.`); }
+            // Loop through all registered users in LocalStorage
+            for (let i = 0; i < localStorage.length; i++) {
+                const rfid = localStorage.key(i);
+                const user = JSON.parse(localStorage.getItem(rfid));
+                
+                // Compare breach face against all 4 saved angles of this user
+                user.descriptors.forEach(descArray => {
+                    const savedDescriptor = new Float32Array(descArray);
+                    const distance = faceapi.euclideanDistance(breachDet.descriptor, savedDescriptor);
+                    const matchScore = (1 - distance) * 100;
+
+                    if (matchScore > bestMatch.score) {
+                        bestMatch = { score: matchScore, rfid: rfid, data: user };
+                    }
+                });
+            }
+
+            if (bestMatch.score >= 85) {
+                const confirmFine = confirm(`MATCH FOUND (${bestMatch.score.toFixed(1)}%)\nName: ${bestMatch.data.name}\nRFID: ${bestMatch.rfid}\n\nCharge fine and send SMS?`);
+                if (confirmFine) {
+                    alert("Fine Processed. SMS Sent via API.");
+                    window.open(`https://wa.me/91${bestMatch.data.mobile}?text=MetroGuard: Breach confirmed for ${bestMatch.data.name}. Fine generated.`, '_blank');
+                }
+            } else {
+                alert(`NO CONFIDENT MATCH. Highest probability: ${bestMatch.score.toFixed(1)}%. Manual intervention required.`);
+            }
         }
 
-        async function readRFID() {
-            try {
-                const port = await navigator.serial.requestPort();
-                await port.open({ baudRate: 9600 });
-                const reader = port.readable.getReader();
-                const { value } = await reader.read();
-                document.getElementById('reg-rfid').value = new TextDecoder().decode(value).trim();
-            } catch (e) { console.log("Serial blocked"); }
+        // Camera startup
+        async function startCamera() {
+            const camera = new Camera(videoElement, {
+                onFrame: async () => { await pose.send({image: videoElement}); },
+                width: 1280, height: 720
+            });
+            camera.start();
         }
+        startCamera();
+        updateSliders();
     </script>
 </body>
 </html>

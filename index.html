@@ -312,26 +312,14 @@ async function judgeViolation(key) {
     const rfidInput = document.getElementById('manual-rfid-input');
     const aiPred = document.getElementById('ai-prediction');
 
-    // 1. Check if the AI already found a match during the breach
+    // Automatic Linkage: If AI found an RFID during the breach, auto-fill it
     if (violData.linkedRfid && violData.linkedRfid !== "UNKNOWN_ID") {
         rfidInput.value = violData.linkedRfid;
-        aiPred.innerHTML = `<span style="color:var(--success)">AUTO-MATCHED: ${violData.linkedRfid}</span>`;
-        
-        // 2. AUTOMATICALLY PULL DATA (No manual typing needed)
-        fetchRegistrationData(); 
+        aiPred.innerHTML = `<span style="color:var(--success)">USER IDENTIFIED: ${violData.linkedRfid}</span>`;
+        fetchRegistrationData(); // This auto-populates the name/mobile display
     } else {
         rfidInput.value = "";
-        aiPred.innerHTML = `<span style="color:var(--danger)">NO AUTOMATIC MATCH - SEARCHING...</span>`;
-        
-        // Try a manual re-scan of the saved image
-        const img = await faceapi.fetchImage(violData.img);
-        const det = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
-        
-        if (det) {
-            aiPred.innerHTML = "FACE DETECTED - ENTER RFID TO LINK";
-        } else {
-            aiPred.innerHTML = "WARNING: FACE NOT CLEAR IN EVIDENCE";
-        }
+        aiPred.innerHTML = `<span style="color:var(--danger)">MANUAL VERIFICATION REQUIRED</span>`;
     }
 }
        function fetchRegistrationData() {
@@ -371,32 +359,36 @@ async function finalizeFine() {
     const userRaw = localStorage.getItem(rfid);
     
     if (!userRaw) {
-        alert("CRITICAL ERROR: No registration data found for this ID.");
+        alert("ERROR: No registration record found for this RFID.");
         return;
     }
 
-    const user = JSON.parse(userRaw); // This contains user.mobile and user.name
-    const amount = prompt(`ISSUE FINE TO ${user.name.toUpperCase()}?`, "500");
+    const user = JSON.parse(userRaw); // Automatically pulls user.mobile and user.name
+    const penaltyAmount = prompt("Enter Penalty Amount (₹):", "500");
     
-    if (amount && currentActiveViolationKey) {
-        // FORMAL MESSAGE CONTENT
-        const station = "PARK STREET METRO STATION";
-        const customMessage = `METRO POLICE: Mr/Ms ${user.name}, you have been proceeded at ${station} for Yellow Line Violation. Fine Amount: Rs.${amount}. Please maintain safety protocols.`;
+    // Generate Formal Challan No: MG + Date + Random
+    const datePart = new Date().toISOString().slice(0,10).replace(/-/g, "");
+    const challanNo = `MG${datePart}${Math.floor(1000 + Math.random() * 9000)}`;
 
-        // 1. Update the log to FINED
+    if (penaltyAmount && currentActiveViolationKey) {
+        // --- YOUR REQUESTED SMS FORMAT ---
+        const message = `Kolkata Metro Railway\nChallan No: ${challanNo}\nStation: Park Street Metro\nOffence: Crossing platform safety line\nPenalty: ₹${penaltyAmount}\n\nThis violation has been recorded under Metro Railway safety regulations. Please comply with safety guidelines.`;
+
+        // 1. Update Local Storage Log
         const violData = JSON.parse(localStorage.getItem(currentActiveViolationKey));
         violData.status = "FINED";
-        violData.fineAmount = amount;
+        violData.fineAmount = penaltyAmount;
+        violData.challanNo = challanNo;
         localStorage.setItem(currentActiveViolationKey, JSON.stringify(violData));
 
-        // 2. SEND THE SMS
-        statusDisplay.innerText = "SENDING E-CHALLAN...";
-        const success = await sendFastSMS(user.mobile, customMessage);
+        // 2. Trigger Automated SMS
+        statusDisplay.innerText = "DISPATCHING CHALLAN...";
+        const success = await sendFastSMS(user.mobile, message);
 
         if (success) {
-            alert(`SUCCESS: E-Challan sent to ${user.mobile}`);
+            alert(`CHALLAN DISPATCHED to ${user.name} (${user.mobile})`);
         } else {
-            alert("GATEWAY ERROR: Message not delivered. Check DND status of the receiver.");
+            alert("SMS FAIL: Check DND status or DLT Template limits.");
         }
 
         closeJudgement();
@@ -405,20 +397,29 @@ async function finalizeFine() {
 }
 
 // Optimized Gateway Function
-async function sendFastSMS(number, message) {
+async function sendFastSMS(mobileNumber, fullChallanBody) {
     const apiKey = "HzZRzYz09iEIB7Glr3OmdOgt3PMocm66xPHcXWoaUvMaN9UKvlinysQDafuD";
-    const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${apiKey}&route=q&message=${encodeURIComponent(message)}&numbers=${number}`;
+    
+    // Note: Using 'route=q' for Quick delivery. 
+    // Ensure the message body is URI encoded to handle the newlines (\n)
+    const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${apiKey}&route=q&message=${encodeURIComponent(fullChallanBody)}&numbers=${mobileNumber}`;
 
     try {
         const response = await fetch(url);
         const result = await response.json();
-        console.log("Gateway Response:", result);
-        return result.return === true;
-    } catch (e) {
-        console.error("SMS Network Error:", e);
+        
+        if (result.return === true) {
+            console.log("SMS Sent Successfully:", result.request_id);
+            return true;
+        } else {
+            console.error("Gateway Error:", result.message);
+            return false;
+        }
+    } catch (error) {
+        console.error("Network Exception:", error);
         return false;
     }
-}        
+}       
 function closeJudgement() {
     document.getElementById('judgement-modal').style.display = 'none';
     document.getElementById('registration-display').style.display = 'none';

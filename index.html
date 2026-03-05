@@ -346,81 +346,107 @@
         }
 
         function checkSafetyBreach(landmarks) {
-            const hip = landmarks[23]; 
-            const px = hip.x * 100;
-            const py = hip.y * 100;
-            const side = (px - linePoints[0].x) * (linePoints[linePoints.length-1].y - linePoints[0].y) - 
-                         (py - linePoints[0].y) * (linePoints[linePoints.length-1].x - linePoints[0].x);
-            
-            const safeConfig = document.getElementById('safe-side').value;
-            const isBreached = safeConfig === 'left' ? side > 0 : side < 0;
-
-            if (isBreached) {
-                if (!breachStartTime) breachStartTime = Date.now();
-                const elapsed = Date.now() - breachStartTime;
-                statusDisplay.innerText = `DANGER: BREACH (${(elapsed/1000).toFixed(1)}s)`;
-                statusDisplay.className = "status-card status-breach";
-                if (elapsed > BREACH_THRESHOLD) {
-                    triggerViolationCapture();
-                    breachStartTime = Date.now() + 5000;
-                }
-            } else {
-                breachStartTime = null;
-                statusDisplay.innerText = "PLATFORM SAFE";
-                statusDisplay.className = "status-card status-safe";
-            }
-        }
-        let tempCapturedImages = []; // Array to store the 4 dataUrls during registration
-
-async function autoCaptureLogic() {
-    if (capturedDescriptors.length >= 4) return;
+    const hip = landmarks[23]; 
+    const px = hip.x * 100;
+    const py = hip.y * 100;
     
-    const det = await faceapi.detectSingleFace(videoElement).withFaceLandmarks().withFaceDescriptor();
-    if (!det) return; // If it's a foot/object, face-api won't detect it
+    // Absolute position check relative to the defined nodes
+    const x1 = linePoints[0].x;
+    const y1 = linePoints[0].y;
+    const x2 = linePoints[linePoints.length - 1].x;
+    const y2 = linePoints[linePoints.length - 1].y;
+    
+    const val = (px - x1) * (y2 - y1) - (py - y1) * (x2 - x1);
+    const safeConfig = document.getElementById('safe-side').value;
+    
+    // Detects based on location even if user is not moving
+    const isBreached = safeConfig === 'left' ? val > 0 : val < 0;
 
-    // Strict Angle Diversity Check (Euclidean Distance > 0.35)
-    let isTooSimilar = false;
-    for (let existing of capturedDescriptors) {
-        if (faceapi.euclideanDistance(det.descriptor, existing) < 0.35) {
-            isTooSimilar = true;
+    if (isBreached) {
+        if (!breachStartTime) breachStartTime = Date.now();
+        const elapsed = Date.now() - breachStartTime;
+        statusDisplay.innerText = `STATIONARY BREACH: ${(elapsed/1000).toFixed(1)}s`;
+        statusDisplay.className = "status-card status-breach";
+        if (elapsed > BREACH_THRESHOLD) {
+            triggerViolationCapture();
+            breachStartTime = Date.now() + 5000; // Cooldown
+        }
+    } else {
+        breachStartTime = null;
+        statusDisplay.innerText = "PLATFORM SAFE";
+        statusDisplay.className = "status-card status-safe";
+    }
+}
+       // --- 1. SECURE CAPTURE LOGIC (STRICT DIVERSITY & ANTI-CHEAT) ---
+let isCapturing = false;
+let captureStep = 0;
+let tempCapturedImages = []; 
+const commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
+
+async function startSecureCapture() {
+    if (isCapturing) return;
+    capturedDescriptors = [];
+    tempCapturedImages = [];
+    captureStep = 0;
+    isCapturing = true;
+    // Reset visual indicators
+    document.querySelectorAll('.angle-box').forEach(b => b.className = 'angle-box');
+    nextCaptureStep();
+}
+
+async function nextCaptureStep() {
+    if (captureStep >= 4) {
+        document.getElementById('command-text').innerText = "ENROLLMENT READY";
+        document.getElementById('save-reg-btn').disabled = false;
+        isCapturing = false;
+        return;
+    }
+
+    const timerEl = document.getElementById('countdown-timer');
+    const commandEl = document.getElementById('command-text');
+    commandEl.innerText = commands[captureStep];
+
+    // 3 Second Countdown to force position change
+    for (let i = 3; i > 0; i--) {
+        timerEl.innerText = i;
+        await new Promise(r => setTimeout(r, 1000));
+    }
+
+    const det = await faceapi.detectSingleFace(videoElement).withFaceLandmarks().withFaceDescriptor();
+    
+    // ANTI-CHEAT: Reject if no face (e.g., feet) or same angle as capture 0
+    if (!det) {
+        commandEl.innerText = "ERROR: NO FACE DETECTED!";
+        setTimeout(nextCaptureStep, 2000);
+        return;
+    }
+
+    // Strict Angle Diversity Check (Euclidean Distance)
+    let isDuplicate = false;
+    for (let prev of capturedDescriptors) {
+        if (faceapi.euclideanDistance(det.descriptor, prev) < 0.4) {
+            isDuplicate = true;
             break;
         }
     }
 
-    if (!isTooSimilar) {
-        const idx = capturedDescriptors.length;
+    if (isDuplicate && captureStep > 0) {
+        commandEl.innerText = "ERROR: SAME ANGLE! MOVE HEAD.";
+        setTimeout(nextCaptureStep, 2000);
+    } else {
         capturedDescriptors.push(det.descriptor);
         
-        // Capture and store the actual image for later verification
+        // Save actual image for the Verification Terminal
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = videoElement.videoWidth;
         tempCanvas.height = videoElement.videoHeight;
         tempCanvas.getContext('2d').drawImage(videoElement, 0, 0);
         tempCapturedImages.push(tempCanvas.toDataURL('image/jpeg'));
 
-        const box = document.getElementById(`a${idx}`);
-        box.className = "angle-box done";
-        box.innerText = "CAPTURED";
+        document.getElementById(`a${captureStep}`).className = "angle-box done";
+        captureStep++;
+        nextCaptureStep();
     }
-}
-
-function saveRegistration() {
-    const name = document.getElementById('reg-name').value;
-    const mobile = document.getElementById('reg-mobile').value;
-    if (!name || capturedDescriptors.length < 4) return alert("Please capture 4 unique angles!");
-
-    const rfid = "METRO-" + Math.floor(Math.random() * 90000 + 10000);
-    const data = { 
-        name: name, 
-        mobile: mobile, 
-        rfid: rfid,
-        descriptors: capturedDescriptors.map(d => Array.from(d)),
-        regImages: tempCapturedImages // Storing the 4 images
-    };
-    
-    localStorage.setItem(rfid, JSON.stringify(data));
-    alert(`ENROLLMENT SUCCESSFUL\nRFID: ${rfid}`);
-    location.reload();
 }
        function triggerViolationCapture() {
             const tempCanvas = document.createElement('canvas');

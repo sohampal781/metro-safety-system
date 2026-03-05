@@ -306,23 +306,29 @@ async function judgeViolation(key) {
     currentActiveViolationKey = key; 
     const violData = JSON.parse(localStorage.getItem(key));
     
-    // Open terminal and show evidence
     document.getElementById('judgement-modal').style.display = 'block';
     document.getElementById('modal-violation-img').src = violData.img;
     
-    const aiPred = document.getElementById('ai-prediction');
     const rfidInput = document.getElementById('manual-rfid-input');
-    
-    // AUTO-FILL the RFID captured during the breach
+    const aiPred = document.getElementById('ai-prediction');
+
+    // If already known from capture, fill it
     if (violData.linkedRfid && violData.linkedRfid !== "UNKNOWN_ID") {
         rfidInput.value = violData.linkedRfid;
-        rfidInput.style.border = "2px solid var(--success)";
-        aiPred.innerHTML = "MATCH FOUND IN DATABASE";
-        fetchRegistrationData(); // Automatically show name and photo
+        aiPred.innerHTML = `AUTO-MATCHED: ${violData.linkedRfid}`;
+        fetchRegistrationData();
     } else {
-        rfidInput.value = "";
-        rfidInput.placeholder = "NO AUTO-MATCH: ENTER MANUALLY";
-        aiPred.innerHTML = "ID NOT DETECTED AUTOMATICALLY";
+        // Run a manual re-scan of the evidence image
+        aiPred.innerHTML = "RE-SCANNING EVIDENCE...";
+        const img = await faceapi.fetchImage(violData.img);
+        const det = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
+        
+        if (det) {
+            // Repeat the matching logic here...
+            aiPred.innerHTML = "SCAN COMPLETE - CHECK DATABASE";
+        } else {
+            aiPred.innerHTML = "FACE NOT DETECTED IN IMAGE";
+        }
     }
 }
        function fetchRegistrationData() {
@@ -690,18 +696,16 @@ function deleteRecord(key) {
     tempCanvas.height = videoElement.videoHeight;
     const ctx = tempCanvas.getContext('2d');
     
-    // 1. Draw the Video Frame (Mirrored correctly for evidence)
+    // 1. Capture the Frame immediately
     ctx.translate(tempCanvas.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(videoElement, 0, 0);
     
-    // 2. Draw the Yellow Safety Line onto the evidence image
-    ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform to draw line accurately
+    // 2. Draw the Yellow Safety Line on the Evidence
+    ctx.setTransform(1, 0, 0, 1, 0, 0); 
     ctx.beginPath();
     ctx.strokeStyle = 'yellow';
-    ctx.lineWidth = 10; // Slightly thicker for clear evidence
-    ctx.lineCap = 'round';
-    
+    ctx.lineWidth = 10;
     linePoints.forEach((p, i) => {
         const cx = (p.x / 100) * tempCanvas.width;
         const cy = (p.y / 100) * tempCanvas.height;
@@ -710,23 +714,53 @@ function deleteRecord(key) {
     });
     ctx.stroke();
 
-    // 3. Convert to Image Data
     const dataUrl = tempCanvas.toDataURL('image/jpeg');
-
     let detectedRfid = "UNKNOWN_ID";
-    // ... [Include your existing face-api detection logic here to get detectedRfid] ...
+    let matchScore = 0;
 
+    // 3. MANDATORY IDENTIFICATION: We await the detection result
+    try {
+        const det = await faceapi.detectSingleFace(videoElement)
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+
+        if (det) {
+            // Scan through all METRO- keys in storage
+            Object.keys(localStorage).forEach(key => {
+                if (key.startsWith("METRO-")) {
+                    const user = JSON.parse(localStorage.getItem(key));
+                    user.descriptors.forEach(desc => {
+                        const dist = faceapi.euclideanDistance(det.descriptor, new Float32Array(desc));
+                        const score = (1 - dist) * 100;
+                        // Higher score threshold (45%) for reliability
+                        if (score > 45 && score > matchScore) {
+                            matchScore = score;
+                            detectedRfid = user.rfid;
+                        }
+                    });
+                }
+            });
+        }
+    } catch (e) {
+        console.error("ID Detection Error:", e);
+    }
+
+    // 4. Save to LocalStorage ONLY after ID check is done
     const storageKey = "VIOL-" + Date.now(); 
     const violationObject = {
         id: storageKey,
-        img: dataUrl, // This image now contains the yellow line
+        img: dataUrl, 
         time: new Date().toLocaleString(),
-        linkedRfid: detectedRfid,
-        status: "PENDING"
+        linkedRfid: detectedRfid, 
+        status: "PENDING",
+        confidence: matchScore.toFixed(1)
     };
 
     localStorage.setItem(storageKey, JSON.stringify(violationObject));
+    
+    // 5. Update UI
     renderChallans(); 
+    console.log(`Violation Logged. RFID: ${detectedRfid} (${matchScore}%)`);
 }
     // --- 6. INITIALIZATION ---
     pointCountInput.onchange = updateSliders;

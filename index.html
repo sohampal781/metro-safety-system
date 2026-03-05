@@ -368,37 +368,97 @@ async function finalizeFine() {
     const userRaw = localStorage.getItem(rfid);
     
     if (!userRaw) {
-        alert("RFID NOT FOUND");
+        alert("RFID RECORD NOT FOUND");
         return;
     }
 
-    const amount = prompt("ENTER FINE AMOUNT:", "500");
+    const amount = prompt("ENTER FINE AMOUNT (INR):", "500");
     if (amount && currentActiveViolationKey) {
         const user = JSON.parse(userRaw);
         
-        // 1. Retrieve the existing violation data
-        let violData = JSON.parse(localStorage.getItem(currentActiveViolationKey));
+        // --- STEP 1: PREVIEW & EDIT MESSAGE ---
+        const defaultMsg = `METRO GUARD ALERT: Mr./Ms. ${user.name}, a fine of INR ${amount} has been issued to your ID (${rfid}) for a yellow line safety breach. Please pay immediately.`;
         
-        // 2. CRITICAL: Update the status to FINED
-        violData.status = "FINED";
-        violData.fineAmount = amount;
-        violData.finedUserName = user.name;
-        violData.finedMobile = user.mobile;
+        // Show the message to you for editing
+        const editedMsg = prompt("REVIEW SMS CONTENT (EDIT IF NEEDED):", defaultMsg);
 
-        // 3. Save it back to LocalStorage
-        localStorage.setItem(currentActiveViolationKey, JSON.stringify(violData));
+        if (editedMsg !== null) { // If you didn't click 'Cancel'
+            // Save data to LocalStorage
+            const violData = JSON.parse(localStorage.getItem(currentActiveViolationKey));
+            violData.status = "FINED";
+            violData.fineAmount = amount;
+            localStorage.setItem(currentActiveViolationKey, JSON.stringify(violData));
 
-        // 4. Send SMS (The free version we discussed)
-        alert("Recording fine and sending SMS alert...");
-        await sendFreeSMS(user.mobile, user.name, amount);
+            // --- STEP 2: SEND THE EDITED MESSAGE ---
+            statusDisplay.innerText = "SENDING CUSTOM SMS...";
+            const success = await sendTwilioSMS(user.mobile, editedMsg);
 
-        // 5. Close UI and RE-RENDER (This updates the button to 'ALREADY FINED')
-        closeJudgement();
-        renderChallans(); 
-        
-        alert(`Challan of ₹${amount} issued to ${user.name}`);
+            if (success) {
+                alert(`SUCCESS: Custom SMS sent to ${user.name}`);
+            } else {
+                alert("SMS FAILED: Check Twilio Balance or Verified Numbers.");
+            }
+
+            closeJudgement();
+            renderChallans(); 
+        }
     }
 }
+        async function sendSMS(phone) {
+    try {
+        // Send the phone number to your local Node.js server
+        const response = await fetch("http://localhost:3000/send-sms", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                mobile: phone,
+                // You can now customize the message here
+                message: "MetroGuard Alert: Platform intrusion detected. Safety line breached."
+            })
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            console.log("SMS Sent Successfully! SID: " + result.sid);
+        } else {
+            console.error("SMS Failed: " + result.error);
+        }
+    } catch (error) {
+        console.error("Connection Error:", error);
+    }
+}
+        require('dotenv').config();
+const express = require('express');
+const twilio = require('twilio');
+const cors = require('cors');
+
+const app = express();
+app.use(express.json());
+app.use(cors());
+
+// Credentials are pulled from .env file for security
+const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+
+app.post('/send-sms', async (req, res) => {
+    const { mobile, message } = req.body;
+
+    try {
+        const smsResponse = await client.messages.create({
+            body: message,
+            messagingServiceSid: "MGd4374a4f0cbe421f76f8d57f2a5c2886", // Your Service SID
+            to: `+91${mobile}` // Adding India country code
+        });
+
+        res.status(200).json({ success: true, sid: smsResponse.sid });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.listen(3000, () => console.log("MetroGuard SMS Server running on Port 3000"));
+        
 function closeJudgement() {
     document.getElementById('judgement-modal').style.display = 'none';
     document.getElementById('registration-display').style.display = 'none';

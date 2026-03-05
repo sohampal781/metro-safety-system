@@ -256,19 +256,71 @@
     let tempCapturedImages = [];
     const commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
 
-    // --- 2. TAB & UI CONTROL ---
-    // Fixes the ReferenceError by defining switchUI globally
     function switchUI(mode) {
-        document.getElementById('monitor-ui').style.display = mode === 'monitor' ? 'block' : 'none';
-        document.getElementById('register-ui').style.display = mode === 'register' ? 'block' : 'none';
-        
-        // Update tab button styles
-        document.getElementById('tab-mon').classList.toggle('active', mode === 'monitor');
-        document.getElementById('tab-reg').classList.toggle('active', mode === 'register');
-        
-        if(mode === 'register') renderUserList();
-    }
+    // Hide all main UI sections
+    document.getElementById('monitor-ui').style.display = mode === 'monitor' ? 'block' : 'none';
+    document.getElementById('register-ui').style.display = mode === 'register' ? 'block' : 'none';
+    document.getElementById('challan-overlay').style.display = mode === 'challan' ? 'block' : 'none';
+    
+    // Toggle active state on buttons
+    document.getElementById('tab-mon').classList.toggle('active', mode === 'monitor');
+    document.getElementById('tab-reg').classList.toggle('active', mode === 'register');
+    document.getElementById('tab-cha').classList.toggle('active', mode === 'challan');
+    
+    // Refresh lists
+    if(mode === 'challan') renderChallans();
+    if(mode === 'register') renderUserList();
+}
+async function judgeViolation(id, imgUrl) {
+    const img = await faceapi.fetchImage(imgUrl);
+    const det = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
+    if (!det) return alert("Face blurred in capture.");
 
+    let bestMatch = { score: 0, rfid: null, data: null };
+
+    // Compare against registered users in localStorage
+    Object.keys(localStorage).forEach(key => {
+        if(key.startsWith("METRO-")) {
+            const user = JSON.parse(localStorage.getItem(key));
+            user.descriptors.forEach(desc => {
+                // Your exact Euclidean Distance math
+                const dist = faceapi.euclideanDistance(det.descriptor, new Float32Array(desc));
+                const match = (1 - dist) * 100;
+                if (match > bestMatch.score) {
+                    bestMatch = { score: match, rfid: key, data: user };
+                }
+            });
+        }
+    });
+
+    const display = document.getElementById(`match-info-${id}`);
+    if (bestMatch.score >= 85) {
+        display.innerHTML = `
+            <div style="color:var(--success); font-weight:bold;">MATCH: ${bestMatch.score.toFixed(1)}% - ${bestMatch.data.name}</div>
+            <button class="action-btn" style="background:var(--success)" onclick="alert('E-Challan Sent to ${bestMatch.data.mobile}')">SEND CHALLAN</button>`;
+    } else {
+        display.innerHTML = `<div style="color:orange;">LOW MATCH: ${bestMatch.score.toFixed(1)}%. Check manually.</div>`;
+    }
+}
+        function renderChallans() {
+    const grid = document.getElementById('challan-grid');
+    grid.innerHTML = "";
+    Object.keys(localStorage).forEach(key => {
+        if(key.startsWith("VIOL-")) {
+            const viol = JSON.parse(localStorage.getItem(key));
+            const card = document.createElement('div');
+            card.className = 'challan-card';
+            card.innerHTML = `
+                <img src="${viol.img}" style="width:100%">
+                <div style="font-size:11px; margin: 10px 0;">Logged: ${viol.time}</div>
+                <div id="match-info-${viol.id}"></div>
+                <button class="action-btn" onclick="judgeViolation('${viol.id}', '${viol.img}')">IDENTIFY & FINE</button>
+                <button class="delete-btn" onclick="deleteRecord('${key}')">DELETE</button>
+            `;
+            grid.prepend(card);
+        }
+    });
+}
     // --- 3. MONITORING & MATH LOGIC (YOUR ORIGINAL LOGIC) ---
     function updateSliders() {
         if (isMonitoring) return;

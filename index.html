@@ -635,33 +635,30 @@ function deleteRecord(key) {
     }
 
     statusDisplay.innerText = commands[captureStep];
-    statusDisplay.className = "status-card status-breach"; // Use breach color to highlight action
+    await new Promise(r => setTimeout(r, 2000));
 
-    // Give user time to pose
-    await new Promise(r => setTimeout(r, 2500));
-
-    // Try to detect face
-    const det = await faceapi.detectSingleFace(videoElement)
-        .withFaceLandmarks()
-        .withFaceDescriptor();
+    const det = await faceapi.detectSingleFace(videoElement).withFaceLandmarks().withFaceDescriptor();
 
     if (det) {
         capturedDescriptors.push(Array.from(det.descriptor));
         
-        // Save the frame for visual confirmation
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = videoElement.videoWidth;
         tempCanvas.height = videoElement.videoHeight;
-        const ctx = tempCanvas.getContext('2d');
-        ctx.drawImage(videoElement, 0, 0);
+        tempCanvas.getContext('2d').drawImage(videoElement, 0, 0);
         tempCapturedImages.push(tempCanvas.toDataURL('image/jpeg'));
 
-        document.getElementById(`a${captureStep}`).className = "angle-box done";
+        // SAFETY CHECK: Prevents the "Cannot set properties of null" error
+        const indicator = document.getElementById(`a${captureStep}`);
+        if (indicator) {
+            indicator.className = "angle-box done";
+        }
+        
         captureStep++;
-        runCaptureSequence(); // Move to next step
+        runCaptureSequence();
     } else {
-        statusDisplay.innerText = "FACE NOT DETECTED - RETRYING...";
-        setTimeout(runCaptureSequence, 1000); // Retry current step
+        statusDisplay.innerText = "RETRYING SCAN...";
+        setTimeout(runCaptureSequence, 1000);
     }
 }
 
@@ -687,25 +684,35 @@ function lookupUser() {
 
 // 2. Updated Save Function to handle Phone Number Updates
 function saveRegistration() {
-    const name = document.getElementById('reg-name').value;
-    const mobile = document.getElementById('reg-mobile').value;
-    const existingKey = document.getElementById('reg-name').dataset.activeKey;
+    const nameInput = document.getElementById('reg-name');
+    const mobileInput = document.getElementById('reg-mobile');
+    const name = nameInput.value.trim();
+    const mobile = mobileInput.value.trim();
 
     if (!name || mobile.length !== 10) {
-        alert("Please enter a valid Name and 10-digit Mobile Number.");
+        alert("Enter a valid Name and 10-digit Mobile Number.");
         return;
     }
 
+    let existingKey = null;
+    // Search for existing user by name
+    Object.keys(localStorage).forEach(key => {
+        if (key.startsWith("METRO-")) {
+            const u = JSON.parse(localStorage.getItem(key));
+            if (u.name.toLowerCase() === name.toLowerCase()) existingKey = key;
+        }
+    });
+
     if (existingKey) {
-        // --- UPDATE MODE ---
+        // --- PHONE NUMBER UPDATE ONLY ---
         const userData = JSON.parse(localStorage.getItem(existingKey));
-        userData.mobile = mobile; // Update only the phone number
+        userData.mobile = mobile; 
         localStorage.setItem(existingKey, JSON.stringify(userData));
-        alert(`SUCCESS: Phone number updated for ${name}`);
+        alert(`PHONE UPDATED: ${name} -> ${mobile}`);
     } else {
-        // --- NEW REGISTRATION MODE ---
+        // --- NEW USER REGISTRATION ---
         if (capturedDescriptors.length < 4) {
-            alert("Please complete all 4 capture angles for new users.");
+            alert("New users require 4-angle face capture first.");
             return;
         }
         const rfid = "METRO-" + Math.random().toString(36).substr(2, 6).toUpperCase();
@@ -715,13 +722,15 @@ function saveRegistration() {
             regImages: tempCapturedImages
         };
         localStorage.setItem(rfid, JSON.stringify(userData));
-        alert("New User Registered: " + rfid);
+        alert("NEW USER SAVED: " + rfid);
     }
 
-    // Reset UI
-    document.getElementById('reg-name').value = "";
-    document.getElementById('reg-mobile').value = "";
-    delete document.getElementById('reg-name').dataset.activeKey;
+    // Reset UI and Clear Capture State
+    nameInput.value = "";
+    mobileInput.value = "";
+    capturedDescriptors = [];
+    tempCapturedImages = [];
+    document.querySelectorAll('.angle-box').forEach(b => b.className = 'angle-box');
     renderUserList();
 }
 

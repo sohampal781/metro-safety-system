@@ -368,96 +368,57 @@ async function finalizeFine() {
     const userRaw = localStorage.getItem(rfid);
     
     if (!userRaw) {
-        alert("RFID RECORD NOT FOUND");
+        alert("RFID NOT FOUND");
         return;
     }
 
-    const amount = prompt("ENTER FINE AMOUNT (INR):", "500");
+    const amount = prompt("ENTER FINE AMOUNT:", "500");
     if (amount && currentActiveViolationKey) {
         const user = JSON.parse(userRaw);
         
-        // --- STEP 1: PREVIEW & EDIT MESSAGE ---
-        const defaultMsg = `METRO GUARD ALERT: Mr./Ms. ${user.name}, a fine of INR ${amount} has been issued to your ID (${rfid}) for a yellow line safety breach. Please pay immediately.`;
-        
-        // Show the message to you for editing
-        const editedMsg = prompt("REVIEW SMS CONTENT (EDIT IF NEEDED):", defaultMsg);
+        // 1. Permanently update status to FINED in LocalStorage
+        const violData = JSON.parse(localStorage.getItem(currentActiveViolationKey));
+        violData.status = "FINED";
+        violData.fineAmount = amount;
+        localStorage.setItem(currentActiveViolationKey, JSON.stringify(violData));
 
-        if (editedMsg !== null) { // If you didn't click 'Cancel'
-            // Save data to LocalStorage
-            const violData = JSON.parse(localStorage.getItem(currentActiveViolationKey));
-            violData.status = "FINED";
-            violData.fineAmount = amount;
-            localStorage.setItem(currentActiveViolationKey, JSON.stringify(violData));
+        // 2. Trigger the real-world SMS alert
+        alert("Processing SMS alert...");
+        const success = await sendFastSMS(user.mobile, user.name, amount);
 
-            // --- STEP 2: SEND THE EDITED MESSAGE ---
-            statusDisplay.innerText = "SENDING CUSTOM SMS...";
-            const success = await sendTwilioSMS(user.mobile, editedMsg);
-
-            if (success) {
-                alert(`SUCCESS: Custom SMS sent to ${user.name}`);
-            } else {
-                alert("SMS FAILED: Check Twilio Balance or Verified Numbers.");
-            }
-
-            closeJudgement();
-            renderChallans(); 
-        }
-    }
-}
-        async function sendSMS(phone) {
-    try {
-        // Send the phone number to your local Node.js server
-        const response = await fetch("http://localhost:3000/send-sms", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                mobile: phone,
-                // You can now customize the message here
-                message: "MetroGuard Alert: Platform intrusion detected. Safety line breached."
-            })
-        });
-
-        const result = await response.json();
-        if (result.success) {
-            console.log("SMS Sent Successfully! SID: " + result.sid);
+        if (success) {
+            alert(`SUCCESS: SMS sent to ${user.name} at ${user.mobile}`);
         } else {
-            console.error("SMS Failed: " + result.error);
+            alert("SMS failed. Check API balance or DND status.");
         }
-    } catch (error) {
-        console.error("Connection Error:", error);
+
+        closeJudgement();
+        renderChallans(); // Update the UI button to "ALREADY FINED"
     }
 }
-        require('dotenv').config();
-const express = require('express');
-const twilio = require('twilio');
-const cors = require('cors');
+      async function sendFastSMS(mobileNumber, userName, amount) {
+    const apiKey = "HzZRzYz09iEIB7Glr3OmdOgt3PMocm66xPHcXWoaUvMaN9UKvlinysQDafuD"; // Replace with your real key
+    const message = `METRO GUARD: Mr./Ms. ${userName}, a fine of INR ${amount} has been issued for a safety line breach.`;
 
-const app = express();
-app.use(express.json());
-app.use(cors());
-
-// Credentials are pulled from .env file for security
-const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-
-app.post('/send-sms', async (req, res) => {
-    const { mobile, message } = req.body;
+    // Fast2SMS API URL for GET request (Quick View Route)
+    const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${apiKey}&route=q&message=${encodeURIComponent(message)}&flash=0&numbers=${mobileNumber}`;
 
     try {
-        const smsResponse = await client.messages.create({
-            body: message,
-            messagingServiceSid: "MGd4374a4f0cbe421f76f8d57f2a5c2886", // Your Service SID
-            to: `+91${mobile}` // Adding India country code
-        });
-
-        res.status(200).json({ success: true, sid: smsResponse.sid });
+        const response = await fetch(url, { method: 'GET' });
+        const result = await response.json();
+        
+        if (result.return === true) {
+            console.log("SMS sent successfully!");
+            return true;
+        } else {
+            console.error("SMS Failed:", result.message);
+            return false;
+        }
     } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        console.error("Connection error:", error);
+        return false;
     }
-});
-
-app.listen(3000, () => console.log("MetroGuard SMS Server running on Port 3000"));
+}
         
 function closeJudgement() {
     document.getElementById('judgement-modal').style.display = 'none';

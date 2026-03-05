@@ -170,6 +170,37 @@
             padding: 8px; font-size: 10px; text-align: center; background: #21262d; border-radius: 4px;
         }
         .angle-box.done { background: var(--success); color: black; }
+        /* Make the sidebar container flexible but restricted */
+#sidebar {
+    display: flex;
+    flex-direction: column;
+    height: 100vh; /* Lock sidebar to screen height */
+}
+
+/* Create a scrollable wrapper for the sliders */
+#monitor-ui {
+    flex-grow: 1;
+    overflow-y: auto; /* Enable vertical scrolling */
+    padding-right: 10px; /* Space for the scrollbar */
+}
+
+/* Custom Scrollbar Styling (Modern look) */
+#monitor-ui::-webkit-scrollbar {
+    width: 6px;
+}
+
+#monitor-ui::-webkit-scrollbar-track {
+    background: #0d1117;
+}
+
+#monitor-ui::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    border-radius: 10px;
+}
+
+#monitor-ui::-webkit-scrollbar-thumb:hover {
+    background: #00b8e6;
+}
     </style>
 </head>
 <body>

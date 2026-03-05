@@ -348,34 +348,27 @@ async function judgeViolation(id, imgUrl) {
         <p style="color:var(--accent)">PH: ${user.mobile}</p>
     `;
 }
-
 function finalizeFine() {
-    const rfid = document.getElementById('manual-rfid-input').value;
+    const rfid = document.getElementById('manual-rfid-input').value.trim();
     const user = JSON.parse(localStorage.getItem(rfid));
-    const amount = prompt("ENTER FINE AMOUNT (INR):", "500");
+    const amount = prompt("ENTER FINE AMOUNT:", "500");
 
     if (amount && user) {
-        // Log the fine (Simulated SMS/Database update)
-        alert(`FINE ISSUED!\nAmount: ₹${amount}\nSent to: ${user.name}\nMobile: ${user.mobile}`);
-        
-        // Find the current violation ID from the image source or a global variable
-        const currentViolImg = document.getElementById('modal-violation-img').src;
-        
-        // Remove from portal so it can't be fined again
-        Object.keys(localStorage).forEach(key => {
-            if(key.startsWith("VIOL-")) {
-                const item = JSON.parse(localStorage.getItem(key));
-                if(item.img === currentViolImg) {
-                    localStorage.removeItem(key);
-                }
-            }
-        });
+        alert(`SUCCESS: ₹${amount} Fine sent to ${user.name}`);
+
+        // THE DELETE STEP:
+        if (currentActiveViolationKey) {
+            console.log("Removing incident after fine:", currentActiveViolationKey);
+            localStorage.removeItem(currentActiveViolationKey);
+            currentActiveViolationKey = null; // Reset
+        }
 
         closeJudgement();
-        renderChallans(); // Refresh the grid
+        renderChallans(); // Update portal to show it's gone
+    } else {
+        alert("Fine cancelled or User not found.");
     }
 }
-
 function closeJudgement() {
     document.getElementById('judgement-modal').style.display = 'none';
     document.getElementById('registration-display').style.display = 'none';
@@ -390,34 +383,33 @@ function closeJudgement() {
 }
         function renderChallans() {
     const grid = document.getElementById('challan-grid');
+    if (!grid) return;
     grid.innerHTML = "";
-    
-    // Get all keys and sort them by time (newest first)
-    const keys = Object.keys(localStorage)
-        .filter(k => k.startsWith("VIOL-"))
-        .sort((a, b) => b.split('-')[1] - a.split('-')[1]);
 
-    keys.forEach(key => {
-        const viol = JSON.parse(localStorage.getItem(key));
-        const card = document.createElement('div');
-        card.className = 'challan-card';
-        // We store the ID in a data attribute for the modal to find later
-        card.innerHTML = `
-            <img src="${viol.img}" style="width:100%">
-            <div style="font-size:11px; margin: 10px 0;">Logged: ${viol.time}</div>
-            <div id="match-info-${viol.id}"></div>
-            <button class="action-btn" onclick="judgeViolation('${key}')">IDENTIFY & FINE</button>
-            <button class="delete-btn" style="background:#ff4444; margin-top:5px;" onclick="deleteRecord('${key}')">DELETE LOG</button>
-        `;
-        grid.appendChild(card);
+    Object.keys(localStorage).forEach(key => {
+        if(key.startsWith("VIOL-")) {
+            const viol = JSON.parse(localStorage.getItem(key));
+            const card = document.createElement('div');
+            card.className = 'challan-card';
+            
+            // Critical Fix: Pass the 'key' variable directly to the functions
+            card.innerHTML = `
+                <img src="${viol.img}" style="width:100%">
+                <div style="font-size:11px; margin: 10px 0;">Logged: ${viol.time}</div>
+                <button class="action-btn" onclick="judgeViolation('${key}')">IDENTIFY & FINE</button>
+                <button class="delete-btn" style="background:#ff4444; width:100%; margin-top:5px; border:none; padding:8px; color:white; border-radius:4px; cursor:pointer;" 
+                        onclick="deleteRecord('${key}')">DELETE PERMANENTLY</button>
+            `;
+            grid.prepend(card);
+        }
     });
 }
 
 function deleteRecord(key) {
-    if(confirm("Are you sure you want to delete this evidence?")) {
+    console.log("Attempting to delete key:", key);
+    if(confirm("Delete this evidence?")) {
         localStorage.removeItem(key);
-        renderChallans(); // Refresh UI immediately
-        if(typeof renderUserList === 'function') renderUserList(); 
+        renderChallans(); // Re-draw the list
     }
 }
     // --- 3. MONITORING & MATH LOGIC (YOUR ORIGINAL LOGIC) ---
@@ -615,32 +607,33 @@ function deleteRecord(key) {
 
     // --- 5. VIOLATION LOGGING ---
     function captureViolation() {
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = canvasElement.width;
-        tempCanvas.height = canvasElement.height;
-        const ctx = tempCanvas.getContext('2d');
-        
-        // Maintain mirroring for capture
-        ctx.translate(tempCanvas.width, 0);
-        ctx.scale(-1, 1);
-        ctx.drawImage(videoElement, 0, 0);
-        ctx.drawImage(canvasElement, 0, 0);
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = canvasElement.width;
+    tempCanvas.height = canvasElement.height;
+    const ctx = tempCanvas.getContext('2d');
+    
+    ctx.translate(tempCanvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(videoElement, 0, 0);
+    ctx.drawImage(canvasElement, 0, 0);
 
-        const dataUrl = tempCanvas.toDataURL('image/jpeg');
-        const id = "VIOL-" + Date.now();
-        localStorage.setItem(id, JSON.stringify({id, img: dataUrl, time: new Date().toLocaleString()}));
+    const dataUrl = tempCanvas.toDataURL('image/jpeg');
+    
+    // Create a unique key using timestamp
+    const timestamp = Date.now();
+    const storageKey = "VIOL-" + timestamp; 
+    
+    const violationObject = {
+        id: storageKey, // Store the exact key inside the object
+        img: dataUrl, 
+        time: new Date().toLocaleString()
+    };
 
-        const card = document.createElement('div');
-        card.className = 'fine-card';
-        card.innerHTML = `
-            <img src="${dataUrl}">
-            <strong>Violation Logged</strong>
-            <div class="fine-actions">
-                <button class="btn-small" onclick="this.parentElement.parentElement.remove()">Delete</button>
-            </div>
-        `;
-        violationList.prepend(card);
-    }
+    localStorage.setItem(storageKey, JSON.stringify(violationObject));
+    console.log("Saved violation with key:", storageKey);
+    
+    renderChallans(); // Refresh portal immediately
+}
 
     // --- 6. INITIALIZATION ---
     pointCountInput.onchange = updateSliders;

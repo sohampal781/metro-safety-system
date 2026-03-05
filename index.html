@@ -275,41 +275,47 @@ async function judgeViolation(key) {
     currentActiveViolationKey = key; 
     const violData = JSON.parse(localStorage.getItem(key));
     
-    // Ensure the modal is visible and show the BIG picture
+    // Open terminal and show the big evidence photo
     document.getElementById('judgement-modal').style.display = 'block';
-    const evidenceImg = document.getElementById('modal-violation-img');
-    evidenceImg.src = violData.img; // This fixes the broken image in your screenshot
+    document.getElementById('modal-violation-img').src = violData.img;
     
     const aiPred = document.getElementById('ai-prediction');
-    aiPred.innerHTML = "SYSTEM MATCHING...";
-
-    // Run AI to find the person's RFID automatically
-    const img = await faceapi.fetchImage(violData.img);
-    const det = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
+    const rfidInput = document.getElementById('manual-rfid-input'); // Target the RFID box
     
-    if (det) {
-        let bestMatch = { score: 0, rfid: "" };
-        Object.keys(localStorage).forEach(lk => {
-            if(lk.startsWith("METRO-")) {
-                const user = JSON.parse(localStorage.getItem(lk));
-                user.descriptors.forEach(desc => {
-                    const dist = faceapi.euclideanDistance(det.descriptor, new Float32Array(desc));
-                    const match = (1 - dist) * 100;
-                    if (match > bestMatch.score) {
-                        bestMatch = { score: match, rfid: lk };
-                    }
-                });
-            }
-        });
+    aiPred.innerHTML = "SYSTEM MATCHING...";
+    rfidInput.value = ""; // Clear old data
 
-        // This puts the RFID in the box for you automatically
-        if(bestMatch.rfid) {
-            aiPred.innerHTML = `MATCH FOUND: ${bestMatch.score.toFixed(1)}%`;
-            document.getElementById('manual-rfid-input').value = bestMatch.rfid;
-            // Now you just have to click 'VERIFY ID' to see their reg-photo
-        } else {
-            aiPred.innerHTML = "NO MATCH IN DATABASE";
+    try {
+        const img = await faceapi.fetchImage(violData.img);
+        const det = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
+        
+        if (det) {
+            let bestMatch = { score: 0, rfid: "" };
+            Object.keys(localStorage).forEach(lk => {
+                if(lk.startsWith("METRO-")) {
+                    const user = JSON.parse(localStorage.getItem(lk));
+                    user.descriptors.forEach(desc => {
+                        const dist = faceapi.euclideanDistance(det.descriptor, new Float32Array(desc));
+                        const match = (1 - dist) * 100;
+                        if (match > bestMatch.score) {
+                            bestMatch = { score: match, rfid: lk };
+                        }
+                    });
+                }
+            });
+
+            // THIS IS THE PART YOU NEED:
+            if(bestMatch.rfid && bestMatch.score > 45) {
+                aiPred.innerHTML = `MATCH FOUND: ${bestMatch.score.toFixed(1)}%`;
+                rfidInput.value = bestMatch.rfid; // Pushes the RFID into the box automatically
+                rfidInput.style.border = "2px solid #00e676"; // Visual confirmation
+            } else {
+                aiPred.innerHTML = "NO DATABASE MATCH FOUND";
+                rfidInput.placeholder = "ENTER RFID MANUALLY";
+            }
         }
+    } catch(e) {
+        aiPred.innerHTML = "AI ERROR - USE MANUAL VERIFY";
     }
 }
        function fetchRegistrationData() {
@@ -375,9 +381,8 @@ function closeJudgement() {
         renderUserList();
     }
 }
-        function renderChallans() {
+       function renderChallans() {
     const grid = document.getElementById('challan-grid');
-    if (!grid) return;
     grid.innerHTML = "";
 
     Object.keys(localStorage).forEach(key => {
@@ -386,21 +391,19 @@ function closeJudgement() {
             const card = document.createElement('div');
             card.className = 'challan-card';
             
-            // Check if already fined
+            // Check the status
             const isFined = viol.status === "FINED";
             
             card.innerHTML = `
-                <img src="${viol.img}" style="width:100%; filter: ${isFined ? 'grayscale(0.5)' : 'none'}">
+                <img src="${viol.img}" style="width:100%; border-radius:8px;">
                 <div style="font-size:11px; margin: 10px 0;">Logged: ${viol.time}</div>
                 
                 ${isFined ? 
-                    `<div style="background:var(--success); color:black; padding:10px; border-radius:4px; font-weight:bold; text-align:center; margin-bottom:5px;">
-                        ALREADY FINED: ₹${viol.fineAmount}
-                     </div>` : 
+                    `<button class="action-btn" style="background:#2ea043; cursor:not-allowed;" disabled>ALREADY FINED</button>` : 
                     `<button class="action-btn" onclick="judgeViolation('${key}')">IDENTIFY & FINE</button>`
                 }
                 
-                <button class="delete-btn" style="background:#ff4444; width:100%; border:none; padding:8px; color:white; border-radius:4px; cursor:pointer;" 
+                <button class="delete-btn" style="background:#ff4444; width:100%; margin-top:5px; border:none; padding:8px; color:white; border-radius:4px; cursor:pointer;" 
                         onclick="deleteRecord('${key}')">DELETE RECORD</button>
             `;
             grid.prepend(card);

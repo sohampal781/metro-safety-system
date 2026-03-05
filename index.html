@@ -237,442 +237,290 @@
     </div>
 
     <script>
-        // --- CORE VARIABLES ---
-        const videoElement = document.getElementById('input-video');
-        const canvasElement = document.getElementById('output-canvas');
-        const canvasCtx = canvasElement.getContext('2d');
-        const sliderContainer = document.getElementById('slider-container');
-        const pointCountInput = document.getElementById('point-count');
-        const startBtn = document.getElementById('start-btn');
-        const statusDisplay = document.getElementById('status-display');
-        const violationList = document.getElementById('violation-list');
-        const challanGrid = document.getElementById('challan-grid');
+    // --- CORE VARIABLES ---
+    const videoElement = document.getElementById('input-video');
+    const canvasElement = document.getElementById('output-canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    const sliderContainer = document.getElementById('slider-container');
+    const pointCountInput = document.getElementById('point-count');
+    const startBtn = document.getElementById('start-btn');
+    const statusDisplay = document.getElementById('status-display');
+    const violationList = document.getElementById('violation-list');
+    const challanGrid = document.getElementById('challan-grid');
 
-        let isMonitoring = false;
-        let linePoints = [];
-        let breachStartTime = null;
-        let capturedDescriptors = [];
-        const BREACH_THRESHOLD = 1500;
+    // --- SYSTEM STATE VARIABLES ---
+    let isMonitoring = false;
+    let linePoints = [];
+    let breachStartTime = null;
+    const BREACH_THRESHOLD = 1500;
 
-        // --- UI LOGIC ---
-        function switchUI(mode) {
-            document.getElementById('monitor-ui').style.display = mode === 'monitor' ? 'block' : 'none';
-            document.getElementById('register-ui').style.display = mode === 'register' ? 'block' : 'none';
-            document.getElementById('challan-overlay').style.display = mode === 'challan' ? 'block' : 'none';
-            
-            document.getElementById('tab-mon').classList.toggle('active', mode === 'monitor');
-            document.getElementById('tab-reg').classList.toggle('active', mode === 'register');
-            document.getElementById('tab-cha').classList.toggle('active', mode === 'challan');
-            
-            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-            if(mode === 'challan') renderChallans();
-            if(mode === 'register') renderUserList();
-        }
+    // --- ENROLLMENT VARIABLES (The missing ones) ---
+    let isCapturing = false;
+    let captureStep = 0;
+    let capturedDescriptors = [];
+    let tempCapturedImages = [];
+    const commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
 
-        function updateSliders() {
-            if (isMonitoring) return;
-            sliderContainer.innerHTML = '';
-            linePoints = [];
-            const count = parseInt(pointCountInput.value);
-            for (let i = 0; i < count; i++) {
-                const x = (i / (count - 1)) * 100;
-                const y = 80;
-                linePoints.push({ x, y });
-                const div = document.createElement('div');
-                div.className = 'control-group';
-                div.innerHTML = `<label>Node ${i+1} Pos</label>
-                    <input type="range" data-idx="${i}" data-axis="x" value="${x}">
-                    <input type="range" data-idx="${i}" data-axis="y" value="${y}">`;
-                sliderContainer.appendChild(div);
-            }
-        }
-        pointCountInput.onchange = updateSliders;
-        updateSliders();
-
-        sliderContainer.oninput = (e) => {
-            const idx = e.target.dataset.idx;
-            const axis = e.target.dataset.axis;
-            linePoints[idx][axis] = parseFloat(e.target.value);
-        };
-
-        // --- AI INITIALIZATION ---
-        const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
-        pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5 });
-
-        async function loadModels() {
-            const URL = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights';
-            await faceapi.nets.ssdMobilenetv1.loadFromUri(URL);
-            await faceapi.nets.faceLandmark68Net.loadFromUri(URL);
-            await faceapi.nets.faceRecognitionNet.loadFromUri(URL);
-        }
-        loadModels();
-
-        // --- MAIN PROCESSING LOOP ---
-        pose.onResults((results) => {
-            canvasElement.width = videoElement.videoWidth;
-            canvasElement.height = videoElement.videoHeight;
-            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-
-            if (document.getElementById('monitor-ui').style.display !== 'none') {
-                drawSafetyLine();
-                if (results.poseLandmarks && isMonitoring) {
-                    checkSafetyBreach(results.poseLandmarks);
-                }
-            } 
-            else if (document.getElementById('register-ui').style.display !== 'none') {
-                autoCaptureLogic();
-            }
-        });
-
-        function drawSafetyLine() {
-            canvasCtx.beginPath();
-            canvasCtx.strokeStyle = 'yellow';
-            canvasCtx.lineWidth = 10;
-            linePoints.forEach((p, i) => {
-                const cx = (p.x / 100) * canvasElement.width;
-                const cy = (p.y / 100) * canvasElement.height;
-                if (i === 0) canvasCtx.moveTo(cx, cy); else canvasCtx.lineTo(cx, cy);
-            });
-            canvasCtx.stroke();
-        }
-
-        function checkSafetyBreach(landmarks) {
-    const hip = landmarks[23]; 
-    const px = hip.x * 100;
-    const py = hip.y * 100;
-    
-    // Absolute position check relative to the defined nodes
-    const x1 = linePoints[0].x;
-    const y1 = linePoints[0].y;
-    const x2 = linePoints[linePoints.length - 1].x;
-    const y2 = linePoints[linePoints.length - 1].y;
-    
-    const val = (px - x1) * (y2 - y1) - (py - y1) * (x2 - x1);
-    const safeConfig = document.getElementById('safe-side').value;
-    
-    // Detects based on location even if user is not moving
-    const isBreached = safeConfig === 'left' ? val > 0 : val < 0;
-
-    if (isBreached) {
-        if (!breachStartTime) breachStartTime = Date.now();
-        const elapsed = Date.now() - breachStartTime;
-        statusDisplay.innerText = `STATIONARY BREACH: ${(elapsed/1000).toFixed(1)}s`;
-        statusDisplay.className = "status-card status-breach";
-        if (elapsed > BREACH_THRESHOLD) {
-            triggerViolationCapture();
-            breachStartTime = Date.now() + 5000; // Cooldown
-        }
-    } else {
-        breachStartTime = null;
-        statusDisplay.innerText = "PLATFORM SAFE";
-        statusDisplay.className = "status-card status-safe";
-    }
-}
-// --- ENROLLMENT LOGIC ---
-
-// This replaces the missing function that caused your console error
-async function autoCaptureLogic() {
-    if (isCapturing) return; // Don't interfere if a sequence is running
-
-    const detections = await faceapi.detectSingleFace(videoElement).withFaceLandmarks();
-    
-    if (detections) {
-        // Draw face box on canvas so user knows they are detected
-        const dims = faceapi.matchDimensions(canvasElement, videoElement, true);
-        const resized = faceapi.resizeResults(detections, dims);
-        faceapi.draw.drawDetections(canvasElement, resized);
+    // --- UI LOGIC ---
+    function switchUI(mode) {
+        document.getElementById('monitor-ui').style.display = mode === 'monitor' ? 'block' : 'none';
+        document.getElementById('register-ui').style.display = mode === 'register' ? 'block' : 'none';
+        document.getElementById('challan-overlay').style.display = mode === 'challan' ? 'block' : 'none';
         
-        // If system is ready but not capturing, show a prompt
-        statusDisplay.innerText = "FACE DETECTED - READY TO ENROLL";
-        statusDisplay.className = "status-card status-safe";
-    } else {
-        statusDisplay.innerText = "POSITION FACE FOR REGISTRATION";
-        statusDisplay.className = "status-card";
-    }
-}
-
-// Triggered by a button you should add to the Register UI
-async function startSecureCapture() {
-    if (isCapturing) return;
-    
-    // Reset state
-    capturedDescriptors = [];
-    tempCapturedImages = [];
-    captureStep = 0;
-    isCapturing = true;
-    
-    // Reset UI indicators
-    document.querySelectorAll('.angle-box').forEach(b => b.className = 'angle-box');
-    
-    runCaptureSequence();
-}
-
-async function runCaptureSequence() {
-    if (captureStep >= 4) {
-        isCapturing = false;
-        alert("All angles captured! Please click 'Finalize' to save.");
-        return;
+        document.getElementById('tab-mon').classList.toggle('active', mode === 'monitor');
+        document.getElementById('tab-reg').classList.toggle('active', mode === 'register');
+        document.getElementById('tab-cha').classList.toggle('active', mode === 'challan');
+        
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+        if(mode === 'challan') renderChallans();
+        if(mode === 'register') renderUserList();
     }
 
-    const commandText = commands[captureStep];
-    statusDisplay.innerText = `ACTION: ${commandText}`;
-    statusDisplay.className = "status-breach"; // Pulse effect during capture
+    function updateSliders() {
+        if (isMonitoring) return;
+        sliderContainer.innerHTML = '';
+        linePoints = [];
+        const count = parseInt(pointCountInput.value);
+        for (let i = 0; i < count; i++) {
+            const x = (i / (count - 1)) * 100;
+            const y = 80;
+            linePoints.push({ x, y });
+            const div = document.createElement('div');
+            div.className = 'control-group';
+            div.innerHTML = `<label>Node ${i+1} Pos</label>
+                <input type="range" data-idx="${i}" data-axis="x" value="${x}">
+                <input type="range" data-idx="${i}" data-axis="y" value="${y}">`;
+            sliderContainer.appendChild(div);
+        }
+    }
+    pointCountInput.onchange = updateSliders;
+    updateSliders();
 
-    // 3-second countdown for the user to change head position
-    for (let i = 3; i > 0; i--) {
-        statusDisplay.innerText = `${commandText} IN ${i}...`;
-        await new Promise(r => setTimeout(r, 1000));
+    sliderContainer.oninput = (e) => {
+        const idx = e.target.dataset.idx;
+        const axis = e.target.dataset.axis;
+        linePoints[idx][axis] = parseFloat(e.target.value);
+    };
+
+    // --- AI INITIALIZATION ---
+    const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
+    pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5 });
+
+    async function loadModels() {
+        const URL = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights';
+        await faceapi.nets.ssdMobilenetv1.loadFromUri(URL);
+        await faceapi.nets.faceLandmark68Net.loadFromUri(URL);
+        await faceapi.nets.faceRecognitionNet.loadFromUri(URL);
+    }
+    loadModels();
+
+    // --- MAIN PROCESSING LOOP ---
+    pose.onResults((results) => {
+        canvasElement.width = videoElement.videoWidth;
+        canvasElement.height = videoElement.videoHeight;
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+        if (document.getElementById('monitor-ui').style.display !== 'none') {
+            drawSafetyLine();
+            if (results.poseLandmarks && isMonitoring) {
+                checkSafetyBreach(results.poseLandmarks);
+            }
+        } 
+        else if (document.getElementById('register-ui').style.display !== 'none') {
+            autoCaptureLogic();
+        }
+    });
+
+    function drawSafetyLine() {
+        canvasCtx.beginPath();
+        canvasCtx.strokeStyle = 'yellow';
+        canvasCtx.lineWidth = 10;
+        linePoints.forEach((p, i) => {
+            const cx = (p.x / 100) * canvasElement.width;
+            const cy = (p.y / 100) * canvasElement.height;
+            if (i === 0) canvasCtx.moveTo(cx, cy); else canvasCtx.lineTo(cx, cy);
+        });
+        canvasCtx.stroke();
     }
 
-    // Capture Descriptor & Image
-    const det = await faceapi.detectSingleFace(videoElement).withFaceLandmarks().withFaceDescriptor();
+    function checkSafetyBreach(landmarks) {
+        const hip = landmarks[23]; 
+        const px = hip.x * 100;
+        const py = hip.y * 100;
+        const x1 = linePoints[0].x;
+        const y1 = linePoints[0].y;
+        const x2 = linePoints[linePoints.length - 1].x;
+        const y2 = linePoints[linePoints.length - 1].y;
+        const val = (px - x1) * (y2 - y1) - (py - y1) * (x2 - x1);
+        const safeConfig = document.getElementById('safe-side').value;
+        const isBreached = safeConfig === 'left' ? val > 0 : val < 0;
 
-    if (!det) {
-        alert("Face lost! Restarting current angle.");
+        if (isBreached) {
+            if (!breachStartTime) breachStartTime = Date.now();
+            const elapsed = Date.now() - breachStartTime;
+            statusDisplay.innerText = `STATIONARY BREACH: ${(elapsed/1000).toFixed(1)}s`;
+            statusDisplay.className = "status-card status-breach";
+            if (elapsed > BREACH_THRESHOLD) {
+                triggerViolationCapture();
+                breachStartTime = Date.now() + 5000; 
+            }
+        } else {
+            breachStartTime = null;
+            statusDisplay.innerText = "PLATFORM SAFE";
+            statusDisplay.className = "status-card status-safe";
+        }
+    }
+
+    // --- ENROLLMENT FUNCTIONS ---
+    async function autoCaptureLogic() {
+        if (isCapturing) return; 
+        const detections = await faceapi.detectSingleFace(videoElement).withFaceLandmarks();
+        if (detections) {
+            const dims = faceapi.matchDimensions(canvasElement, videoElement, true);
+            const resized = faceapi.resizeResults(detections, dims);
+            faceapi.draw.drawDetections(canvasElement, resized);
+            statusDisplay.innerText = "FACE DETECTED - READY";
+            statusDisplay.className = "status-card status-safe";
+        } else {
+            statusDisplay.innerText = "POSITION FACE";
+            statusDisplay.className = "status-card";
+        }
+    }
+
+    async function startSecureCapture() {
+        if (isCapturing) return;
+        capturedDescriptors = [];
+        tempCapturedImages = [];
+        captureStep = 0;
+        isCapturing = true;
+        document.querySelectorAll('.angle-box').forEach(b => b.className = 'angle-box');
         runCaptureSequence();
-        return;
     }
 
-    // Check for "Same Angle" cheat (Euclidean Distance)
-    if (captureStep > 0) {
-        const prevDesc = capturedDescriptors[captureStep - 1];
-        const distance = faceapi.euclideanDistance(det.descriptor, prevDesc);
-        if (distance < 0.3) {
-            alert("Movement too small. Please turn your head further.");
+    async function runCaptureSequence() {
+        if (captureStep >= 4) {
+            isCapturing = false;
+            statusDisplay.innerText = "ENROLLMENT READY";
+            alert("All angles captured! Please click 'Finalize' to save.");
+            return;
+        }
+
+        const commandText = commands[captureStep];
+        for (let i = 3; i > 0; i--) {
+            statusDisplay.innerText = `${commandText} IN ${i}...`;
+            await new Promise(r => setTimeout(r, 1000));
+        }
+
+        const det = await faceapi.detectSingleFace(videoElement).withFaceLandmarks().withFaceDescriptor();
+        if (!det) {
+            alert("Face lost! Restarting current angle.");
             runCaptureSequence();
             return;
         }
+
+        capturedDescriptors.push(det.descriptor);
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = videoElement.videoWidth;
+        tempCanvas.height = videoElement.videoHeight;
+        tempCanvas.getContext('2d').drawImage(videoElement, 0, 0);
+        tempCapturedImages.push(tempCanvas.toDataURL('image/jpeg'));
+
+        document.getElementById(`a${captureStep}`).className = "angle-box done";
+        captureStep++;
+        runCaptureSequence();
     }
 
-    // Store data
-    capturedDescriptors.push(det.descriptor);
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = videoElement.videoWidth;
-    tempCanvas.height = videoElement.videoHeight;
-    tempCanvas.getContext('2d').drawImage(videoElement, 0, 0);
-    tempCapturedImages.push(tempCanvas.toDataURL('image/jpeg'));
+    async function saveRegistration() {
+        const name = prompt("Enter Offender Name:");
+        const mobile = prompt("Enter Mobile Number:");
+        if (!name || !mobile) return alert("Required data missing.");
 
-    // Update UI
-    document.getElementById(`a${captureStep}`).className = "angle-box done";
-    captureStep++;
-    
-    // Recursive call for next angle
-    runCaptureSequence();
-}
+        const rfid = "METRO-" + Math.random().toString(36).substr(2, 9).toUpperCase();
+        const userData = {
+            rfid: rfid,
+            name: name,
+            mobile: mobile,
+            descriptors: capturedDescriptors.map(d => Array.from(d)),
+            regImages: tempCapturedImages
+        };
+        localStorage.setItem(rfid, JSON.stringify(userData));
+        alert("Saved: " + rfid);
+        switchUI('monitor');
+    }
 
-// Finalize and save to LocalStorage
-async function saveRegistration() {
-    const name = document.getElementById('reg-name').value;
-    const mobile = document.getElementById('reg-mobile').value;
+    // --- VIOLATION & CHALLAN ---
+    function triggerViolationCapture() {
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = videoElement.videoWidth;
+        tempCanvas.height = videoElement.videoHeight;
+        tempCanvas.getContext('2d').drawImage(videoElement, 0, 0);
+        const dataUrl = tempCanvas.toDataURL('image/jpeg');
+        const id = "VIOL-" + Date.now();
+        localStorage.setItem(id, JSON.stringify({id, img: dataUrl, time: new Date().toLocaleString()}));
+    }
 
-    if (!name || !mobile) return alert("Enter Name and Mobile");
-    if (capturedDescriptors.length < 4) return alert("Complete all 4 angles first!");
+    function renderChallans() {
+        challanGrid.innerHTML = "";
+        Object.keys(localStorage).forEach(key => {
+            if(key.startsWith("VIOL-")) {
+                const viol = JSON.parse(localStorage.getItem(key));
+                const card = document.createElement('div');
+                card.className = 'challan-card';
+                card.innerHTML = `
+                    <img src="${viol.img}">
+                    <div style="font-size:11px;">${viol.time}</div>
+                    <button class="action-btn" onclick="judgeViolation('${viol.id}', '${viol.img}')">IDENTIFY</button>
+                    <button class="delete-btn" onclick="deleteRecord('${key}')">DELETE</button>`;
+                challanGrid.prepend(card);
+            }
+        });
+    }
 
-    const rfid = "METRO-" + Math.random().toString(36).substr(2, 9).toUpperCase();
-
-    const userData = {
-        rfid: rfid,
-        name: name,
-        mobile: mobile,
-        // Convert Float32Array to standard array for JSON
-        descriptors: capturedDescriptors.map(d => Array.from(d)),
-        regImages: tempCapturedImages
-    };
-
-    localStorage.setItem(rfid, JSON.stringify(userData));
-    alert(`Registration Successful!\nID: ${rfid}`);
-    
-    // Reset UI
-    switchUI('monitor');
-    renderUserList();
-}
-       function triggerViolationCapture() {
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = videoElement.videoWidth;
-            tempCanvas.height = videoElement.videoHeight;
-            tempCanvas.getContext('2d').drawImage(videoElement, 0, 0);
-            const dataUrl = tempCanvas.toDataURL('image/jpeg');
-            const id = "VIOL-" + Date.now();
-            localStorage.setItem(id, JSON.stringify({id, img: dataUrl, time: new Date().toLocaleString()}));
-        }
-
-        function renderChallans() {
-            challanGrid.innerHTML = "";
-            Object.keys(localStorage).forEach(key => {
-                if(key.startsWith("VIOL-")) {
-                    const viol = JSON.parse(localStorage.getItem(key));
-                    const card = document.createElement('div');
-                    card.className = 'challan-card';
-                    card.id = `card-${viol.id}`;
-                    card.innerHTML = `
-                        <img src="${viol.img}">
-                        <div style="font-size:11px; margin-bottom:10px;">Breach: ${viol.time}</div>
-                        <div id="match-info-${viol.id}"></div>
-                        <button class="action-btn" onclick="judgeViolation('${viol.id}', '${viol.img}')">IDENTIFY & FINE</button>
-                        <button class="delete-btn" onclick="deleteRecord('${viol.id}')">DELETE RECORD</button>
-                    `;
-                    challanGrid.prepend(card);
-                }
-            });
-        }
-
-        async function judgeViolation(id, imgUrl) {
-            const img = await faceapi.fetchImage(imgUrl);
-            const det = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
-            if (!det) return alert("Face blurred in capture.");
-
-            let bestMatch = { score: 0, rfid: null, data: null };
-
-            Object.keys(localStorage).forEach(key => {
-                if(key.startsWith("METRO-")) {
-                    const user = JSON.parse(localStorage.getItem(key));
-                    user.descriptors.forEach(desc => {
-                        const dist = faceapi.euclideanDistance(det.descriptor, new Float32Array(desc));
-                        const match = (1 - dist) * 100;
-                        if (match > bestMatch.score) {
-                            bestMatch = { score: match, rfid: key, data: user };
-                        }
+    async function judgeViolation(id, imgUrl) {
+        currentActiveViolation = JSON.parse(localStorage.getItem(id));
+        document.getElementById('judgement-modal').style.display = 'block';
+        document.getElementById('modal-violation-img').src = imgUrl;
+        document.getElementById('incident-time').innerText = `LOG: ${currentActiveViolation.time}`;
+        
+        const img = await faceapi.fetchImage(imgUrl);
+        const det = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
+        const predictionEl = document.getElementById('ai-prediction');
+        
+        if (!det) {
+            predictionEl.innerHTML = `<span style="color:red">FACE NOT CLEAR</span>`;
+        } else {
+            let best = 0;
+            Object.keys(localStorage).forEach(k => {
+                if(k.startsWith("METRO-")) {
+                    const u = JSON.parse(localStorage.getItem(k));
+                    u.descriptors.forEach(d => {
+                        const match = (1 - faceapi.euclideanDistance(det.descriptor, new Float32Array(d))) * 100;
+                        if (match > best) best = match;
                     });
                 }
             });
-
-            const display = document.getElementById(`match-info-${id}`);
-            if (bestMatch.score >= 85) {
-                display.innerHTML = `<div style="color:var(--success); font-weight:bold; margin-bottom:5px;">
-                    MATCH: ${bestMatch.score.toFixed(1)}% - ${bestMatch.data.name}</div>
-                    <button class="action-btn" style="background:var(--success)" onclick="alert('Fine Charged!')">SEND CHALLAN</button>`;
-            } else {
-                display.innerHTML = `<div style="color:orange; font-size:11px; margin-bottom:5px;">
-                    LOW MATCH: ${bestMatch.score.toFixed(1)}%. Check manually.</div>
-                    <input type="text" id="manual-${id}" placeholder="Enter RFID Manually" style="font-size:10px; padding:5px; margin-bottom:5px;">
-                    <button class="action-btn" onclick="manualFine('${id}', '${bestMatch.score.toFixed(1)}')">MANUAL VERIFY</button>`;
-            }
+            predictionEl.innerHTML = `AI MATCH: ${best.toFixed(1)}%`;
         }
+    }
 
-        function manualFine(id, score) {
-            const rfid = document.getElementById(`manual-${id}`).value;
-            const user = JSON.parse(localStorage.getItem(rfid));
-            if(!user) return alert("RFID Not Found!");
-            alert(`Fine generated for ${user.name}. (AI match was ${score}%)`);
-        }
+    function closeJudgement() { document.getElementById('judgement-modal').style.display = 'none'; }
+    function deleteRecord(key) { if(confirm("Delete?")) { localStorage.removeItem(key); renderChallans(); renderUserList(); } }
 
-        function renderUserList() {
-            const container = document.getElementById('db-items');
-            container.innerHTML = "";
-            Object.keys(localStorage).forEach(key => {
-                if(key.startsWith("METRO-")) {
-                    const u = JSON.parse(localStorage.getItem(key));
-                    container.innerHTML += `<div style="padding:5px; border-bottom:1px solid #333; display:flex; justify-content:space-between;">
-                        ${u.name} (${key}) <span style="color:red; cursor:pointer;" onclick="deleteRecord('${key}')">✖</span></div>`;
-                }
-            });
-        }
+    startBtn.onclick = () => {
+        isMonitoring = !isMonitoring;
+        startBtn.innerText = isMonitoring ? "DISENGAGE" : "ENGAGE";
+        startBtn.style.background = isMonitoring ? "var(--danger)" : "var(--accent)";
+    };
 
-        function deleteRecord(key) {
-            if(confirm("Delete this record permanently?")) {
-                localStorage.removeItem(key);
-                if(key.startsWith("METRO-")) renderUserList();
-                else renderChallans();
-            }
-        }
-
-        startBtn.onclick = () => {
-            isMonitoring = !isMonitoring;
-            startBtn.innerText = isMonitoring ? "DISENGAGE SYSTEM" : "ENGAGE MONITORING";
-            startBtn.style.background = isMonitoring ? "var(--danger)" : "var(--accent)";
-        };
-
-        async function init() {
-            const camera = new Camera(videoElement, {
-                onFrame: async () => { await pose.send({image: videoElement}); },
-                width: 1280, height: 720
-            });
-            camera.start();
-        }
-        init();
-        let currentActiveViolation = null;
-
-// Replace your judgeViolation function with this
-async function judgeViolation(id, imgUrl) {
-    currentActiveViolation = JSON.parse(localStorage.getItem(id));
-    
-    // Open the Big Screen Terminal
-    document.getElementById('judgement-modal').style.display = 'block';
-    document.getElementById('modal-violation-img').src = imgUrl;
-    document.getElementById('incident-time').innerText = `INCIDENT LOG: ${currentActiveViolation.time}`;
-    
-    // Calculate AI Prediction
-    const img = await faceapi.fetchImage(imgUrl);
-    const det = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
-    
-    const predictionEl = document.getElementById('ai-prediction');
-    if (!det) {
-        predictionEl.innerHTML = `<span style="color:var(--danger)">FACE NOT CLEAR (MATCH: 0%)</span>`;
-    } else {
-        let best = 0;
-        // Scan DB to find best match probability
-        Object.keys(localStorage).forEach(k => {
-            if(k.startsWith("METRO-")) {
-                const u = JSON.parse(localStorage.getItem(k));
-                u.descriptors.forEach(d => {
-                    const match = (1 - faceapi.euclideanDistance(det.descriptor, new Float32Array(d))) * 100;
-                    if (match > best) best = match;
-                });
-            }
+    async function init() {
+        const camera = new Camera(videoElement, {
+            onFrame: async () => { await pose.send({image: videoElement}); },
+            width: 1280, height: 720
         });
-        const color = best > 85 ? 'var(--success)' : 'orange';
-        predictionEl.innerHTML = `AI CONFIDENCE: <span style="color:${color}">${best.toFixed(1)}%</span>`;
+        camera.start();
     }
-}
-
-function fetchRegistrationData() {
-    const rfid = document.getElementById('manual-rfid-input').value;
-    const user = JSON.parse(localStorage.getItem(rfid));
-    
-    if (!user) {
-        alert("RFID NOT FOUND IN DATABASE");
-        return;
-    }
-
-    const display = document.getElementById('registration-display');
-    const photoGrid = document.getElementById('reg-photos-grid');
-    const info = document.getElementById('reg-user-info');
-
-    display.style.display = 'block';
-    info.innerHTML = `
-        <div style="background:var(--police-blue); padding:10px; border-radius:5px; margin-bottom:15px;">
-            <div style="color:var(--accent)">OFFENDER NAME: ${user.name}</div>
-            <div style="color:white">RFID: ${user.rfid} | MOBILE: ${user.mobile}</div>
-        </div>
-    `;
-    
-    // Render the 4 registration images saved during enrollment
-    photoGrid.innerHTML = "";
-    if(user.regImages) {
-        user.regImages.forEach((imgSrc, i) => {
-            photoGrid.innerHTML += `
-                <div style="border:1px solid var(--border); padding:5px; background:#000;">
-                    <img src="${imgSrc}" style="width:100%; height:auto; border-radius:4px;">
-                    <div style="font-size:9px; color:var(--accent); margin-top:5px;">REGISTRATION ANGLE ${i+1}</div>
-                </div>`;
-        });
-    } else {
-        photoGrid.innerHTML = "<p style='color:red;'>No image data found for this RFID.</p>";
-    }
-}
-
-function closeJudgement() {
-    document.getElementById('judgement-modal').style.display = 'none';
-    document.getElementById('registration-display').style.display = 'none';
-    document.getElementById('manual-rfid-input').value = "";
-}
-
-function finalizeFine() {
-    const rfid = document.getElementById('manual-rfid-input').value;
-    alert(`E-CHALLAN GENERATED SUCCESSFULLY\nSent to: ${rfid}\nIncident ID: ${currentActiveViolation.id}`);
-    closeJudgement();
-}
-    </script>
+    init();
+</script>
     <div id="judgement-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:9999; padding:40px; box-sizing:border-box; overflow-y:auto;">
     <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid var(--accent); padding-bottom:10px;">
         <h2 style="color:var(--accent); margin:0;">INCIDENT VERIFICATION TERMINAL</h2>

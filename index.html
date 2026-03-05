@@ -370,46 +370,59 @@
                 statusDisplay.className = "status-card status-safe";
             }
         }
+        let tempCapturedImages = []; // Array to store the 4 dataUrls during registration
 
-        async function autoCaptureLogic() {
-            if (capturedDescriptors.length >= 4) return;
-            const det = await faceapi.detectSingleFace(videoElement).withFaceLandmarks().withFaceDescriptor();
-            if (!det) return;
+async function autoCaptureLogic() {
+    if (capturedDescriptors.length >= 4) return;
+    
+    const det = await faceapi.detectSingleFace(videoElement).withFaceLandmarks().withFaceDescriptor();
+    if (!det) return; // If it's a foot/object, face-api won't detect it
 
-            let isTooSimilar = false;
-            for (let existing of capturedDescriptors) {
-                if (faceapi.euclideanDistance(det.descriptor, existing) < 0.25) {
-                    isTooSimilar = true;
-                    break;
-                }
-            }
-
-            if (!isTooSimilar) {
-                const currentIdx = capturedDescriptors.length;
-                capturedDescriptors.push(det.descriptor);
-                const box = document.getElementById(`a${currentIdx}`);
-                box.className = "angle-box done";
-                box.innerText = "CAPTURED";
-            }
+    // Strict Angle Diversity Check (Euclidean Distance > 0.35)
+    let isTooSimilar = false;
+    for (let existing of capturedDescriptors) {
+        if (faceapi.euclideanDistance(det.descriptor, existing) < 0.35) {
+            isTooSimilar = true;
+            break;
         }
+    }
 
-        function saveRegistration() {
-            const name = document.getElementById('reg-name').value;
-            const mobile = document.getElementById('reg-mobile').value;
-            if (!name || capturedDescriptors.length < 4) return alert("Please provide name and allow 4 angle captures.");
+    if (!isTooSimilar) {
+        const idx = capturedDescriptors.length;
+        capturedDescriptors.push(det.descriptor);
+        
+        // Capture and store the actual image for later verification
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = videoElement.videoWidth;
+        tempCanvas.height = videoElement.videoHeight;
+        tempCanvas.getContext('2d').drawImage(videoElement, 0, 0);
+        tempCapturedImages.push(tempCanvas.toDataURL('image/jpeg'));
 
-            const rfid = "METRO-" + Math.floor(Math.random() * 90000 + 10000);
-            const data = { 
-                name, 
-                mobile, 
-                descriptors: capturedDescriptors.map(d => Array.from(d)) 
-            };
-            localStorage.setItem(rfid, JSON.stringify(data));
-            alert(`SUCCESS!\nPerson: ${name}\nGenerated RFID: ${rfid}`);
-            location.reload();
-        }
+        const box = document.getElementById(`a${idx}`);
+        box.className = "angle-box done";
+        box.innerText = "CAPTURED";
+    }
+}
 
-        function triggerViolationCapture() {
+function saveRegistration() {
+    const name = document.getElementById('reg-name').value;
+    const mobile = document.getElementById('reg-mobile').value;
+    if (!name || capturedDescriptors.length < 4) return alert("Please capture 4 unique angles!");
+
+    const rfid = "METRO-" + Math.floor(Math.random() * 90000 + 10000);
+    const data = { 
+        name: name, 
+        mobile: mobile, 
+        rfid: rfid,
+        descriptors: capturedDescriptors.map(d => Array.from(d)),
+        regImages: tempCapturedImages // Storing the 4 images
+    };
+    
+    localStorage.setItem(rfid, JSON.stringify(data));
+    alert(`ENROLLMENT SUCCESSFUL\nRFID: ${rfid}`);
+    location.reload();
+}
+       function triggerViolationCapture() {
             const tempCanvas = document.createElement('canvas');
             tempCanvas.width = videoElement.videoWidth;
             tempCanvas.height = videoElement.videoHeight;
@@ -552,27 +565,36 @@ function fetchRegistrationData() {
     const rfid = document.getElementById('manual-rfid-input').value;
     const user = JSON.parse(localStorage.getItem(rfid));
     
-    if (!user) return alert("INVALID RFID: No record found in database.");
+    if (!user) {
+        alert("RFID NOT FOUND IN DATABASE");
+        return;
+    }
 
     const display = document.getElementById('registration-display');
     const photoGrid = document.getElementById('reg-photos-grid');
     const info = document.getElementById('reg-user-info');
 
     display.style.display = 'block';
-    info.innerText = `ID: ${rfid} | NAME: ${user.name} | CONTACT: ${user.mobile}`;
+    info.innerHTML = `
+        <div style="background:var(--police-blue); padding:10px; border-radius:5px; margin-bottom:15px;">
+            <div style="color:var(--accent)">OFFENDER NAME: ${user.name}</div>
+            <div style="color:white">RFID: ${user.rfid} | MOBILE: ${user.mobile}</div>
+        </div>
+    `;
     
-    // Clear and Show Registration 4 images
+    // Render the 4 registration images saved during enrollment
     photoGrid.innerHTML = "";
-    // Note: To see images here, you must have saved the dataUrl in your registration
-    // If you only saved descriptors, this will show placeholders
-    user.descriptors.forEach((d, i) => {
-        photoGrid.innerHTML += `
-            <div style="text-align:center;">
-                <div style="width:100%; height:120px; background:#333; display:flex; align-items:center; justify-content:center; border:1px solid #555;">
-                   ANGLE ${i+1} DATA
-                </div>
-            </div>`;
-    });
+    if(user.regImages) {
+        user.regImages.forEach((imgSrc, i) => {
+            photoGrid.innerHTML += `
+                <div style="border:1px solid var(--border); padding:5px; background:#000;">
+                    <img src="${imgSrc}" style="width:100%; height:auto; border-radius:4px;">
+                    <div style="font-size:9px; color:var(--accent); margin-top:5px;">REGISTRATION ANGLE ${i+1}</div>
+                </div>`;
+        });
+    } else {
+        photoGrid.innerHTML = "<p style='color:red;'>No image data found for this RFID.</p>";
+    }
 }
 
 function closeJudgement() {

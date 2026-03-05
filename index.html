@@ -8,7 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
-
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <style>
         :root {
             --accent: #ffcc00;
@@ -157,7 +157,81 @@
         let linePoints = [];
         let breachStartTime = null;
         const BREACH_THRESHOLD = 1500; 
+        // --- FACE API INITIALIZATION ---
+async function loadFaceModels() {
+    // Loads models for face detection and landmark comparison
+    await faceapi.nets.ssdMobilenetv1.loadFromUri('https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights');
+    await faceapi.nets.faceLandmark68Net.loadFromUri('https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights');
+    await faceapi.nets.faceRecognitionNet.loadFromUri('https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights');
+}
+loadFaceModels();
 
+// --- MULTI-ANGLE REGISTRATION LOGIC ---
+let registeredFaceDescriptors = []; // Stores the 4 angles
+
+async function captureAndValidateAngle(angleIndex) {
+    const detections = await faceapi.detectSingleFace(videoElement).withFaceLandmarks().withFaceDescriptor();
+    
+    if (!detections) {
+        alert("No face detected! Please adjust your position.");
+        return;
+    }
+
+    // CHECK FOR DUPLICATE ANGLES (Angle Validation)
+    if (registeredFaceDescriptors.length > 0) {
+        for (let existing of registeredFaceDescriptors) {
+            const distance = faceapi.euclideanDistance(detections.descriptor, existing);
+            if (distance < 0.15) { // Threshold for "too similar"
+                alert("Error: This angle is too similar to a previous one. Please turn your head.");
+                return;
+            }
+        }
+    }
+
+    registeredFaceDescriptors[angleIndex] = detections.descriptor;
+    alert(`Angle ${angleIndex + 1} captured successfully!`);
+}
+
+// --- THE JUDGEMENT / MATCHING LOGIC (85% Threshold) ---
+async function verifyViolation(violationImageElement, inputRfid) {
+    // 1. Get face from the violation snapshot
+    const violationDetection = await faceapi.detectSingleFace(violationImageElement).withFaceLandmarks().withFaceDescriptor();
+    
+    // 2. Fetch User from your Database (Simplified logic here)
+    const dbUser = await fetchUserData(inputRfid); 
+    const savedDescriptor = new Float32Array(dbUser.faceDescriptor);
+
+    // 3. Calculate Euclidean Distance
+    const distance = faceapi.euclideanDistance(violationDetection.descriptor, savedDescriptor);
+    
+    // Convert distance to Confidence Score
+    // Distance 0.6 is roughly 50% match, 0.4 is ~90%
+    const confidence = Math.max(0, (1 - distance) * 100);
+
+    if (confidence >= 85) {
+        processFine(dbUser.mobile, confidence);
+    } else {
+        alert(`Match Failed: Only ${confidence.toFixed(1)}% match. No fine charged.`);
+    }
+}
+
+// --- RFID SERIAL CONNECTION ---
+async function connectRFID() {
+    try {
+        const port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 9600 });
+        const reader = port.readable.getReader();
+        
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            const rfidTag = new TextDecoder().decode(value);
+            document.getElementById('reg-rfid').value = rfidTag.trim();
+        }
+    } catch (err) {
+        console.error("RFID Error:", err);
+    }
+}
         function updateSliders() {
             if (isMonitoring) return;
             sliderContainer.innerHTML = '';

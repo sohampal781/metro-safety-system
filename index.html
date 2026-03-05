@@ -431,15 +431,21 @@
     }
 
     // --- REMAINING HELPER FUNCTIONS (triggerViolation, render, etc.) ---
-    function triggerViolationCapture() {
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = videoElement.videoWidth;
-        tempCanvas.height = videoElement.videoHeight;
-        tempCanvas.getContext('2d').drawImage(videoElement, 0, 0);
-        const dataUrl = tempCanvas.toDataURL('image/jpeg');
-        const id = "VIOL-" + Date.now();
-        localStorage.setItem(id, JSON.stringify({id, img: dataUrl, time: new Date().toLocaleString()}));
-    }
+    function triggerViolationCapture() {function triggerViolationCapture() {
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = videoElement.videoWidth;
+    tempCanvas.height = videoElement.videoHeight;
+    tempCanvas.getContext('2d').drawImage(videoElement, 0, 0);
+    
+    const id = "VIOL-" + Date.now();
+    const data = {
+        id: id,
+        img: tempCanvas.toDataURL('image/jpeg'),
+        time: new Date().toLocaleString()
+    };
+    localStorage.setItem(id, JSON.stringify(data));
+    console.log("Violation Logged:", id);
+}
 
     function renderChallans() {
         challanGrid.innerHTML = "";
@@ -470,19 +476,16 @@
     init();
         function renderUserList() {
     const container = document.getElementById('db-items');
-    if (!container) return; // Safety check
-    
+    if (!container) return;
     container.innerHTML = "";
     Object.keys(localStorage).forEach(key => {
         if(key.startsWith("METRO-")) {
             const u = JSON.parse(localStorage.getItem(key));
-            const userDiv = document.createElement('div');
-            userDiv.style.cssText = "padding:8px; border-bottom:1px solid #333; display:flex; justify-content:space-between; font-size:12px;";
-            userDiv.innerHTML = `
-                <span>${u.name} <br><small style="color:#8b949e">${key}</small></span>
-                <span style="color:var(--danger); cursor:pointer;" onclick="deleteRecord('${key}')">✖</span>
-            `;
-            container.appendChild(userDiv);
+            container.innerHTML += `
+                <div style="padding:8px; border-bottom:1px solid #333; display:flex; justify-content:space-between; font-size:11px;">
+                    <span><b>${u.name}</b><br>${u.mobile}</span>
+                    <span style="color:red; cursor:pointer;" onclick="deleteRecord('${key}')">✖</span>
+                </div>`;
         }
     });
 }
@@ -490,42 +493,16 @@
 async function saveRegistration() {
     const name = document.getElementById('reg-name').value;
     const mobile = document.getElementById('reg-mobile').value;
+    if (!name || !mobile || capturedDescriptors.length < 4) return alert("Complete all details & photos!");
 
-    if (!name || !mobile) {
-        alert("Please enter both Name and Mobile Number.");
-        return;
-    }
-
-    if (capturedDescriptors.length < 4) {
-        alert("Please complete all 4 face angles first.");
-        return;
-    }
-
-    // Create a unique ID for the user
     const rfid = "METRO-" + Math.random().toString(36).substr(2, 9).toUpperCase();
-
-    const userData = {
-        rfid: rfid,
-        name: name,
-        mobile: mobile,
-        // Convert the face data to a format localStorage can handle
+    localStorage.setItem(rfid, JSON.stringify({
+        rfid, name, mobile, 
         descriptors: capturedDescriptors.map(d => Array.from(d)),
-        // Store the 4 angle images we captured
-        regImages: tempCapturedImages 
-    };
-
-    localStorage.setItem(rfid, JSON.stringify(userData));
-    alert(`Successfully Enrolled: ${name}\nAssigned ID: ${rfid}`);
-
-    // Clear inputs and reset UI
-    document.getElementById('reg-name').value = "";
-    document.getElementById('reg-mobile').value = "";
-    capturedDescriptors = [];
-    tempCapturedImages = [];
-    captureStep = 0;
-    document.querySelectorAll('.angle-box').forEach(b => b.className = 'angle-box');
-    
-    renderUserList(); // Refresh the list in the sidebar
+        regImages: tempCapturedImages
+    }));
+    alert("User Registered!");
+    renderUserList();
 }
 
 // Required to make the Delete button (X) work in your sidebar

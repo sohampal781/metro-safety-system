@@ -231,20 +231,20 @@
     </div>
 
     <div id="register-ui" style="display:none;">
-        <div class="control-group">
-            <input type="text" id="reg-name" placeholder="Full Name">
-            <input type="text" id="reg-mobile" placeholder="Mobile Number" style="margin-top:10px;">
-        </div>
-        <button class="action-btn" onclick="startSecureCapture()">START CAPTURE</button>
-        <div class="angle-status" style="display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-top:10px;">
-            <div id="a0" class="angle-box">FRONT</div>
-            <div id="a1" class="angle-box">LEFT</div>
-            <div id="a2" class="angle-box">RIGHT</div>
-            <div id="a3" class="angle-box">UP/DOWN</div>
-        </div>
-        <button class="action-btn" onclick="saveRegistration()" style="background:var(--safe); margin-top:10px;">FINALIZE ENROLLMENT</button>
-        <div id="db-items" style="margin-top:15px; font-size:11px;"></div>
+    <div class="control-group">
+        <label>User Identification</label>
+        <input type="text" id="reg-name" placeholder="Full Name">
+        
+        <button class="action-btn" onclick="lookupUser()" style="background:#30363d; font-size:10px; margin-bottom:10px;">SEARCH EXISTING USER</button>
+        
+        <label>Contact (Automatic SMS Target)</label>
+        <input type="text" id="reg-mobile" placeholder="Mobile Number">
     </div>
+    
+    <button class="action-btn" onclick="startSecureCapture()">START NEW CAPTURE</button>
+    <button class="action-btn" onclick="saveRegistration()" style="background:var(--success); margin-top:10px;">SAVE / UPDATE ENROLLMENT</button>
+    <div id="db-items" style="margin-top:15px; font-size:11px;"></div>
+</div>
 </div>
 
     <div id="viewport">
@@ -665,29 +665,63 @@ function deleteRecord(key) {
     }
 }
 
-   function saveRegistration() {
+  // 1. Function to find a user and load their current number
+function lookupUser() {
+    const searchName = document.getElementById('reg-name').value.trim().toLowerCase();
+    let found = false;
+
+    Object.keys(localStorage).forEach(key => {
+        if(key.startsWith("METRO-")) {
+            const user = JSON.parse(localStorage.getItem(key));
+            if(user.name.toLowerCase() === searchName) {
+                document.getElementById('reg-mobile').value = user.mobile;
+                // Store the key temporarily so saveRegistration knows it's an update
+                document.getElementById('reg-name').dataset.activeKey = key;
+                alert("Existing User Found. You can now update the mobile number.");
+                found = true;
+            }
+        }
+    });
+    if(!found) alert("User not found. Please enter details for new registration.");
+}
+
+// 2. Updated Save Function to handle Phone Number Updates
+function saveRegistration() {
     const name = document.getElementById('reg-name').value;
     const mobile = document.getElementById('reg-mobile').value;
+    const existingKey = document.getElementById('reg-name').dataset.activeKey;
 
-    if (!name || !mobile || capturedDescriptors.length < 4) {
-        alert("Please complete all capture angles first.");
+    if (!name || mobile.length !== 10) {
+        alert("Please enter a valid Name and 10-digit Mobile Number.");
         return;
     }
 
-    const rfid = "METRO-" + Math.random().toString(36).substr(2, 6).toUpperCase();
-    const userData = {
-        rfid, name, mobile,
-        descriptors: capturedDescriptors,
-        regImages: tempCapturedImages
-    };
+    if (existingKey) {
+        // --- UPDATE MODE ---
+        const userData = JSON.parse(localStorage.getItem(existingKey));
+        userData.mobile = mobile; // Update only the phone number
+        localStorage.setItem(existingKey, JSON.stringify(userData));
+        alert(`SUCCESS: Phone number updated for ${name}`);
+    } else {
+        // --- NEW REGISTRATION MODE ---
+        if (capturedDescriptors.length < 4) {
+            alert("Please complete all 4 capture angles for new users.");
+            return;
+        }
+        const rfid = "METRO-" + Math.random().toString(36).substr(2, 6).toUpperCase();
+        const userData = {
+            rfid, name, mobile,
+            descriptors: capturedDescriptors,
+            regImages: tempCapturedImages
+        };
+        localStorage.setItem(rfid, JSON.stringify(userData));
+        alert("New User Registered: " + rfid);
+    }
 
-    // Save to permanent storage
-    localStorage.setItem(rfid, JSON.stringify(userData));
-    alert("User Registered Successfully: " + rfid);
-    
-    // Clear temp state and refresh list
-    capturedDescriptors = [];
-    tempCapturedImages = [];
+    // Reset UI
+    document.getElementById('reg-name').value = "";
+    document.getElementById('reg-mobile').value = "";
+    delete document.getElementById('reg-name').dataset.activeKey;
     renderUserList();
 }
 

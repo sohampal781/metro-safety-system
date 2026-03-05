@@ -320,6 +320,12 @@ async function judgeViolation(key) {
         <p style="color:var(--accent)">PH: ${user.mobile}</p>
     `;
 }
+        function loadDashboardData() {
+    // This ensures that even after a refresh, the UI is populated
+    renderChallans();   // Refresh the Violation Portal
+    renderUserList();   // Refresh the Registered User List
+    console.log("System Data Restored from LocalStorage");
+}
 function finalizeFine() {
     const rfid = document.getElementById('manual-rfid-input').value.trim();
     const userRaw = localStorage.getItem(rfid);
@@ -350,15 +356,28 @@ function closeJudgement() {
     document.getElementById('registration-display').style.display = 'none';
 }
         function deleteRecord(key) {
-    if(confirm("PERMANENTLY DELETE INCIDENT LOG?")) {
+    // 1. Force a confirmation dialog to prevent accidental clicks
+    const confirmation = confirm("CRITICAL: Are you sure you want to permanently delete this record? This cannot be undone.");
+
+    if (confirmation) {
+        // 2. Remove the specific item from LocalStorage
         localStorage.removeItem(key);
-        // Refresh whichever UI is currently visible
-        renderChallans(); 
-        renderUserList();
+
+        // 3. Update the UI instantly depending on what was deleted
+        if (key.startsWith("VIOL-")) {
+            renderChallans(); // Refresh the Portal view
+        } else if (key.startsWith("METRO-")) {
+            renderUserList(); // Refresh the Registration view
+        }
+        
+        console.log(`Record ${key} deleted successfully.`);
+    } else {
+        console.log("Deletion cancelled by user.");
     }
 }
        function renderChallans() {
     const grid = document.getElementById('challan-grid');
+    if (!grid) return;
     grid.innerHTML = "";
 
     Object.keys(localStorage).forEach(key => {
@@ -366,29 +385,37 @@ function closeJudgement() {
             const viol = JSON.parse(localStorage.getItem(key));
             const card = document.createElement('div');
             card.className = 'challan-card';
-            const isFined = viol.status === "FINED";
             
             card.innerHTML = `
                 <img src="${viol.img}" style="width:100%; border-radius:8px;">
-                <div style="font-size:12px; margin: 10px 0; color: #fff;">
-                    <span style="color:var(--accent); font-weight:bold;">RFID: ${viol.linkedRfid}</span><br>
+                <div style="font-size:12px; margin: 10px 0;">
+                    <b style="color:var(--accent)">RFID: ${viol.linkedRfid}</b><br>
                     Time: ${viol.time}
                 </div>
-                ${isFined ? 
-                    `<button class="action-btn" style="background:var(--success); color:black;" disabled>CHALLAN ISSUED</button>` : 
-                    `<button class="action-btn" onclick="judgeViolation('${key}')">VERIFY & FINE</button>`
-                }
-                <button class="delete-btn" style="width:100%" onclick="deleteRecord('${key}')">DELETE LOG</button>
+                <button class="action-btn" onclick="judgeViolation('${key}')">VERIFY & FINE</button>
+                <button class="delete-btn" style="background:#ff3333; margin-top:8px;" 
+                        onclick="deleteRecord('${key}')">DELETE PERMANENTLY</button>
             `;
             grid.prepend(card);
         }
     });
 }
 function deleteRecord(key) {
-    console.log("Attempting to delete key:", key);
-    if(confirm("Delete this evidence?")) {
+    // 1. Mandatory confirmation
+    const confirmDelete = confirm("Are you sure? This incident data will be deleted permanently from the database.");
+
+    if (confirmDelete) {
+        // 2. Remove from LocalStorage
         localStorage.removeItem(key);
-        renderChallans(); // Re-draw the list
+
+        // 3. Instant UI Update
+        if (key.startsWith("VIOL-")) {
+            renderChallans(); 
+        } else if (key.startsWith("METRO-")) {
+            renderUserList(); 
+        }
+        
+        console.log("Record deleted: " + key);
     }
 }
     // --- 3. MONITORING & MATH LOGIC (YOUR ORIGINAL LOGIC) ---
@@ -540,26 +567,31 @@ function deleteRecord(key) {
     }
 }
 
-    function saveRegistration() {
-        const name = document.getElementById('reg-name').value;
-        const mobile = document.getElementById('reg-mobile').value;
+   function saveRegistration() {
+    const name = document.getElementById('reg-name').value;
+    const mobile = document.getElementById('reg-mobile').value;
 
-        if (!name || !mobile || capturedDescriptors.length < 4) {
-            alert("Complete all details and photos first!");
-            return;
-        }
-
-        const rfid = "METRO-" + Math.random().toString(36).substr(2, 9).toUpperCase();
-        const userData = {
-            rfid, name, mobile,
-            descriptors: capturedDescriptors.map(d => Array.from(d)),
-            regImages: tempCapturedImages
-        };
-
-        localStorage.setItem(rfid, JSON.stringify(userData));
-        alert("Registered: " + rfid);
-        renderUserList();
+    if (!name || !mobile || capturedDescriptors.length < 4) {
+        alert("Please complete all capture angles first.");
+        return;
     }
+
+    const rfid = "METRO-" + Math.random().toString(36).substr(2, 6).toUpperCase();
+    const userData = {
+        rfid, name, mobile,
+        descriptors: capturedDescriptors,
+        regImages: tempCapturedImages
+    };
+
+    // Save to permanent storage
+    localStorage.setItem(rfid, JSON.stringify(userData));
+    alert("User Registered Successfully: " + rfid);
+    
+    // Clear temp state and refresh list
+    capturedDescriptors = [];
+    tempCapturedImages = [];
+    renderUserList();
+}
 
     function renderUserList() {
         const container = document.getElementById('db-items');
@@ -591,23 +623,19 @@ function deleteRecord(key) {
     tempCanvas.height = videoElement.videoHeight;
     const ctx = tempCanvas.getContext('2d');
     
-    // 1. Capture the visual evidence (mirrored for correct orientation)
+    // Capture and fix mirroring
     ctx.translate(tempCanvas.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(videoElement, 0, 0);
     const dataUrl = tempCanvas.toDataURL('image/jpeg');
 
-    let detectedRfid = "UNKNOWN_ID"; // Default if no match found
+    let detectedRfid = "UNKNOWN_ID";
     let matchScore = 0;
 
     try {
-        // 2. IMMEDIATE FACE SCAN during the breach
-        const det = await faceapi.detectSingleFace(videoElement)
-            .withFaceLandmarks()
-            .withFaceDescriptor();
-
+        // Instant Face Scan
+        const det = await faceapi.detectSingleFace(videoElement).withFaceLandmarks().withFaceDescriptor();
         if (det) {
-            // 3. Search LocalStorage for a match
             Object.keys(localStorage).forEach(key => {
                 if (key.startsWith("METRO-")) {
                     const user = JSON.parse(localStorage.getItem(key));
@@ -616,23 +644,21 @@ function deleteRecord(key) {
                         const score = (1 - dist) * 100;
                         if (score > 45 && score > matchScore) {
                             matchScore = score;
-                            detectedRfid = user.rfid; // THIS IS THE MANDATORY LINK
+                            detectedRfid = user.rfid;
                         }
                     });
                 }
             });
         }
-    } catch (e) {
-        console.error("Auto-Identification Error:", e);
-    }
+    } catch (e) { console.error("Auto-ID Error:", e); }
 
-    // 4. Save the incident with the linked RFID
+    // Save to LocalStorage (This makes it survive refresh)
     const storageKey = "VIOL-" + Date.now(); 
     const violationObject = {
         id: storageKey,
         img: dataUrl, 
         time: new Date().toLocaleString(),
-        linkedRfid: detectedRfid, // Storing the ID inside the violation object
+        linkedRfid: detectedRfid,
         status: "PENDING"
     };
 

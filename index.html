@@ -273,98 +273,112 @@
 }
 async function judgeViolation(id, imgUrl) {
     const modal = document.getElementById('judgement-modal');
-    const violImg = document.getElementById('modal-violation-img');
-    const timeLabel = document.getElementById('incident-time');
-    const aiPred = document.getElementById('ai-prediction');
+    const violDataRaw = localStorage.getItem(id);
     
-    // Get violation data
-    const violData = JSON.parse(localStorage.getItem(id));
-    violImg.src = imgUrl;
-    timeLabel.innerText = `TIMESTAMP: ${violData.time}`;
-    modal.style.display = 'block';
-
-    // AI Recognition Processing
-    aiPred.innerText = "PROCESSING BIOMETRICS...";
-    aiPred.style.color = "var(--accent)";
-
-    const img = await faceapi.fetchImage(imgUrl);
-    const det = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
-    
-    if (!det) {
-        aiPred.innerText = "FACE NOT CLEAR - MANUAL ENTRY REQUIRED";
-        aiPred.style.color = "orange";
+    if (!violDataRaw) {
+        alert("Error: Violation record not found in database.");
         return;
     }
 
-    let bestMatch = { score: 0, rfid: "N/A" };
+    const violData = JSON.parse(violDataRaw);
+    modal.style.display = 'block';
+    
+    // Show Evidence Big
+    document.getElementById('modal-violation-img').src = imgUrl;
+    document.getElementById('incident-time').innerText = `TIMESTAMP: ${violData.time}`;
+    
+    const aiPred = document.getElementById('ai-prediction');
+    aiPred.style.color = "var(--accent)";
+    aiPred.innerHTML = "SCANNING BIOMETRICS...";
 
-    // Search Registered Database
-    Object.keys(localStorage).forEach(key => {
-        if(key.startsWith("METRO-")) {
-            const user = JSON.parse(localStorage.getItem(key));
-            user.descriptors.forEach(desc => {
-                const dist = faceapi.euclideanDistance(det.descriptor, new Float32Array(desc));
-                const match = (1 - dist) * 100;
-                if (match > bestMatch.score) {
-                    bestMatch = { score: match, rfid: key };
-                }
-            });
+    // Run AI Match
+    try {
+        const img = await faceapi.fetchImage(imgUrl);
+        const det = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
+        
+        if (!det) {
+            aiPred.innerHTML = "<span style='color:orange'>LOW VISIBILITY - MANUAL ID REQUIRED</span>";
+            return;
         }
-    });
 
-    if (bestMatch.score > 40) {
-        aiPred.innerHTML = `MATCH DETECTED: ${bestMatch.score.toFixed(1)}%<br><span style="font-size:14px">SUGGESTED RFID: ${bestMatch.rfid}</span>`;
-        document.getElementById('manual-rfid-input').value = bestMatch.rfid;
-        aiPred.style.color = bestMatch.score > 80 ? "var(--success)" : "orange";
-    } else {
-        aiPred.innerText = "NO DATABASE MATCH FOUND";
-        aiPred.style.color = "var(--danger)";
+        let bestMatch = { score: 0, rfid: "" };
+        Object.keys(localStorage).forEach(key => {
+            if(key.startsWith("METRO-")) {
+                const user = JSON.parse(localStorage.getItem(key));
+                user.descriptors.forEach(desc => {
+                    const dist = faceapi.euclideanDistance(det.descriptor, new Float32Array(desc));
+                    const match = (1 - dist) * 100;
+                    if (match > bestMatch.score) {
+                        bestMatch = { score: match, rfid: key };
+                    }
+                });
+            }
+        });
+
+        aiPred.innerHTML = `MATCH: ${bestMatch.score.toFixed(1)}% <br> <small>ID: ${bestMatch.rfid || 'NONE'}</small>`;
+        document.getElementById('manual-rfid-input').value = bestMatch.rfid || "";
+    } catch (err) {
+        console.error("AI processing error:", err);
+        aiPred.innerHTML = "AI OFFLINE - USE MANUAL VERIFY";
     }
 }
-        function fetchRegistrationData() {
-    const rfid = document.getElementById('manual-rfid-input').value.toUpperCase();
-    const userData = JSON.parse(localStorage.getItem(rfid));
-    const display = document.getElementById('registration-display');
-    const photosGrid = document.getElementById('reg-photos-grid');
-
-    if (!userData) {
-        alert("RFID NOT FOUND IN DATABASE");
+       function fetchRegistrationData() {
+    const inputRfid = document.getElementById('manual-rfid-input').value.trim();
+    const userRaw = localStorage.getItem(inputRfid);
+    
+    if (!userRaw) {
+        alert("RFID NOT REGISTERED");
         return;
     }
 
-    display.style.display = 'block';
-    document.getElementById('reg-user-info').innerText = `NAME: ${userData.name} | CONTACT: ${userData.mobile}`;
+    const user = JSON.parse(userRaw);
+    const display = document.getElementById('registration-display');
+    const grid = document.getElementById('reg-photos-grid');
     
-    // Show registration-time photos
-    photosGrid.innerHTML = "";
-    userData.regImages.slice(0, 2).forEach(imgSrc => {
-        const img = document.createElement('img');
-        img.src = imgSrc;
-        img.style.width = "100%";
-        img.style.borderRadius = "5px";
-        photosGrid.appendChild(img);
-    });
+    display.style.display = 'block';
+    // Show the first photo taken during registration
+    grid.innerHTML = `
+        <div style="text-align:center">
+            <label style="color:var(--success)">OFFICIAL REGISTRATION PHOTO</label>
+            <img src="${user.regImages[0]}" style="width:100%; border:3px solid var(--success); border-radius:10px; margin-top:5px;">
+        </div>
+    `;
+    document.getElementById('reg-user-info').innerHTML = `
+        <h3 style="margin:10px 0 5px 0">${user.name}</h3>
+        <p style="color:var(--accent)">PH: ${user.mobile}</p>
+    `;
 }
 
 function finalizeFine() {
-    const amount = prompt("Enter Fine Amount (INR):", "500");
-    if (!amount) return;
-
     const rfid = document.getElementById('manual-rfid-input').value;
     const user = JSON.parse(localStorage.getItem(rfid));
+    const amount = prompt("ENTER FINE AMOUNT (INR):", "500");
 
-    alert(`SUCCESS: Challan of ₹${amount} sent to ${user.name} (${user.mobile})`);
-    
-    // Prevent double fining: Mark incident as "FINED" and close
-    const incidentId = document.getElementById('modal-violation-img').src; // Simplification
-    closeJudgement();
-    renderChallans(); 
+    if (amount && user) {
+        // Log the fine (Simulated SMS/Database update)
+        alert(`FINE ISSUED!\nAmount: ₹${amount}\nSent to: ${user.name}\nMobile: ${user.mobile}`);
+        
+        // Find the current violation ID from the image source or a global variable
+        const currentViolImg = document.getElementById('modal-violation-img').src;
+        
+        // Remove from portal so it can't be fined again
+        Object.keys(localStorage).forEach(key => {
+            if(key.startsWith("VIOL-")) {
+                const item = JSON.parse(localStorage.getItem(key));
+                if(item.img === currentViolImg) {
+                    localStorage.removeItem(key);
+                }
+            }
+        });
+
+        closeJudgement();
+        renderChallans(); // Refresh the grid
+    }
 }
 
 function closeJudgement() {
     document.getElementById('judgement-modal').style.display = 'none';
     document.getElementById('registration-display').style.display = 'none';
-    document.getElementById('manual-rfid-input').value = "";
 }
         function deleteRecord(key) {
     if(confirm("PERMANENTLY DELETE INCIDENT LOG?")) {
@@ -377,21 +391,34 @@ function closeJudgement() {
         function renderChallans() {
     const grid = document.getElementById('challan-grid');
     grid.innerHTML = "";
-    Object.keys(localStorage).forEach(key => {
-        if(key.startsWith("VIOL-")) {
-            const viol = JSON.parse(localStorage.getItem(key));
-            const card = document.createElement('div');
-            card.className = 'challan-card';
-            card.innerHTML = `
-                <img src="${viol.img}" style="width:100%">
-                <div style="font-size:11px; margin: 10px 0;">Logged: ${viol.time}</div>
-                <div id="match-info-${viol.id}"></div>
-                <button class="action-btn" onclick="judgeViolation('${viol.id}', '${viol.img}')">IDENTIFY & FINE</button>
-                <button class="delete-btn" onclick="deleteRecord('${key}')">DELETE</button>
-            `;
-            grid.prepend(card);
-        }
+    
+    // Get all keys and sort them by time (newest first)
+    const keys = Object.keys(localStorage)
+        .filter(k => k.startsWith("VIOL-"))
+        .sort((a, b) => b.split('-')[1] - a.split('-')[1]);
+
+    keys.forEach(key => {
+        const viol = JSON.parse(localStorage.getItem(key));
+        const card = document.createElement('div');
+        card.className = 'challan-card';
+        // We store the ID in a data attribute for the modal to find later
+        card.innerHTML = `
+            <img src="${viol.img}" style="width:100%">
+            <div style="font-size:11px; margin: 10px 0;">Logged: ${viol.time}</div>
+            <div id="match-info-${viol.id}"></div>
+            <button class="action-btn" onclick="judgeViolation('${key}')">IDENTIFY & FINE</button>
+            <button class="delete-btn" style="background:#ff4444; margin-top:5px;" onclick="deleteRecord('${key}')">DELETE LOG</button>
+        `;
+        grid.appendChild(card);
     });
+}
+
+function deleteRecord(key) {
+    if(confirm("Are you sure you want to delete this evidence?")) {
+        localStorage.removeItem(key);
+        renderChallans(); // Refresh UI immediately
+        if(typeof renderUserList === 'function') renderUserList(); 
+    }
 }
     // --- 3. MONITORING & MATH LOGIC (YOUR ORIGINAL LOGIC) ---
     function updateSliders() {

@@ -625,12 +625,17 @@ function closeJudgement() {
         startBtn.classList.toggle('active');
     };
         async function loadFaceModels() {
-    const MODEL_URL = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/models';
-    // Loading the required models for detection and descriptors
-    await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
-    await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
-    await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-    console.log("Face Models Loaded");
+    // This URL contains the actual JSON and Shard files needed for detection
+    const MODEL_URL = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights';
+    
+    try {
+        await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+        console.log("Face Models Loaded Successfully");
+    } catch (e) {
+        console.error("Model Loading Failed: ", e);
+    }
 }
 
 // Update your init function

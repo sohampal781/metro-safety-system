@@ -396,26 +396,16 @@ async function finalizeFine() {
         renderChallans(); // Update the UI button to "ALREADY FINED"
     }
 }
-      async function sendFastSMS(mobileNumber, userName, amount) {
-    const apiKey = "HzZRzYz09iEIB7Glr3OmdOgt3PMocm66xPHcXWoaUvMaN9UKvlinysQDafuD"; // Replace with your real key
-    const message = `METRO GUARD: Mr./Ms. ${userName}, a fine of INR ${amount} has been issued for a safety line breach.`;
-
-    // Fast2SMS API URL for GET request (Quick View Route)
-    const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${apiKey}&route=q&message=${encodeURIComponent(message)}&flash=0&numbers=${mobileNumber}`;
+      async function sendFastSMS(mobileNumber, customMessage) {
+    const apiKey = "HzZRzYz09iEIB7Glr3OmdOgt3PMocm66xPHcXWoaUvMaN9UKvlinysQDafuD"; 
+    const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${apiKey}&route=q&message=${encodeURIComponent(customMessage)}&flash=0&numbers=${mobileNumber}`;
 
     try {
         const response = await fetch(url, { method: 'GET' });
         const result = await response.json();
-        
-        if (result.return === true) {
-            console.log("SMS sent successfully!");
-            return true;
-        } else {
-            console.error("SMS Failed:", result.message);
-            return false;
-        }
+        return result.return === true;
     } catch (error) {
-        console.error("Connection error:", error);
+        console.error("SMS Gateway Error:", error);
         return false;
     }
 }

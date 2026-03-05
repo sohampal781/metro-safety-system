@@ -513,6 +513,115 @@
             camera.start();
         }
         init();
+        let currentActiveViolation = null;
+
+// Replace your judgeViolation function with this
+async function judgeViolation(id, imgUrl) {
+    currentActiveViolation = JSON.parse(localStorage.getItem(id));
+    
+    // Open the Big Screen Terminal
+    document.getElementById('judgement-modal').style.display = 'block';
+    document.getElementById('modal-violation-img').src = imgUrl;
+    document.getElementById('incident-time').innerText = `INCIDENT LOG: ${currentActiveViolation.time}`;
+    
+    // Calculate AI Prediction
+    const img = await faceapi.fetchImage(imgUrl);
+    const det = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
+    
+    const predictionEl = document.getElementById('ai-prediction');
+    if (!det) {
+        predictionEl.innerHTML = `<span style="color:var(--danger)">FACE NOT CLEAR (MATCH: 0%)</span>`;
+    } else {
+        let best = 0;
+        // Scan DB to find best match probability
+        Object.keys(localStorage).forEach(k => {
+            if(k.startsWith("METRO-")) {
+                const u = JSON.parse(localStorage.getItem(k));
+                u.descriptors.forEach(d => {
+                    const match = (1 - faceapi.euclideanDistance(det.descriptor, new Float32Array(d))) * 100;
+                    if (match > best) best = match;
+                });
+            }
+        });
+        const color = best > 85 ? 'var(--success)' : 'orange';
+        predictionEl.innerHTML = `AI CONFIDENCE: <span style="color:${color}">${best.toFixed(1)}%</span>`;
+    }
+}
+
+function fetchRegistrationData() {
+    const rfid = document.getElementById('manual-rfid-input').value;
+    const user = JSON.parse(localStorage.getItem(rfid));
+    
+    if (!user) return alert("INVALID RFID: No record found in database.");
+
+    const display = document.getElementById('registration-display');
+    const photoGrid = document.getElementById('reg-photos-grid');
+    const info = document.getElementById('reg-user-info');
+
+    display.style.display = 'block';
+    info.innerText = `ID: ${rfid} | NAME: ${user.name} | CONTACT: ${user.mobile}`;
+    
+    // Clear and Show Registration 4 images
+    photoGrid.innerHTML = "";
+    // Note: To see images here, you must have saved the dataUrl in your registration
+    // If you only saved descriptors, this will show placeholders
+    user.descriptors.forEach((d, i) => {
+        photoGrid.innerHTML += `
+            <div style="text-align:center;">
+                <div style="width:100%; height:120px; background:#333; display:flex; align-items:center; justify-content:center; border:1px solid #555;">
+                   ANGLE ${i+1} DATA
+                </div>
+            </div>`;
+    });
+}
+
+function closeJudgement() {
+    document.getElementById('judgement-modal').style.display = 'none';
+    document.getElementById('registration-display').style.display = 'none';
+    document.getElementById('manual-rfid-input').value = "";
+}
+
+function finalizeFine() {
+    const rfid = document.getElementById('manual-rfid-input').value;
+    alert(`E-CHALLAN GENERATED SUCCESSFULLY\nSent to: ${rfid}\nIncident ID: ${currentActiveViolation.id}`);
+    closeJudgement();
+}
     </script>
+    <div id="judgement-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:9999; padding:40px; box-sizing:border-box; overflow-y:auto;">
+    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid var(--accent); padding-bottom:10px;">
+        <h2 style="color:var(--accent); margin:0;">INCIDENT VERIFICATION TERMINAL</h2>
+        <button onclick="closeJudgement()" style="background:var(--danger); color:white; border:none; padding:10px 20px; border-radius:5px; cursor:pointer; font-weight:bold;">EXIT TERMINAL</button>
+    </div>
+
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:30px; margin-top:20px;">
+        <div class="control-group">
+            <h3 style="color:var(--danger)">EVIDENCE FOOTAGE</h3>
+            <img id="modal-violation-img" style="width:100%; border:2px solid var(--danger); border-radius:10px;">
+            <div style="background:#000; padding:10px; margin-top:10px; border-radius:5px; text-align:center;">
+                <p id="incident-time" style="font-family:monospace; color:#aaa;"></p>
+                <div style="display:flex; justify-content:center; gap:10px;">
+                    <button class="btn" style="width:auto; font-size:10px;">⏪ -10s FOOTAGE</button>
+                    <button class="btn" style="width:auto; font-size:10px;">⏩ +10s FOOTAGE</button>
+                </div>
+            </div>
+            <div id="ai-prediction" style="margin-top:20px; font-size:24px; text-align:center; font-weight:bold;"></div>
+        </div>
+
+        <div class="control-group">
+            <h3 style="color:var(--accent)">REGISTRATION DATA MATCHING</h3>
+            <div style="display:flex; gap:10px; margin-bottom:20px;">
+                <input type="text" id="manual-rfid-input" placeholder="ENTER DETECTED RFID NUMBER" style="flex:1;">
+                <button class="btn-main" style="width:120px;" onclick="fetchRegistrationData()">VERIFY ID</button>
+            </div>
+
+            <div id="registration-display" style="display:none;">
+                <p id="reg-user-info" style="font-weight:bold; color:var(--success);"></p>
+                <div id="reg-photos-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                    </div>
+                <button class="btn-main" style="margin-top:20px; background:var(--success)" onclick="finalizeFine()">CONFIRM & GENERATE CHALLAN</button>
+            </div>
+        </div>
+    </div>
+</div>
 </body>
 </html>

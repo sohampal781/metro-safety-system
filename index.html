@@ -358,31 +358,31 @@ async function finalizeFine() {
     const rfid = document.getElementById('manual-rfid-input').value.trim();
     const user = JSON.parse(localStorage.getItem(rfid));
     
-    if (!user) return alert("User Data Missing");
+    if (!user) return alert("USER NOT FOUND");
 
-    const penalty = prompt("Fine Amount (₹):", "500");
-    // Short ID for the 100-char limit
-    const challanID = Math.floor(1000 + Math.random() * 9000);
+    const penalty = "500"; 
+    const challanID = Math.floor(1000 + Math.random() * 9999);
 
-    if (penalty && currentActiveViolationKey) {
-        // --- EXACTLY 97 CHARACTERS ---
-        const message = `METRO: Fine ₹${penalty} at Central for Yellow Line Breach. Pay Master in 7 days or legal action taken.`;
+    if (currentActiveViolationKey) {
+        // --- 1-CREDIT GSM FORMAT (STRICTLY NO UNICODE) ---
+        // We use "Rs" instead of "₹" to keep the 160-char limit
+        const message = `METRO: Fine Rs ${penalty} at Central for Yellow Line Breach. Pay immediately to Station Master to avoid legal action. ID:${challanID}`;
 
-        // Update logs
+        // 1. Update Logs
         const violData = JSON.parse(localStorage.getItem(currentActiveViolationKey));
         violData.status = "FINED";
         violData.fineAmount = penalty;
         violData.challanNo = "MG" + challanID;
         localStorage.setItem(currentActiveViolationKey, JSON.stringify(violData));
 
-        // Send to automatically directed mobile number
+        // 2. Automated SMS Dispatch
+        statusDisplay.innerText = "SENDING CHALLAN...";
         const success = await sendFastSMS(user.mobile, message);
         
         if (success) {
-            alert(`NOTICE SENT: ${user.mobile}`);
+            alert(`SUCCESS: 1 SMS Credit used for ${user.mobile}`);
         } else {
-            // If it fails, it might be the "Legal" keyword block
-            alert("SMS Blocked by Carrier. Try a simpler message.");
+            alert("GATEWAY ERROR: Check DND or Balance");
         }
         
         closeJudgement();

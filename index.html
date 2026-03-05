@@ -272,34 +272,106 @@
     if(mode === 'register') renderUserList();
 }
 async function judgeViolation(id, imgUrl) {
+    const modal = document.getElementById('judgement-modal');
+    const violImg = document.getElementById('modal-violation-img');
+    const timeLabel = document.getElementById('incident-time');
+    const aiPred = document.getElementById('ai-prediction');
+    
+    // Get violation data
+    const violData = JSON.parse(localStorage.getItem(id));
+    violImg.src = imgUrl;
+    timeLabel.innerText = `TIMESTAMP: ${violData.time}`;
+    modal.style.display = 'block';
+
+    // AI Recognition Processing
+    aiPred.innerText = "PROCESSING BIOMETRICS...";
+    aiPred.style.color = "var(--accent)";
+
     const img = await faceapi.fetchImage(imgUrl);
     const det = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
-    if (!det) return alert("Face blurred in capture.");
+    
+    if (!det) {
+        aiPred.innerText = "FACE NOT CLEAR - MANUAL ENTRY REQUIRED";
+        aiPred.style.color = "orange";
+        return;
+    }
 
-    let bestMatch = { score: 0, rfid: null, data: null };
+    let bestMatch = { score: 0, rfid: "N/A" };
 
-    // Compare against registered users in localStorage
+    // Search Registered Database
     Object.keys(localStorage).forEach(key => {
         if(key.startsWith("METRO-")) {
             const user = JSON.parse(localStorage.getItem(key));
             user.descriptors.forEach(desc => {
-                // Your exact Euclidean Distance math
                 const dist = faceapi.euclideanDistance(det.descriptor, new Float32Array(desc));
                 const match = (1 - dist) * 100;
                 if (match > bestMatch.score) {
-                    bestMatch = { score: match, rfid: key, data: user };
+                    bestMatch = { score: match, rfid: key };
                 }
             });
         }
     });
 
-    const display = document.getElementById(`match-info-${id}`);
-    if (bestMatch.score >= 85) {
-        display.innerHTML = `
-            <div style="color:var(--success); font-weight:bold;">MATCH: ${bestMatch.score.toFixed(1)}% - ${bestMatch.data.name}</div>
-            <button class="action-btn" style="background:var(--success)" onclick="alert('E-Challan Sent to ${bestMatch.data.mobile}')">SEND CHALLAN</button>`;
+    if (bestMatch.score > 40) {
+        aiPred.innerHTML = `MATCH DETECTED: ${bestMatch.score.toFixed(1)}%<br><span style="font-size:14px">SUGGESTED RFID: ${bestMatch.rfid}</span>`;
+        document.getElementById('manual-rfid-input').value = bestMatch.rfid;
+        aiPred.style.color = bestMatch.score > 80 ? "var(--success)" : "orange";
     } else {
-        display.innerHTML = `<div style="color:orange;">LOW MATCH: ${bestMatch.score.toFixed(1)}%. Check manually.</div>`;
+        aiPred.innerText = "NO DATABASE MATCH FOUND";
+        aiPred.style.color = "var(--danger)";
+    }
+}
+        function fetchRegistrationData() {
+    const rfid = document.getElementById('manual-rfid-input').value.toUpperCase();
+    const userData = JSON.parse(localStorage.getItem(rfid));
+    const display = document.getElementById('registration-display');
+    const photosGrid = document.getElementById('reg-photos-grid');
+
+    if (!userData) {
+        alert("RFID NOT FOUND IN DATABASE");
+        return;
+    }
+
+    display.style.display = 'block';
+    document.getElementById('reg-user-info').innerText = `NAME: ${userData.name} | CONTACT: ${userData.mobile}`;
+    
+    // Show registration-time photos
+    photosGrid.innerHTML = "";
+    userData.regImages.slice(0, 2).forEach(imgSrc => {
+        const img = document.createElement('img');
+        img.src = imgSrc;
+        img.style.width = "100%";
+        img.style.borderRadius = "5px";
+        photosGrid.appendChild(img);
+    });
+}
+
+function finalizeFine() {
+    const amount = prompt("Enter Fine Amount (INR):", "500");
+    if (!amount) return;
+
+    const rfid = document.getElementById('manual-rfid-input').value;
+    const user = JSON.parse(localStorage.getItem(rfid));
+
+    alert(`SUCCESS: Challan of ₹${amount} sent to ${user.name} (${user.mobile})`);
+    
+    // Prevent double fining: Mark incident as "FINED" and close
+    const incidentId = document.getElementById('modal-violation-img').src; // Simplification
+    closeJudgement();
+    renderChallans(); 
+}
+
+function closeJudgement() {
+    document.getElementById('judgement-modal').style.display = 'none';
+    document.getElementById('registration-display').style.display = 'none';
+    document.getElementById('manual-rfid-input').value = "";
+}
+        function deleteRecord(key) {
+    if(confirm("PERMANENTLY DELETE INCIDENT LOG?")) {
+        localStorage.removeItem(key);
+        // Refresh whichever UI is currently visible
+        renderChallans(); 
+        renderUserList();
     }
 }
         function renderChallans() {
@@ -432,34 +504,43 @@ async function judgeViolation(id, imgUrl) {
     }
 
     async function runCaptureSequence() {
-        if (captureStep >= 4) {
-            isCapturing = false;
-            statusDisplay.innerText = "CAPTURES COMPLETE";
-            return;
-        }
-
-        const commandText = commands[captureStep];
-        statusDisplay.innerText = commandText;
-        
-        // Wait 2 seconds for user to pose
-        await new Promise(r => setTimeout(r, 2000));
-
-        // Use Face-API to get descriptor (Requires models to be loaded)
-        const det = await faceapi.detectSingleFace(videoElement).withFaceLandmarks().withFaceDescriptor();
-        
-        if (det) {
-            capturedDescriptors.push(det.descriptor);
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = videoElement.videoWidth;
-            tempCanvas.height = videoElement.videoHeight;
-            tempCanvas.getContext('2d').drawImage(videoElement, 0, 0);
-            tempCapturedImages.push(tempCanvas.toDataURL('image/jpeg'));
-
-            document.getElementById(`a${captureStep}`).className = "angle-box done";
-            captureStep++;
-        }
-        runCaptureSequence();
+    if (captureStep >= 4) {
+        isCapturing = false;
+        statusDisplay.innerText = "CAPTURES COMPLETE";
+        statusDisplay.className = "status-card status-safe";
+        return;
     }
+
+    statusDisplay.innerText = commands[captureStep];
+    statusDisplay.className = "status-card status-breach"; // Use breach color to highlight action
+
+    // Give user time to pose
+    await new Promise(r => setTimeout(r, 2500));
+
+    // Try to detect face
+    const det = await faceapi.detectSingleFace(videoElement)
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+
+    if (det) {
+        capturedDescriptors.push(Array.from(det.descriptor));
+        
+        // Save the frame for visual confirmation
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = videoElement.videoWidth;
+        tempCanvas.height = videoElement.videoHeight;
+        const ctx = tempCanvas.getContext('2d');
+        ctx.drawImage(videoElement, 0, 0);
+        tempCapturedImages.push(tempCanvas.toDataURL('image/jpeg'));
+
+        document.getElementById(`a${captureStep}`).className = "angle-box done";
+        captureStep++;
+        runCaptureSequence(); // Move to next step
+    } else {
+        statusDisplay.innerText = "FACE NOT DETECTED - RETRYING...";
+        setTimeout(runCaptureSequence, 1000); // Retry current step
+    }
+}
 
     function saveRegistration() {
         const name = document.getElementById('reg-name').value;
@@ -543,14 +624,27 @@ async function judgeViolation(id, imgUrl) {
         startBtn.innerText = isMonitoring ? "STOP MONITORING" : "LOCK & START MONITORING";
         startBtn.classList.toggle('active');
     };
+        async function loadFaceModels() {
+    const MODEL_URL = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/models';
+    // Loading the required models for detection and descriptors
+    await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
+    await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+    await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+    console.log("Face Models Loaded");
+}
 
-    async function init() {
-        const camera = new Camera(videoElement, {
-            onFrame: async () => { await pose.send({image: videoElement}); },
-            width: 1280, height: 720
-        });
-        camera.start();
-    }
+// Update your init function
+async function init() {
+    await loadFaceModels(); // Add this line
+    const camera = new Camera(videoElement, {
+        onFrame: async () => { 
+            await pose.send({image: videoElement}); 
+        },
+        width: 1280, height: 720
+    });
+    camera.start();
+}
+   
     init();
 </script>
     <div id="judgement-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:9999; padding:40px; box-sizing:border-box; overflow-y:auto;">

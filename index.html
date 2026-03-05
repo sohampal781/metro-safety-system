@@ -202,12 +202,17 @@
         </div>
         <div id="register-ui" class="content-area" style="display:none;">
     <h3>New Enrollment</h3>
+    <div class="control-group">
+        <input type="text" id="reg-name" placeholder="Full Name" style="margin-bottom: 10px;">
+        <input type="text" id="reg-mobile" placeholder="Mobile Number">
+    </div>
+
     <button class="action-btn" style="background: #ff9800;" onclick="startSecureCapture()">
         START PHOTO SEQUENCE
     </button>
 
-    <div class="control-group">
-        <label>Auto-Face Capture Status</label>
+    <div class="control-group" style="margin-top:15px;">
+        <label>Capture Status</label>
         <div class="angle-status">
             <div id="a0" class="angle-box">FRONT</div>
             <div id="a1" class="angle-box">LEFT</div>
@@ -215,7 +220,16 @@
             <div id="a3" class="angle-box">UP/DOWN</div>
         </div>
     </div>
+
+    <button id="save-reg-btn" class="action-btn" onclick="saveRegistration()">
+        FINALIZE & SAVE TO DB
+    </button>
+    
+    <div id="user-list" style="margin-top:20px;">
+        <label>Registered Database</label>
+        <div id="db-items"></div>
     </div>
+</div>
     </div>
 
     <div id="viewport">
@@ -454,6 +468,73 @@
         camera.start();
     }
     init();
+        function renderUserList() {
+    const container = document.getElementById('db-items');
+    if (!container) return; // Safety check
+    
+    container.innerHTML = "";
+    Object.keys(localStorage).forEach(key => {
+        if(key.startsWith("METRO-")) {
+            const u = JSON.parse(localStorage.getItem(key));
+            const userDiv = document.createElement('div');
+            userDiv.style.cssText = "padding:8px; border-bottom:1px solid #333; display:flex; justify-content:space-between; font-size:12px;";
+            userDiv.innerHTML = `
+                <span>${u.name} <br><small style="color:#8b949e">${key}</small></span>
+                <span style="color:var(--danger); cursor:pointer;" onclick="deleteRecord('${key}')">✖</span>
+            `;
+            container.appendChild(userDiv);
+        }
+    });
+}
+        // Add this to your script
+async function saveRegistration() {
+    const name = document.getElementById('reg-name').value;
+    const mobile = document.getElementById('reg-mobile').value;
+
+    if (!name || !mobile) {
+        alert("Please enter both Name and Mobile Number.");
+        return;
+    }
+
+    if (capturedDescriptors.length < 4) {
+        alert("Please complete all 4 face angles first.");
+        return;
+    }
+
+    // Create a unique ID for the user
+    const rfid = "METRO-" + Math.random().toString(36).substr(2, 9).toUpperCase();
+
+    const userData = {
+        rfid: rfid,
+        name: name,
+        mobile: mobile,
+        // Convert the face data to a format localStorage can handle
+        descriptors: capturedDescriptors.map(d => Array.from(d)),
+        // Store the 4 angle images we captured
+        regImages: tempCapturedImages 
+    };
+
+    localStorage.setItem(rfid, JSON.stringify(userData));
+    alert(`Successfully Enrolled: ${name}\nAssigned ID: ${rfid}`);
+
+    // Clear inputs and reset UI
+    document.getElementById('reg-name').value = "";
+    document.getElementById('reg-mobile').value = "";
+    capturedDescriptors = [];
+    tempCapturedImages = [];
+    captureStep = 0;
+    document.querySelectorAll('.angle-box').forEach(b => b.className = 'angle-box');
+    
+    renderUserList(); // Refresh the list in the sidebar
+}
+
+// Required to make the Delete button (X) work in your sidebar
+function deleteRecord(key) {
+    if(confirm("Delete this user record?")) {
+        localStorage.removeItem(key);
+        renderUserList();
+    }
+}
 </script>
     <div id="judgement-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:9999; padding:40px; box-sizing:border-box; overflow-y:auto;">
     <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid var(--accent); padding-bottom:10px;">

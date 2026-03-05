@@ -275,47 +275,23 @@ async function judgeViolation(key) {
     currentActiveViolationKey = key; 
     const violData = JSON.parse(localStorage.getItem(key));
     
-    // Open terminal and show the big evidence photo
+    // Open terminal and show evidence
     document.getElementById('judgement-modal').style.display = 'block';
     document.getElementById('modal-violation-img').src = violData.img;
     
     const aiPred = document.getElementById('ai-prediction');
-    const rfidInput = document.getElementById('manual-rfid-input'); // Target the RFID box
+    const rfidInput = document.getElementById('manual-rfid-input');
     
-    aiPred.innerHTML = "SYSTEM MATCHING...";
-    rfidInput.value = ""; // Clear old data
-
-    try {
-        const img = await faceapi.fetchImage(violData.img);
-        const det = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
-        
-        if (det) {
-            let bestMatch = { score: 0, rfid: "" };
-            Object.keys(localStorage).forEach(lk => {
-                if(lk.startsWith("METRO-")) {
-                    const user = JSON.parse(localStorage.getItem(lk));
-                    user.descriptors.forEach(desc => {
-                        const dist = faceapi.euclideanDistance(det.descriptor, new Float32Array(desc));
-                        const match = (1 - dist) * 100;
-                        if (match > bestMatch.score) {
-                            bestMatch = { score: match, rfid: lk };
-                        }
-                    });
-                }
-            });
-
-            // THIS IS THE PART YOU NEED:
-            if(bestMatch.rfid && bestMatch.score > 45) {
-                aiPred.innerHTML = `MATCH FOUND: ${bestMatch.score.toFixed(1)}%`;
-                rfidInput.value = bestMatch.rfid; // Pushes the RFID into the box automatically
-                rfidInput.style.border = "2px solid #00e676"; // Visual confirmation
-            } else {
-                aiPred.innerHTML = "NO DATABASE MATCH FOUND";
-                rfidInput.placeholder = "ENTER RFID MANUALLY";
-            }
-        }
-    } catch(e) {
-        aiPred.innerHTML = "AI ERROR - USE MANUAL VERIFY";
+    // AUTO-FILL the RFID captured during the breach
+    if (violData.linkedRfid && violData.linkedRfid !== "UNKNOWN_ID") {
+        rfidInput.value = violData.linkedRfid;
+        rfidInput.style.border = "2px solid var(--success)";
+        aiPred.innerHTML = "MATCH FOUND IN DATABASE";
+        fetchRegistrationData(); // Automatically show name and photo
+    } else {
+        rfidInput.value = "";
+        rfidInput.placeholder = "NO AUTO-MATCH: ENTER MANUALLY";
+        aiPred.innerHTML = "ID NOT DETECTED AUTOMATICALLY";
     }
 }
        function fetchRegistrationData() {
@@ -390,21 +366,19 @@ function closeJudgement() {
             const viol = JSON.parse(localStorage.getItem(key));
             const card = document.createElement('div');
             card.className = 'challan-card';
-            
-            // Check the status
             const isFined = viol.status === "FINED";
             
             card.innerHTML = `
                 <img src="${viol.img}" style="width:100%; border-radius:8px;">
-                <div style="font-size:11px; margin: 10px 0;">Logged: ${viol.time}</div>
-                
+                <div style="font-size:12px; margin: 10px 0; color: #fff;">
+                    <span style="color:var(--accent); font-weight:bold;">RFID: ${viol.linkedRfid}</span><br>
+                    Time: ${viol.time}
+                </div>
                 ${isFined ? 
-                    `<button class="action-btn" style="background:#2ea043; cursor:not-allowed;" disabled>ALREADY FINED</button>` : 
-                    `<button class="action-btn" onclick="judgeViolation('${key}')">IDENTIFY & FINE</button>`
+                    `<button class="action-btn" style="background:var(--success); color:black;" disabled>CHALLAN ISSUED</button>` : 
+                    `<button class="action-btn" onclick="judgeViolation('${key}')">VERIFY & FINE</button>`
                 }
-                
-                <button class="delete-btn" style="background:#ff4444; width:100%; margin-top:5px; border:none; padding:8px; color:white; border-radius:4px; cursor:pointer;" 
-                        onclick="deleteRecord('${key}')">DELETE RECORD</button>
+                <button class="delete-btn" style="width:100%" onclick="deleteRecord('${key}')">DELETE LOG</button>
             `;
             grid.prepend(card);
         }
@@ -611,35 +585,60 @@ function deleteRecord(key) {
     }
 
     // --- 5. VIOLATION LOGGING ---
-    function captureViolation() {
+   async function captureViolation() {
     const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = canvasElement.width;
-    tempCanvas.height = canvasElement.height;
+    tempCanvas.width = videoElement.videoWidth;
+    tempCanvas.height = videoElement.videoHeight;
     const ctx = tempCanvas.getContext('2d');
     
+    // 1. Capture the visual evidence (mirrored for correct orientation)
     ctx.translate(tempCanvas.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(videoElement, 0, 0);
-    ctx.drawImage(canvasElement, 0, 0);
-
     const dataUrl = tempCanvas.toDataURL('image/jpeg');
-    
-    // Create a unique key using timestamp
-    const timestamp = Date.now();
-    const storageKey = "VIOL-" + timestamp; 
-    
+
+    let detectedRfid = "UNKNOWN_ID"; // Default if no match found
+    let matchScore = 0;
+
+    try {
+        // 2. IMMEDIATE FACE SCAN during the breach
+        const det = await faceapi.detectSingleFace(videoElement)
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+
+        if (det) {
+            // 3. Search LocalStorage for a match
+            Object.keys(localStorage).forEach(key => {
+                if (key.startsWith("METRO-")) {
+                    const user = JSON.parse(localStorage.getItem(key));
+                    user.descriptors.forEach(desc => {
+                        const dist = faceapi.euclideanDistance(det.descriptor, new Float32Array(desc));
+                        const score = (1 - dist) * 100;
+                        if (score > 45 && score > matchScore) {
+                            matchScore = score;
+                            detectedRfid = user.rfid; // THIS IS THE MANDATORY LINK
+                        }
+                    });
+                }
+            });
+        }
+    } catch (e) {
+        console.error("Auto-Identification Error:", e);
+    }
+
+    // 4. Save the incident with the linked RFID
+    const storageKey = "VIOL-" + Date.now(); 
     const violationObject = {
-        id: storageKey, // Store the exact key inside the object
+        id: storageKey,
         img: dataUrl, 
-        time: new Date().toLocaleString()
+        time: new Date().toLocaleString(),
+        linkedRfid: detectedRfid, // Storing the ID inside the violation object
+        status: "PENDING"
     };
 
     localStorage.setItem(storageKey, JSON.stringify(violationObject));
-    console.log("Saved violation with key:", storageKey);
-    
-    renderChallans(); // Refresh portal immediately
+    renderChallans(); 
 }
-
     // --- 6. INITIALIZATION ---
     pointCountInput.onchange = updateSliders;
     updateSliders();

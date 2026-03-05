@@ -326,29 +326,40 @@ async function judgeViolation(key) {
     renderUserList();   // Refresh the Registered User List
     console.log("System Data Restored from LocalStorage");
 }
-function finalizeFine() {
+async function finalizeFine() {
     const rfid = document.getElementById('manual-rfid-input').value.trim();
     const userRaw = localStorage.getItem(rfid);
-    const amount = prompt("ENTER FINE AMOUNT (INR):", "500");
+    
+    if (!userRaw) {
+        alert("RFID NOT FOUND");
+        return;
+    }
 
-    if (amount && userRaw && currentActiveViolationKey) {
+    const amount = prompt("ENTER FINE AMOUNT:", "500");
+    if (amount && currentActiveViolationKey) {
         const user = JSON.parse(userRaw);
         
-        // 1. Get the current violation data
-        const violData = JSON.parse(localStorage.getItem(currentActiveViolationKey));
+        // 1. Retrieve the existing violation data
+        let violData = JSON.parse(localStorage.getItem(currentActiveViolationKey));
         
-        // 2. Add the status 'FINED'
+        // 2. CRITICAL: Update the status to FINED
         violData.status = "FINED";
         violData.fineAmount = amount;
-        violData.finedUser = user.name;
+        violData.finedUserName = user.name;
+        violData.finedMobile = user.mobile;
 
-        // 3. Save it back to localStorage
+        // 3. Save it back to LocalStorage
         localStorage.setItem(currentActiveViolationKey, JSON.stringify(violData));
 
-        alert(`SUCCESS: ₹${amount} Challan issued to ${user.name}`);
-        
+        // 4. Send SMS (The free version we discussed)
+        alert("Recording fine and sending SMS alert...");
+        await sendFreeSMS(user.mobile, user.name, amount);
+
+        // 5. Close UI and RE-RENDER (This updates the button to 'ALREADY FINED')
         closeJudgement();
-        renderChallans(); // Refresh to show the updated status
+        renderChallans(); 
+        
+        alert(`Challan of ₹${amount} issued to ${user.name}`);
     }
 }
 function closeJudgement() {
@@ -386,15 +397,27 @@ function closeJudgement() {
             const card = document.createElement('div');
             card.className = 'challan-card';
             
+            // LOGIC: Check if this specific incident is already processed
+            const isAlreadyFined = (viol.status === "FINED");
+
             card.innerHTML = `
-                <img src="${viol.img}" style="width:100%; border-radius:8px;">
+                <img src="${viol.img}" style="width:100%; border-radius:8px; border: 2px solid ${isAlreadyFined ? '#00e676' : '#ff3333'}">
                 <div style="font-size:12px; margin: 10px 0;">
                     <b style="color:var(--accent)">RFID: ${viol.linkedRfid}</b><br>
                     Time: ${viol.time}
                 </div>
-                <button class="action-btn" onclick="judgeViolation('${key}')">VERIFY & FINE</button>
-                <button class="delete-btn" style="background:#ff3333; margin-top:8px;" 
-                        onclick="deleteRecord('${key}')">DELETE PERMANENTLY</button>
+                
+                ${isAlreadyFined ? 
+                    `<button class="action-btn" style="background:#00e676; color:black; cursor:not-allowed;" disabled>
+                        ALREADY FINED (₹${viol.fineAmount})
+                     </button>` : 
+                    `<button class="action-btn" onclick="judgeViolation('${key}')">
+                        IDENTIFY & FINE
+                     </button>`
+                }
+                
+                <button class="delete-btn" style="background:#444; margin-top:8px;" 
+                        onclick="deleteRecord('${key}')">DELETE LOG</button>
             `;
             grid.prepend(card);
         }

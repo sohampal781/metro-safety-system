@@ -200,31 +200,22 @@
             <div id="slider-container"></div>
             <button id="start-btn" class="action-btn">ENGAGE MONITORING</button>
         </div>
-
         <div id="register-ui" class="content-area" style="display:none;">
-            <h3>New Enrollment</h3>
-            <div class="control-group">
-                <input type="text" id="reg-name" placeholder="Full Name" style="margin-bottom: 10px;">
-                <input type="text" id="reg-mobile" placeholder="Mobile Number">
-            </div>
+    <h3>New Enrollment</h3>
+    <button class="action-btn" style="background: #ff9800;" onclick="startSecureCapture()">
+        START PHOTO SEQUENCE
+    </button>
 
-            <div class="control-group">
-                <label>Auto-Face Capture Status</label>
-                <div class="angle-status">
-                    <div id="a0" class="angle-box">FRONT</div>
-                    <div id="a1" class="angle-box">LEFT</div>
-                    <div id="a2" class="angle-box">RIGHT</div>
-                    <div id="a3" class="angle-box">UP/DOWN</div>
-                </div>
-            </div>
-
-            <button id="save-reg-btn" class="action-btn" onclick="saveRegistration()">FINALIZE REGISTRATION</button>
-            
-            <div id="user-list" style="margin-top:20px; font-size:12px;">
-                <h4>Registered Database</h4>
-                <div id="db-items"></div>
-            </div>
+    <div class="control-group">
+        <label>Auto-Face Capture Status</label>
+        <div class="angle-status">
+            <div id="a0" class="angle-box">FRONT</div>
+            <div id="a1" class="angle-box">LEFT</div>
+            <div id="a2" class="angle-box">RIGHT</div>
+            <div id="a3" class="angle-box">UP/DOWN</div>
         </div>
+    </div>
+    </div>
     </div>
 
     <div id="viewport">
@@ -377,76 +368,123 @@
         statusDisplay.className = "status-card status-safe";
     }
 }
-       // --- 1. SECURE CAPTURE LOGIC (STRICT DIVERSITY & ANTI-CHEAT) ---
-let isCapturing = false;
-let captureStep = 0;
-let tempCapturedImages = []; 
-const commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
+// --- ENROLLMENT LOGIC ---
 
+// This replaces the missing function that caused your console error
+async function autoCaptureLogic() {
+    if (isCapturing) return; // Don't interfere if a sequence is running
+
+    const detections = await faceapi.detectSingleFace(videoElement).withFaceLandmarks();
+    
+    if (detections) {
+        // Draw face box on canvas so user knows they are detected
+        const dims = faceapi.matchDimensions(canvasElement, videoElement, true);
+        const resized = faceapi.resizeResults(detections, dims);
+        faceapi.draw.drawDetections(canvasElement, resized);
+        
+        // If system is ready but not capturing, show a prompt
+        statusDisplay.innerText = "FACE DETECTED - READY TO ENROLL";
+        statusDisplay.className = "status-card status-safe";
+    } else {
+        statusDisplay.innerText = "POSITION FACE FOR REGISTRATION";
+        statusDisplay.className = "status-card";
+    }
+}
+
+// Triggered by a button you should add to the Register UI
 async function startSecureCapture() {
     if (isCapturing) return;
+    
+    // Reset state
     capturedDescriptors = [];
     tempCapturedImages = [];
     captureStep = 0;
     isCapturing = true;
-    // Reset visual indicators
+    
+    // Reset UI indicators
     document.querySelectorAll('.angle-box').forEach(b => b.className = 'angle-box');
-    nextCaptureStep();
+    
+    runCaptureSequence();
 }
 
-async function nextCaptureStep() {
+async function runCaptureSequence() {
     if (captureStep >= 4) {
-        document.getElementById('command-text').innerText = "ENROLLMENT READY";
-        document.getElementById('save-reg-btn').disabled = false;
         isCapturing = false;
+        alert("All angles captured! Please click 'Finalize' to save.");
         return;
     }
 
-    const timerEl = document.getElementById('countdown-timer');
-    const commandEl = document.getElementById('command-text');
-    commandEl.innerText = commands[captureStep];
+    const commandText = commands[captureStep];
+    statusDisplay.innerText = `ACTION: ${commandText}`;
+    statusDisplay.className = "status-breach"; // Pulse effect during capture
 
-    // 3 Second Countdown to force position change
+    // 3-second countdown for the user to change head position
     for (let i = 3; i > 0; i--) {
-        timerEl.innerText = i;
+        statusDisplay.innerText = `${commandText} IN ${i}...`;
         await new Promise(r => setTimeout(r, 1000));
     }
 
+    // Capture Descriptor & Image
     const det = await faceapi.detectSingleFace(videoElement).withFaceLandmarks().withFaceDescriptor();
-    
-    // ANTI-CHEAT: Reject if no face (e.g., feet) or same angle as capture 0
+
     if (!det) {
-        commandEl.innerText = "ERROR: NO FACE DETECTED!";
-        setTimeout(nextCaptureStep, 2000);
+        alert("Face lost! Restarting current angle.");
+        runCaptureSequence();
         return;
     }
 
-    // Strict Angle Diversity Check (Euclidean Distance)
-    let isDuplicate = false;
-    for (let prev of capturedDescriptors) {
-        if (faceapi.euclideanDistance(det.descriptor, prev) < 0.4) {
-            isDuplicate = true;
-            break;
+    // Check for "Same Angle" cheat (Euclidean Distance)
+    if (captureStep > 0) {
+        const prevDesc = capturedDescriptors[captureStep - 1];
+        const distance = faceapi.euclideanDistance(det.descriptor, prevDesc);
+        if (distance < 0.3) {
+            alert("Movement too small. Please turn your head further.");
+            runCaptureSequence();
+            return;
         }
     }
 
-    if (isDuplicate && captureStep > 0) {
-        commandEl.innerText = "ERROR: SAME ANGLE! MOVE HEAD.";
-        setTimeout(nextCaptureStep, 2000);
-    } else {
-        capturedDescriptors.push(det.descriptor);
-        
-        // Save actual image for the Verification Terminal
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = videoElement.videoWidth;
-        tempCanvas.height = videoElement.videoHeight;
-        tempCanvas.getContext('2d').drawImage(videoElement, 0, 0);
-        tempCapturedImages.push(tempCanvas.toDataURL('image/jpeg'));
+    // Store data
+    capturedDescriptors.push(det.descriptor);
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = videoElement.videoWidth;
+    tempCanvas.height = videoElement.videoHeight;
+    tempCanvas.getContext('2d').drawImage(videoElement, 0, 0);
+    tempCapturedImages.push(tempCanvas.toDataURL('image/jpeg'));
 
-        document.getElementById(`a${captureStep}`).className = "angle-box done";
-        captureStep++;
-        nextCaptureStep();
-    }
+    // Update UI
+    document.getElementById(`a${captureStep}`).className = "angle-box done";
+    captureStep++;
+    
+    // Recursive call for next angle
+    runCaptureSequence();
+}
+
+// Finalize and save to LocalStorage
+async function saveRegistration() {
+    const name = document.getElementById('reg-name').value;
+    const mobile = document.getElementById('reg-mobile').value;
+
+    if (!name || !mobile) return alert("Enter Name and Mobile");
+    if (capturedDescriptors.length < 4) return alert("Complete all 4 angles first!");
+
+    const rfid = "METRO-" + Math.random().toString(36).substr(2, 9).toUpperCase();
+
+    const userData = {
+        rfid: rfid,
+        name: name,
+        mobile: mobile,
+        // Convert Float32Array to standard array for JSON
+        descriptors: capturedDescriptors.map(d => Array.from(d)),
+        regImages: tempCapturedImages
+    };
+
+    localStorage.setItem(rfid, JSON.stringify(userData));
+    alert(`Registration Successful!\nID: ${rfid}`);
+    
+    // Reset UI
+    switchUI('monitor');
+    renderUserList();
 }
        function triggerViolationCapture() {
             const tempCanvas = document.createElement('canvas');

@@ -271,55 +271,45 @@
     if(mode === 'challan') renderChallans();
     if(mode === 'register') renderUserList();
 }
-async function judgeViolation(id, imgUrl) {
-    const modal = document.getElementById('judgement-modal');
-    const violDataRaw = localStorage.getItem(id);
+async function judgeViolation(key) {
+    currentActiveViolationKey = key; 
+    const violData = JSON.parse(localStorage.getItem(key));
     
-    if (!violDataRaw) {
-        alert("Error: Violation record not found in database.");
-        return;
-    }
-
-    const violData = JSON.parse(violDataRaw);
-    modal.style.display = 'block';
-    
-    // Show Evidence Big
-    document.getElementById('modal-violation-img').src = imgUrl;
-    document.getElementById('incident-time').innerText = `TIMESTAMP: ${violData.time}`;
+    // Ensure the modal is visible and show the BIG picture
+    document.getElementById('judgement-modal').style.display = 'block';
+    const evidenceImg = document.getElementById('modal-violation-img');
+    evidenceImg.src = violData.img; // This fixes the broken image in your screenshot
     
     const aiPred = document.getElementById('ai-prediction');
-    aiPred.style.color = "var(--accent)";
-    aiPred.innerHTML = "SCANNING BIOMETRICS...";
+    aiPred.innerHTML = "SYSTEM MATCHING...";
 
-    // Run AI Match
-    try {
-        const img = await faceapi.fetchImage(imgUrl);
-        const det = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
-        
-        if (!det) {
-            aiPred.innerHTML = "<span style='color:orange'>LOW VISIBILITY - MANUAL ID REQUIRED</span>";
-            return;
-        }
-
+    // Run AI to find the person's RFID automatically
+    const img = await faceapi.fetchImage(violData.img);
+    const det = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
+    
+    if (det) {
         let bestMatch = { score: 0, rfid: "" };
-        Object.keys(localStorage).forEach(key => {
-            if(key.startsWith("METRO-")) {
-                const user = JSON.parse(localStorage.getItem(key));
+        Object.keys(localStorage).forEach(lk => {
+            if(lk.startsWith("METRO-")) {
+                const user = JSON.parse(localStorage.getItem(lk));
                 user.descriptors.forEach(desc => {
                     const dist = faceapi.euclideanDistance(det.descriptor, new Float32Array(desc));
                     const match = (1 - dist) * 100;
                     if (match > bestMatch.score) {
-                        bestMatch = { score: match, rfid: key };
+                        bestMatch = { score: match, rfid: lk };
                     }
                 });
             }
         });
 
-        aiPred.innerHTML = `MATCH: ${bestMatch.score.toFixed(1)}% <br> <small>ID: ${bestMatch.rfid || 'NONE'}</small>`;
-        document.getElementById('manual-rfid-input').value = bestMatch.rfid || "";
-    } catch (err) {
-        console.error("AI processing error:", err);
-        aiPred.innerHTML = "AI OFFLINE - USE MANUAL VERIFY";
+        // This puts the RFID in the box for you automatically
+        if(bestMatch.rfid) {
+            aiPred.innerHTML = `MATCH FOUND: ${bestMatch.score.toFixed(1)}%`;
+            document.getElementById('manual-rfid-input').value = bestMatch.rfid;
+            // Now you just have to click 'VERIFY ID' to see their reg-photo
+        } else {
+            aiPred.innerHTML = "NO MATCH IN DATABASE";
+        }
     }
 }
        function fetchRegistrationData() {
@@ -350,23 +340,27 @@ async function judgeViolation(id, imgUrl) {
 }
 function finalizeFine() {
     const rfid = document.getElementById('manual-rfid-input').value.trim();
-    const user = JSON.parse(localStorage.getItem(rfid));
-    const amount = prompt("ENTER FINE AMOUNT:", "500");
+    const userRaw = localStorage.getItem(rfid);
+    const amount = prompt("ENTER FINE AMOUNT (INR):", "500");
 
-    if (amount && user) {
-        alert(`SUCCESS: ₹${amount} Fine sent to ${user.name}`);
+    if (amount && userRaw && currentActiveViolationKey) {
+        const user = JSON.parse(userRaw);
+        
+        // 1. Get the current violation data
+        const violData = JSON.parse(localStorage.getItem(currentActiveViolationKey));
+        
+        // 2. Add the status 'FINED'
+        violData.status = "FINED";
+        violData.fineAmount = amount;
+        violData.finedUser = user.name;
 
-        // THE DELETE STEP:
-        if (currentActiveViolationKey) {
-            console.log("Removing incident after fine:", currentActiveViolationKey);
-            localStorage.removeItem(currentActiveViolationKey);
-            currentActiveViolationKey = null; // Reset
-        }
+        // 3. Save it back to localStorage
+        localStorage.setItem(currentActiveViolationKey, JSON.stringify(violData));
 
+        alert(`SUCCESS: ₹${amount} Challan issued to ${user.name}`);
+        
         closeJudgement();
-        renderChallans(); // Update portal to show it's gone
-    } else {
-        alert("Fine cancelled or User not found.");
+        renderChallans(); // Refresh to show the updated status
     }
 }
 function closeJudgement() {
@@ -392,19 +386,27 @@ function closeJudgement() {
             const card = document.createElement('div');
             card.className = 'challan-card';
             
-            // Critical Fix: Pass the 'key' variable directly to the functions
+            // Check if already fined
+            const isFined = viol.status === "FINED";
+            
             card.innerHTML = `
-                <img src="${viol.img}" style="width:100%">
+                <img src="${viol.img}" style="width:100%; filter: ${isFined ? 'grayscale(0.5)' : 'none'}">
                 <div style="font-size:11px; margin: 10px 0;">Logged: ${viol.time}</div>
-                <button class="action-btn" onclick="judgeViolation('${key}')">IDENTIFY & FINE</button>
-                <button class="delete-btn" style="background:#ff4444; width:100%; margin-top:5px; border:none; padding:8px; color:white; border-radius:4px; cursor:pointer;" 
-                        onclick="deleteRecord('${key}')">DELETE PERMANENTLY</button>
+                
+                ${isFined ? 
+                    `<div style="background:var(--success); color:black; padding:10px; border-radius:4px; font-weight:bold; text-align:center; margin-bottom:5px;">
+                        ALREADY FINED: ₹${viol.fineAmount}
+                     </div>` : 
+                    `<button class="action-btn" onclick="judgeViolation('${key}')">IDENTIFY & FINE</button>`
+                }
+                
+                <button class="delete-btn" style="background:#ff4444; width:100%; border:none; padding:8px; color:white; border-radius:4px; cursor:pointer;" 
+                        onclick="deleteRecord('${key}')">DELETE RECORD</button>
             `;
             grid.prepend(card);
         }
     });
 }
-
 function deleteRecord(key) {
     console.log("Attempting to delete key:", key);
     if(confirm("Delete this evidence?")) {

@@ -356,42 +356,35 @@ async function judgeViolation(key) {
 }
 async function finalizeFine() {
     const rfid = document.getElementById('manual-rfid-input').value.trim();
-    const userRaw = localStorage.getItem(rfid);
+    const user = JSON.parse(localStorage.getItem(rfid));
     
-    if (!userRaw) {
-        alert("ERROR: No registration record found for this RFID.");
-        return;
-    }
+    if (!user) return alert("User Data Missing");
 
-    const user = JSON.parse(userRaw); // Automatically pulls user.mobile and user.name
-    const penaltyAmount = prompt("Enter Penalty Amount (₹):", "500");
-    const stationName = "Central Metro"; // You can make this dynamic if needed
-    
-    // Generate Formal Challan No
-    const datePart = new Date().toISOString().slice(0,10).replace(/-/g, "");
-    const challanNo = `MG${datePart}${Math.floor(1000 + Math.random() * 9000)}`;
+    const penalty = prompt("Fine Amount (₹):", "500");
+    // Short ID for the 100-char limit
+    const challanID = Math.floor(1000 + Math.random() * 9000);
 
-    if (penaltyAmount && currentActiveViolationKey) {
-        // --- UPDATED FORMATE WITH LEGAL WARNING ---
-        const message = `Kolkata Metro Railway\nChallan No: ${challanNo}\nStation: ${stationName}\nOffence: Crossing platform safety line\nPenalty: ₹${penaltyAmount}\n\nNOTICE: Please pay the fine to the Station Master within 7 days, otherwise legal action will be taken under Metro Railway safety regulations.`;
+    if (penalty && currentActiveViolationKey) {
+        // --- EXACTLY 97 CHARACTERS ---
+        const message = `METRO: Fine ₹${penalty} at Central for Yellow Line Breach. Pay Master in 7 days or legal action taken.`;
 
-        // 1. Update Local Storage Log
+        // Update logs
         const violData = JSON.parse(localStorage.getItem(currentActiveViolationKey));
         violData.status = "FINED";
-        violData.fineAmount = penaltyAmount;
-        violData.challanNo = challanNo;
+        violData.fineAmount = penalty;
+        violData.challanNo = "MG" + challanID;
         localStorage.setItem(currentActiveViolationKey, JSON.stringify(violData));
 
-        // 2. Trigger Automated SMS
-        statusDisplay.innerText = "SENDING LEGAL NOTICE...";
+        // Send to automatically directed mobile number
         const success = await sendFastSMS(user.mobile, message);
-
+        
         if (success) {
-            alert(`LEGAL NOTICE SENT to ${user.name} (${user.mobile})`);
+            alert(`NOTICE SENT: ${user.mobile}`);
         } else {
-            alert("SMS FAIL: The word 'Legal Action' or 'Fine' might be blocked by DLT filters. Check Fast2SMS logs.");
+            // If it fails, it might be the "Legal" keyword block
+            alert("SMS Blocked by Carrier. Try a simpler message.");
         }
-
+        
         closeJudgement();
         renderChallans();
     }

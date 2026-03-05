@@ -312,22 +312,25 @@ async function judgeViolation(key) {
     const rfidInput = document.getElementById('manual-rfid-input');
     const aiPred = document.getElementById('ai-prediction');
 
-    // If already known from capture, fill it
+    // 1. Check if the AI already found a match during the breach
     if (violData.linkedRfid && violData.linkedRfid !== "UNKNOWN_ID") {
         rfidInput.value = violData.linkedRfid;
-        aiPred.innerHTML = `AUTO-MATCHED: ${violData.linkedRfid}`;
-        fetchRegistrationData();
+        aiPred.innerHTML = `<span style="color:var(--success)">AUTO-MATCHED: ${violData.linkedRfid}</span>`;
+        
+        // 2. AUTOMATICALLY PULL DATA (No manual typing needed)
+        fetchRegistrationData(); 
     } else {
-        // Run a manual re-scan of the evidence image
-        aiPred.innerHTML = "RE-SCANNING EVIDENCE...";
+        rfidInput.value = "";
+        aiPred.innerHTML = `<span style="color:var(--danger)">NO AUTOMATIC MATCH - SEARCHING...</span>`;
+        
+        // Try a manual re-scan of the saved image
         const img = await faceapi.fetchImage(violData.img);
         const det = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
         
         if (det) {
-            // Repeat the matching logic here...
-            aiPred.innerHTML = "SCAN COMPLETE - CHECK DATABASE";
+            aiPred.innerHTML = "FACE DETECTED - ENTER RFID TO LINK";
         } else {
-            aiPred.innerHTML = "FACE NOT DETECTED IN IMAGE";
+            aiPred.innerHTML = "WARNING: FACE NOT CLEAR IN EVIDENCE";
         }
     }
 }
@@ -368,72 +371,54 @@ async function finalizeFine() {
     const userRaw = localStorage.getItem(rfid);
     
     if (!userRaw) {
-        alert("RFID NOT FOUND");
+        alert("CRITICAL ERROR: No registration data found for this ID.");
         return;
     }
 
-    const amount = prompt("ENTER FINE AMOUNT:", "500");
+    const user = JSON.parse(userRaw); // This contains user.mobile and user.name
+    const amount = prompt(`ISSUE FINE TO ${user.name.toUpperCase()}?`, "500");
+    
     if (amount && currentActiveViolationKey) {
-        const user = JSON.parse(userRaw);
-        
-        // 1. Permanently update status to FINED in LocalStorage
+        // FORMAL MESSAGE CONTENT
+        const station = "PARK STREET METRO STATION";
+        const customMessage = `METRO POLICE: Mr/Ms ${user.name}, you have been proceeded at ${station} for Yellow Line Violation. Fine Amount: Rs.${amount}. Please maintain safety protocols.`;
+
+        // 1. Update the log to FINED
         const violData = JSON.parse(localStorage.getItem(currentActiveViolationKey));
         violData.status = "FINED";
         violData.fineAmount = amount;
         localStorage.setItem(currentActiveViolationKey, JSON.stringify(violData));
 
-        // 2. Trigger the real-world SMS alert
-        alert("Processing SMS alert...");
-        const success = await sendFastSMS(user.mobile, user.name, amount);
+        // 2. SEND THE SMS
+        statusDisplay.innerText = "SENDING E-CHALLAN...";
+        const success = await sendFastSMS(user.mobile, customMessage);
 
         if (success) {
-            alert(`SUCCESS: SMS sent to ${user.name} at ${user.mobile}`);
+            alert(`SUCCESS: E-Challan sent to ${user.mobile}`);
         } else {
-            alert("SMS failed. Check API balance or DND status.");
+            alert("GATEWAY ERROR: Message not delivered. Check DND status of the receiver.");
         }
 
         closeJudgement();
-        renderChallans(); // Update the UI button to "ALREADY FINED"
+        renderChallans();
     }
 }
-      async function sendSMS(){
 
-const mobile = document.getElementById("mobile").value.trim();
-const message = document.getElementById("msg").value.trim();
+// Optimized Gateway Function
+async function sendFastSMS(number, message) {
+    const apiKey = "HzZRzYz09iEIB7Glr3OmdOgt3PMocm66xPHcXWoaUvMaN9UKvlinysQDafuD";
+    const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${apiKey}&route=q&message=${encodeURIComponent(message)}&numbers=${number}`;
 
-if(mobile.length !== 10){
-alert("Enter valid 10 digit number");
-return;
-}
-
-const apiKey = "HzZRzYz09iEIB7Glr3OmdOgt3PMocm66xPHcXWoaUvMaN9UKvlinysQDafuD";
-
-const url =
-`https://www.fast2sms.com/dev/bulkV2?authorization=${apiKey}&route=q&message=${encodeURIComponent(message)}&numbers=${mobile}`;
-
-try{
-
-const response = await fetch(url);
-
-const result = await response.json();
-
-console.log(result);
-
-if(result.return === true){
-alert("SMS Sent Successfully");
-}else{
-alert("SMS Failed: " + result.message);
-}
-
-}catch(error){
-
-console.error("Error:",error);
-alert("Network error");
-
-}
-
-}
-        
+    try {
+        const response = await fetch(url);
+        const result = await response.json();
+        console.log("Gateway Response:", result);
+        return result.return === true;
+    } catch (e) {
+        console.error("SMS Network Error:", e);
+        return false;
+    }
+}        
 function closeJudgement() {
     document.getElementById('judgement-modal').style.display = 'none';
     document.getElementById('registration-display').style.display = 'none';

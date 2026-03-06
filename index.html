@@ -491,36 +491,30 @@ window.finalizeFine = async function() {
     
     if (!amount || isNaN(amount)) return;
 
-    // Fetch user details from Firebase
     onValue(ref(db, 'users/' + rfid), async (snapshot) => {
         const user = snapshot.val();
         if (!user) return alert("Verify user first!");
 
         const challanNo = "KLK" + Date.now().toString().slice(-6);
 
-        // Combine 3 sections into 1 single message string using \n for line breaks
-        // This ensures you are charged for only 1 SMS by the supplier
-        const singleUnifiedMessage = 
-            `METRO GUARD: Safety violation for ${user.name.toUpperCase()}.\n\n` +
-            `CHALLAN: No. ${challanNo} | Fine: ₹${amount}.\n\n` +
-            `ACTION: Pay at Station Master desk immediately.`;
+        // STICKY SINGLE LINE: No names, no enters, no special characters
+        const singleLineMsg = `KOLKATA METRO RAILWAY: CHALLAN NO: ${challanNo}. FINE: RS ${amount}. ACTION: PAY AT STATION MASTER DESK IMMEDIATELY.`;
 
         try {
-            // 1. Update the violation record status in Cloud
             await update(ref(db, 'violations/' + window.currentActiveViolationKey), {
                 status: "FINED",
                 fineAmount: amount,
                 challanNo: challanNo
             });
             
-            // 2. Send as ONE single SMS to save costs
-            console.log("Sending single unified penalty message...");
-            const success = await window.sendKolkataSMS(user.mobile, singleUnifiedMessage);
+            // Log length for cost monitoring (Target < 160)
+            console.log("SMS Length:", singleLineMsg.length); 
+            const success = await window.sendKolkataSMS(user.mobile, singleLineMsg);
             
             if(success) {
-                alert("CHALLAN ISSUED: Single message sent to " + user.mobile);
+                alert("CHALLAN ISSUED (1 SMS UNIT CHARGED)");
             } else {
-                alert("Database updated, but SMS gateway failed.");
+                alert("SMS FAILED");
             }
             
             window.closeJudgement();

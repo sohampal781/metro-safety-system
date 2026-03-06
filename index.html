@@ -538,7 +538,7 @@ window.finalizeFine = async function() {
     // Prompts
     const amount = prompt("ENTER FINE AMOUNT (₹):", "1000");
     const offence = prompt("ENTER OFFENCE (Short):", "Crossing Safety Line");
-    const station = "Central"; 
+    const station = prompt("ENTER STATION NAME:", "DUMDUM"); 
     
     if (!amount || isNaN(amount) || !latestMobile) return alert("Invalid Data");
 

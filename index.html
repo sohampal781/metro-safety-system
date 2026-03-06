@@ -330,6 +330,11 @@
                 </div>
         </div>
     </div>
+            <button id="send-reg-sms-btn" class="action-btn" 
+        style="background: #e1b12c; color: black; display: none; height: 50px; margin-top: 10px;" 
+        onclick="window.sendManualRegistrationSMS()">
+    SEND REGISTRATION RECEIPT (SMS)
+</button>
 </div>
 
 <style>
@@ -839,6 +844,7 @@ window.saveRegistration = async function() {
 
     if (!name || mobile.length !== 10) return alert("Valid Name and 10-digit Mobile required.");
 
+    // Generate RFID if it's a new user, otherwise use existing
     const rfid = existingRfid || ("METRO-" + Math.floor(1000 + Math.random() * 9000));
     
     const userData = {
@@ -848,23 +854,71 @@ window.saveRegistration = async function() {
         lastUpdated: new Date().toISOString()
     };
 
-    // Save the captured descriptors and images if this is a new scan
+    // Include biometric data if a new scan was performed
     if (window.tempCapturedImages && window.tempCapturedImages.length > 0) {
         userData.descriptors = window.capturedDescriptors;
-        userData.tempImages = window.tempCapturedImages; // Stores the 4 angle shots
+        userData.tempImages = window.tempCapturedImages; 
     }
 
     try {
-        await update(ref(db, 'users/' + rfid), userData);
+        // 1. Update Firebase
+        const { update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+        await update(dbRef(db, 'users/' + rfid), userData);
         
-        // Single message charge for registration
-        const welcomeMsg = `METRO GUARD: Registration successful for ${name.toUpperCase()}.\nRFID: ${rfid}\nStay safe behind the yellow line!`;
-        await window.sendKolkataSMS(mobile, welcomeMsg);
+        // 2. Reveal the Manual SMS Button
+        const smsBtn = document.getElementById('send-reg-sms-btn');
+        smsBtn.style.display = 'block';
+        smsBtn.innerText = "SEND REGISTRATION RECEIPT (SMS)";
+        smsBtn.style.background = "#e1b12c"; // Golden yellow
         
-        alert("CLOUD SYNC COMPLETE & WELCOME SMS SENT");
-        window.switchUI('monitor');
+        alert("CLOUD SYNC SUCCESSFUL.\nRFID: " + rfid + "\nYou may now send the manual notification.");
+        
+        // Refresh the list in the background
+        window.renderUserList();
+        
     } catch (e) {
-        alert("Database Error: " + e.message);
+        alert("Database Sync Failed: " + e.message);
+    }
+};
+       window.sendManualRegistrationSMS = async function() {
+    const name = document.getElementById('reg-name').value.trim().toUpperCase();
+    const mobile = document.getElementById('reg-mobile').value.trim();
+    
+    // Safety check for empty fields
+    if (!mobile || mobile.length < 10) return alert("No valid mobile number detected.");
+
+    const smsBtn = document.getElementById('send-reg-sms-btn');
+    
+    // Visual feedback during API call
+    smsBtn.innerText = "CONNECTING TO GATEWAY...";
+    smsBtn.disabled = true;
+
+    // Construct the message
+    const welcomeMsg = `KOLKATA METRO GUARD: Enrollment Successful for ${name}. Stay safe behind the yellow line!`;
+
+    try {
+        const success = await window.sendKolkataSMS(mobile, welcomeMsg);
+        
+        if (success) {
+            smsBtn.innerText = "SMS SENT SUCCESSFULLY ✔";
+            smsBtn.style.background = "var(--success)";
+            alert("Notification dispatched to " + mobile);
+            
+            // Optional: Hide button after 3 seconds and go back to monitor
+            setTimeout(() => {
+                smsBtn.style.display = 'none';
+                window.switchUI('monitor');
+            }, 3000);
+        } else {
+            smsBtn.innerText = "GATEWAY ERROR - RETRY?";
+            smsBtn.style.background = "var(--danger)";
+            smsBtn.disabled = false;
+            alert("SMS Gateway rejected the request. Check your API credits.");
+        }
+    } catch (error) {
+        console.error("Manual SMS Error:", error);
+        smsBtn.disabled = false;
+        smsBtn.innerText = "SEND REGISTRATION RECEIPT (SMS)";
     }
 };
     window.renderUserList = function() {

@@ -267,6 +267,12 @@
     <button class="action-btn" onclick="startSecureCapture()">START NEW CAPTURE</button>
     <button class="action-btn" onclick="saveRegistration()" style="background:var(--success); margin-top:10px;">SAVE / UPDATE ENROLLMENT</button>
     <div id="db-items" style="margin-top:15px; font-size:11px;"></div>
+        <div class="angle-status">
+    <div id="a0" class="angle-box">FRONT</div>
+    <div id="a1" class="angle-box">LEFT</div>
+    <div id="a2" class="angle-box">RIGHT</div>
+    <div id="a3" class="angle-box">UP/DN</div>
+</div>
 </div>
 </div>
 
@@ -326,40 +332,28 @@
     const commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
 
    window.switchUI = (mode) => {
-    // Hide all main UI sections
-    document.getElementById('monitor-ui').style.display = mode === 'monitor' ? 'block' : 'none';
-    document.getElementById('register-ui').style.display = mode === 'register' ? 'block' : 'none';
-    document.getElementById('challan-overlay').style.display = mode === 'challan' ? 'block' : 'none';
-    
-    // Toggle active state on buttons
-    document.getElementById('tab-mon').classList.toggle('active', mode === 'monitor');
-    document.getElementById('tab-reg').classList.toggle('active', mode === 'register');
-    document.getElementById('tab-cha').classList.toggle('active', mode === 'challan');
-    
-    // Refresh data from Firebase based on tab
-    if(mode === 'challan') console.log("Cloud Portal Active");
-    if(mode === 'register') renderUserList(); 
-};
-async function judgeViolation(key) {
-    currentActiveViolationKey = key; 
+        document.getElementById('monitor-ui').style.display = mode === 'monitor' ? 'block' : 'none';
+        document.getElementById('register-ui').style.display = mode === 'register' ? 'block' : 'none';
+        document.getElementById('challan-overlay').style.display = mode === 'challan' ? 'block' : 'none';
+        
+        // Hide the large video viewport when registering to reduce clutter
+        document.getElementById('viewport').style.visibility = (mode === 'register') ? 'hidden' : 'visible';
+
+        document.getElementById('tab-mon').classList.toggle('active', mode === 'monitor');
+        document.getElementById('tab-reg').classList.toggle('active', mode === 'register');
+        document.getElementById('tab-cha').classList.toggle('active', mode === 'challan');
+        
+        if(mode === 'register') window.renderUserList();
+    };
+window.judgeViolation = async function(key) {
+    // Note: If you moved violations to Firebase, change localStorage to onValue(ref(db, 'violations/'+key))
     const violData = JSON.parse(localStorage.getItem(key));
-    
+    if(!violData) return;
+
     document.getElementById('judgement-modal').style.display = 'block';
     document.getElementById('modal-violation-img').src = violData.img;
-    
-    const rfidInput = document.getElementById('manual-rfid-input');
-    const aiPred = document.getElementById('ai-prediction');
-
-    // Automatic Linkage: If AI found an RFID during the breach, auto-fill it
-    if (violData.linkedRfid && violData.linkedRfid !== "UNKNOWN_ID") {
-        rfidInput.value = violData.linkedRfid;
-        aiPred.innerHTML = `<span style="color:var(--success)">USER IDENTIFIED: ${violData.linkedRfid}</span>`;
-        fetchRegistrationData(); // This auto-populates the name/mobile display
-    } else {
-        rfidInput.value = "";
-        aiPred.innerHTML = `<span style="color:var(--danger)">MANUAL VERIFICATION REQUIRED</span>`;
-    }
-}
+    document.getElementById('manual-rfid-input').value = (violData.linkedRfid !== "UNKNOWN_ID") ? violData.linkedRfid : "";
+};
        function fetchRegistrationData() {
     const inputRfid = document.getElementById('manual-rfid-input').value.trim();
     const userRaw = localStorage.getItem(inputRfid);
@@ -432,29 +426,20 @@ window.finalizeFine = async function() {
     });
 
 // Optimized Gateway Function
-async function sendFastSMS(mobileNumber, fullChallanBody) {
-    const apiKey = "HzZRzYz09iEIB7Glr3OmdOgt3PMocm66xPHcXWoaUvMaN9UKvlinysQDafuD";
-    
-    // Note: Using 'route=q' for Quick delivery. 
-    // Ensure the message body is URI encoded to handle the newlines (\n)
-    const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${apiKey}&route=q&message=${encodeURIComponent(fullChallanBody)}&numbers=${mobileNumber}`;
-
-    try {
-        const response = await fetch(url);
-        const result = await response.json();
+window.sendKolkataSMS = async function(number, message) {
+        const apiKey = "HzZRzYz09iEIB7Glr3OmdOgt3PMocm66xPHcXWoaUvMaN9UKvlinysQDafuD";
+        const cleanMsg = message.replace(/(\r\n|\n|\r)/gm, " ").trim();
+        const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${apiKey}&route=q&message=${encodeURIComponent(cleanMsg)}&numbers=${number}`;
         
-        if (result.return === true) {
-            console.log("SMS Sent Successfully:", result.request_id);
-            return true;
-        } else {
-            console.error("Gateway Error:", result.message);
+        try {
+            const response = await fetch(url);
+            const result = await response.json();
+            return result.return === true;
+        } catch (error) {
+            console.error("SMS Error:", error);
             return false;
         }
-    } catch (error) {
-        console.error("Network Exception:", error);
-        return false;
-    }
-}       
+    };  
 function closeJudgement() {
     document.getElementById('judgement-modal').style.display = 'none';
     document.getElementById('registration-display').style.display = 'none';
@@ -640,15 +625,16 @@ function closeJudgement() {
     });
 
     // --- 4. ENROLLMENT & DATABASE FUNCTIONS ---
-    async function startSecureCapture() {
-        if (isCapturing) return;
-        capturedDescriptors = [];
-        tempCapturedImages = [];
-        captureStep = 0;
-        isCapturing = true;
-        document.querySelectorAll('.angle-box').forEach(b => b.className = 'angle-box');
-        runCaptureSequence();
-    }
+    window.startSecureCapture = async function() {
+    if (isCapturing) return;
+    capturedDescriptors = [];
+    tempCapturedImages = [];
+    captureStep = 0;
+    isCapturing = true;
+    // Clear indicators
+    document.querySelectorAll('.angle-box').forEach(b => b.className = 'angle-box');
+    runCaptureSequence();
+};
 
     async function runCaptureSequence() {
     if (captureStep >= 4) {
@@ -708,52 +694,67 @@ function lookupUser() {
 
 // 2. Updated Save Function to handle Phone Number Updates
 window.saveRegistration = async function() {
-        const name = document.getElementById('reg-name').value.trim();
-        const mobile = document.getElementById('reg-mobile').value.trim();
-        
-        if (!name || mobile.length !== 10) return alert("Enter Name & 10-digit Mobile");
+    const name = document.getElementById('reg-name').value.trim();
+    const mobile = document.getElementById('reg-mobile').value.trim();
+    
+    if (!name || mobile.length !== 10) return alert("Enter Name & 10-digit Mobile");
+    if (capturedDescriptors.length < 4) return alert("Complete all 4 face scans first!");
 
-        const rfid = "METRO-" + Math.floor(1000 + Math.random() * 9000);
-        
-        const userData = {
-            rfid, name, mobile,
-            descriptors: capturedDescriptors,
-            regImages: tempCapturedImages
-        };
+    const rfid = "METRO-" + Math.floor(1000 + Math.random() * 9000);
+    
+    const userData = {
+        rfid, name, mobile,
+        descriptors: capturedDescriptors,
+        regImages: tempCapturedImages
+    };
 
-        // Save to Firebase
+    // Save to Firebase Cloud
+    try {
         await set(ref(db, 'users/' + rfid), userData);
-        
-        // Single Line SMS
-        const regMsg = `KOLKATA METRO: Welcome ${name.toUpperCase()}. Your Safety RFID is ${rfid}. Use this for identification at all metro stations.`;
-        await sendKolkataSMS(mobile, regMsg);
-
+        const regMsg = `KOLKATA METRO: Welcome ${name.toUpperCase()}. Your Safety RFID is ${rfid}. Use this for identification.`;
+        await window.sendKolkataSMS(mobile, regMsg);
         alert("REGISTRATION SUCCESS: RFID sent to " + mobile);
-        location.reload(); // Refresh to clear state
+        location.reload(); 
+    } catch (e) {
+        alert("Server Error: " + e.message);
     }
+};
+    window.renderUserList = function() {
+    const container = document.getElementById('db-items');
+    if (!container) return;
+    container.innerHTML = "<label>SYNCING CLOUD DATABASE...</label>";
 
-    function renderUserList() {
-        const container = document.getElementById('db-items');
-        if (!container) return;
+    // Pull directly from Firebase
+    onValue(ref(db, 'users'), (snapshot) => {
         container.innerHTML = "";
-        Object.keys(localStorage).forEach(key => {
-            if(key.startsWith("METRO-")) {
-                const u = JSON.parse(localStorage.getItem(key));
-                container.innerHTML += `
-    <div style="padding:10px; border-bottom:1px solid #444; display:flex; justify-content:space-between; align-items:center;">
-        <span>${u.name} (${u.rfid})</span>
-        <span style="color:var(--danger); cursor:pointer; font-weight:bold; padding: 5px;" 
-              onclick="window.deleteUser('${key}')">✖</span>
-    </div>`;
-            }
+        const data = snapshot.val();
+        if (!data) {
+            container.innerHTML = "No users registered.";
+            return;
+        }
+
+        Object.keys(data).forEach(key => {
+            const u = data[key];
+            const div = document.createElement('div');
+            div.style = "padding:10px; border-bottom:1px solid #444; display:flex; justify-content:space-between; align-items:center; background:#1c2128; margin-bottom:5px; border-radius:5px;";
+            div.innerHTML = `
+                <span><b>${u.name}</b><br><small style="color:var(--accent)">${u.rfid}</small></span>
+                <button onclick="window.deleteUser('${key}')" style="width:40px; background:var(--danger); border:none; border-radius:4px; cursor:pointer;">✖</button>
+            `;
+            container.appendChild(div);
         });
-    }
+    }, { onlyOnce: true });
+};
 // Keep this version instead
 window.deleteUser = async (rfid) => {
-    if(confirm(`Are you sure you want to permanently remove ${rfid} from the cloud server?`)) {
-        const userRef = ref(db, 'users/' + rfid);
-        await remove(userRef);
-        alert("User deleted from server.");
+    if(confirm(`PERMANENT DELETE: Remove ${rfid} from cloud?`)) {
+        try {
+            await remove(ref(db, 'users/' + rfid));
+            alert("User Deleted Successfully");
+            window.renderUserList();
+        } catch (e) {
+            alert("Delete failed: " + e.message);
+        }
     }
 };
     // --- 5. VIOLATION LOGGING ---

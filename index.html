@@ -463,9 +463,19 @@ window.fetchRegistrationData = function() {
         }
 
         display.style.display = 'block';
+        
+        // Check if a registration image exists in the database
+        const regPhotoHtml = user.tempImages ? 
+            `<img src="${user.tempImages[0]}" style="width:100%; border-radius:8px; margin-bottom:10px; border:2px solid var(--accent);">` : 
+            `<div style="padding:10px; background:#333; color:#999; text-align:center; margin-bottom:10px;">NO REGISTRATION PHOTO</div>`;
+
         infoDisplay.innerHTML = `
-            <h3 style="color:white; margin:0;">${user.name.toUpperCase()}</h3>
-            <p style="color:var(--accent); margin:5px 0;">MOB: ${user.mobile}</p>
+            ${regPhotoHtml}
+            <div style="background:rgba(0,0,0,0.3); padding:10px; border-radius:5px;">
+                <h3 style="color:white; margin:0;">${user.name.toUpperCase()}</h3>
+                <p style="color:var(--accent); margin:5px 0; font-weight:bold;">MOB: ${user.mobile}</p>
+                <small style="color:#8b949e;">REGISTERED ON: ${new Date(user.lastUpdated).toLocaleDateString()}</small>
+            </div>
         `;
     }, { onlyOnce: true });
 };
@@ -843,16 +853,21 @@ window.saveRegistration = async function() {
         lastUpdated: new Date().toISOString()
     };
 
-    // If it's a brand new user, include the face descriptors we just captured
-    if (!existingRfid) {
+    // Save the captured descriptors and images if this is a new scan
+    if (window.tempCapturedImages && window.tempCapturedImages.length > 0) {
         userData.descriptors = window.capturedDescriptors;
+        userData.tempImages = window.tempCapturedImages; // Stores the 4 angle shots
     }
 
     try {
         await update(ref(db, 'users/' + rfid), userData);
-        await window.sendKolkataSMS(mobile, `METRO GUARD: Registration successful for ${name}. RFID: ${rfid}`);
-        alert("CLOUD SYNC COMPLETE");
-        window.switchUI('monitor'); // Back to main screen
+        
+        // Single message charge for registration
+        const welcomeMsg = `METRO GUARD: Registration successful for ${name.toUpperCase()}.\nRFID: ${rfid}\nStay safe behind the yellow line!`;
+        await window.sendKolkataSMS(mobile, welcomeMsg);
+        
+        alert("CLOUD SYNC COMPLETE & WELCOME SMS SENT");
+        window.switchUI('monitor');
     } catch (e) {
         alert("Database Error: " + e.message);
     }

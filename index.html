@@ -346,13 +346,36 @@
         if(mode === 'register') window.renderUserList();
     };
 window.judgeViolation = async function(key) {
-    // Note: If you moved violations to Firebase, change localStorage to onValue(ref(db, 'violations/'+key))
+    // 1. Store the active key for the finalizeFine function
+    window.currentActiveViolationKey = key; 
+    
+    // 2. Retrieve data from LocalStorage (or change to Firebase ref if synced)
     const violData = JSON.parse(localStorage.getItem(key));
     if(!violData) return;
 
+    // 3. Populate and show the modal
     document.getElementById('judgement-modal').style.display = 'block';
     document.getElementById('modal-violation-img').src = violData.img;
-    document.getElementById('manual-rfid-input').value = (violData.linkedRfid !== "UNKNOWN_ID") ? violData.linkedRfid : "";
+    
+    const rfidInput = document.getElementById('manual-rfid-input');
+    const aiPred = document.getElementById('ai-prediction');
+
+    // 4. Auto-fill if Face-API already identified the user
+    if (violData.linkedRfid && violData.linkedRfid !== "UNKNOWN_ID") {
+        rfidInput.value = violData.linkedRfid;
+        aiPred.innerHTML = `<span style="color:var(--success)">USER IDENTIFIED: ${violData.linkedRfid}</span>`;
+        // Auto-fetch details to show name/mobile
+        if(window.fetchRegistrationData) window.fetchRegistrationData(); 
+    } else {
+        rfidInput.value = "";
+        aiPred.innerHTML = `<span style="color:var(--danger)">MANUAL VERIFICATION REQUIRED</span>`;
+    }
+};
+
+// Also ensure closeJudgement is accessible
+window.closeJudgement = function() {
+    document.getElementById('judgement-modal').style.display = 'none';
+    document.getElementById('registration-display').style.display = 'none';
 };
        function fetchRegistrationData() {
     const inputRfid = document.getElementById('manual-rfid-input').value.trim();
@@ -440,30 +463,33 @@ window.sendKolkataSMS = async function(number, message) {
             return false;
         }
     };  
-function closeJudgement() {
-    document.getElementById('judgement-modal').style.display = 'none';
-    document.getElementById('registration-display').style.display = 'none';
-}
-        function deleteRecord(key) {
-    // 1. Force a confirmation dialog to prevent accidental clicks
-    const confirmation = confirm("CRITICAL: Are you sure you want to permanently delete this record? This cannot be undone.");
+
+        window.deleteRecord = async function(key) {
+    // 1. Mandatory confirmation before clearing server data
+    const confirmation = confirm("CRITICAL: Are you sure you want to permanently delete this record from the cloud? This cannot be undone.");
 
     if (confirmation) {
-        // 2. Remove the specific item from LocalStorage
-        localStorage.removeItem(key);
-
-        // 3. Update the UI instantly depending on what was deleted
         if (key.startsWith("VIOL-")) {
-            renderChallans(); // Refresh the Portal view
-        } else if (key.startsWith("METRO-")) {
-            renderUserList(); // Refresh the Registration view
+            // OPTION A: If violation is in LocalStorage
+            localStorage.removeItem(key);
+            // OPTION B: If violation is in Firebase
+            // await remove(ref(db, 'violations/' + key));
+            
+            console.log(`Violation ${key} deleted.`);
+            renderChallans(); // Refresh Portal UI
+        } 
+        else if (key.startsWith("METRO-")) {
+            // Delete User from Firebase Cloud
+            try {
+                await remove(ref(db, 'users/' + key));
+                console.log(`User ${key} removed from server.`);
+                window.renderUserList(); // Refresh Registration UI
+            } catch (e) {
+                console.error("Firebase Delete Error:", e);
+            }
         }
-        
-        console.log(`Record ${key} deleted successfully.`);
-    } else {
-        console.log("Deletion cancelled by user.");
     }
-}
+};
        function renderChallans() {
     const grid = document.getElementById('challan-grid');
     if (!grid) return;

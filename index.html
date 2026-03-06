@@ -917,30 +917,40 @@ window.deleteUser = async (rfid) => {
             const { get, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
             const snapshot = await get(dbRef(db, 'users'));
             
-            if (snapshot.exists()) {
+           if (snapshot.exists()) {
                 const cloudUsers = snapshot.val();
-                
+                console.log("Total Users found in Cloud:", Object.keys(cloudUsers).length);
+
                 for (let rfid in cloudUsers) {
                     const user = cloudUsers[rfid];
-                    if (user.descriptors) {
-                        // Compare against all 4 saved angles
-                        user.descriptors.forEach(descArray => {
-                            const serverDescriptor = new Float32Array(descArray);
-                            const distance = faceapi.euclideanDistance(det.descriptor, serverDescriptor);
-                            const currentScore = (1 - distance) * 100;
-
-                            if (currentScore > highestScore) {
-                                highestScore = currentScore;
-                                // Threshold: 45% or higher is a match
-                                if (highestScore > 45) {
-                                    detectedRfid = rfid;
-                                }
-                            }
-                        });
+                    
+                    // DEBUG: Check if descriptors exist for this specific user
+                    if (!user.descriptors) {
+                        console.warn(`User ${rfid} has NO face descriptors saved!`);
+                        continue;
                     }
+
+                    console.log(`Comparing against ${user.name}...`);
+
+                    user.descriptors.forEach((descArray, index) => {
+                        // FIX: Ensure the array is clean numbers
+                        const serverDescriptor = new Float32Array(Object.values(descArray));
+                        const distance = faceapi.euclideanDistance(det.descriptor, serverDescriptor);
+                        const currentScore = (1 - distance) * 100;
+
+                        console.log(` - Angle ${index}: ${currentScore.toFixed(1)}%`);
+
+                        if (currentScore > highestScore) {
+                            highestScore = currentScore;
+                            if (highestScore > 10) { // Threshold for Kolkata Metro environment
+                                detectedRfid = rfid;
+                            }
+                        }
+                    });
                 }
-            }
-        } else {
+            } else {
+                console.error("Firebase returned NO users. Check your database path.");
+            } else {
             console.warn("Face-API: No face detected in the video stream.");
         }
     } catch (e) {

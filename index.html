@@ -325,7 +325,7 @@
     let tempCapturedImages = [];
     const commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
 
-    window.switchUI = (mode) => {
+   window.switchUI = (mode) => {
     // Hide all main UI sections
     document.getElementById('monitor-ui').style.display = mode === 'monitor' ? 'block' : 'none';
     document.getElementById('register-ui').style.display = mode === 'register' ? 'block' : 'none';
@@ -336,9 +336,9 @@
     document.getElementById('tab-reg').classList.toggle('active', mode === 'register');
     document.getElementById('tab-cha').classList.toggle('active', mode === 'challan');
     
-    // Logic to refresh lists from Firebase
-    if(mode === 'challan') console.log("Portal Active"); 
-    if(mode === 'register') console.log("Register Active");
+    // Refresh data from Firebase based on tab
+    if(mode === 'challan') console.log("Cloud Portal Active");
+    if(mode === 'register') renderUserList(); 
 };
 async function judgeViolation(key) {
     currentActiveViolationKey = key; 

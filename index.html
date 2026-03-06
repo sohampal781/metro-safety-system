@@ -288,48 +288,53 @@
         <div id="slider-container"></div>
         <button id="start-btn">LOCK & START MONITORING</button>
     </div>
-
-    <div id="register-ui" style="display:none; height: 100vh; overflow-y: auto; padding: 40px; box-sizing: border-box; background: linear-gradient(145deg, #0a0b10, #161b22);">
-    <div class="registration-header" style="font-size: 24px; color: var(--accent); margin-bottom: 30px;">
-        KOLKATA METRO | BIOMETRIC ENROLLMENT TERMINAL
+        <div id="register-ui" style="display:none; padding: 20px; background: #0a0b10;">
+    <div class="registration-header" style="font-size: 18px; color: var(--accent); margin-bottom: 20px; text-align:center;">
+        KOLKATA METRO | ENROLLMENT TERMINAL
     </div>
 
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
-        <div class="control-group" style="border: 1px solid var(--accent); background: rgba(0, 210, 255, 0.05);">
-            <label>1. PASSENGER DATA</label>
-            <input type="text" id="reg-name" placeholder="FULL NAME" style="margin-bottom: 15px;">
-            <input type="text" id="reg-mobile" placeholder="10-DIGIT MOBILE" style="margin-bottom: 20px;">
-            
-            <div style="width:100%; height:250px; background:#000; border-radius:12px; overflow:hidden; border: 2px solid var(--border);">
-                <video id="reg-video" autoplay muted playsinline style="width:100%; height:100%; object-fit:cover; transform:scaleX(-1);"></video>
+    <div style="display: flex; gap: 20px; max-width: 900px; margin: 0 auto;">
+        
+        <div style="width: 320px; flex-shrink: 0;">
+            <div style="position: relative; width: 100%; height: 240px; background: #000; border-radius: 12px; overflow: hidden; border: 2px solid var(--border);">
+                <video id="reg-video" autoplay muted playsinline style="width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1);"></video>
+                <div style="position: absolute; top: 0; left: 0; width: 100%; height: 2px; background: var(--accent); box-shadow: 0 0 15px var(--accent); animation: scan 2s infinite linear;"></div>
             </div>
             
-            <div class="angle-status" style="margin-top: 20px;">
+            <div class="angle-status" style="margin-top: 15px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;">
                 <div id="a0" class="angle-box">FRONT</div>
                 <div id="a1" class="angle-box">LEFT</div>
                 <div id="a2" class="angle-box">RIGHT</div>
                 <div id="a3" class="angle-box">UP/DN</div>
             </div>
-
-            <button class="action-btn" onclick="window.startSecureCapture()" style="margin-top:20px;">INITIATE SCAN</button>
-            <button class="action-btn" id="save-reg-btn" onclick="window.saveRegistration()" style="background:var(--success); display:none; margin-top:10px;">FINALIZE & SYNC CLOUD</button>
         </div>
-        <div class="control-group">
-    <label>1. PASSENGER DATA</label>
-    <div style="display:flex; gap:10px; margin-bottom:10px;">
-        <input type="text" id="reg-name" placeholder="FULL NAME" style="flex:1;">
-        <button onclick="window.lookupUser()" style="width:80px; font-size:10px; background:#30363d;">SEARCH</button>
-    </div>
-    <input type="text" id="reg-mobile" placeholder="10-DIGIT MOBILE" style="margin-bottom: 20px;">
-    
-    </div>
-        <div class="control-group" style="height: 600px; display: flex; flex-direction: column;">
-            <label>2. ACTIVE CLOUD RECORDS</label>
-            <div id="db-items" style="flex-grow: 1; overflow-y: auto; padding: 10px; background: #0d1117; border-radius: 8px;">
+
+        <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 10px;">
+            <div class="control-group">
+                <label>Passenger Name</label>
+                <div style="display: flex; gap: 5px;">
+                    <input type="text" id="reg-name" placeholder="FULL NAME">
+                    <button onclick="window.lookupUser()" style="width: 80px; background: #30363d; font-size: 10px;">SEARCH</button>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>Mobile Number</label>
+                <input type="text" id="reg-mobile" placeholder="10-DIGIT MOBILE">
+            </div>
+
+            <button class="action-btn" onclick="window.startSecureCapture()" style="height: 50px;">INITIATE BIOMETRIC SCAN</button>
+            <button class="action-btn" id="save-reg-btn" onclick="window.saveRegistration()" style="background: var(--success); display: none; height: 50px;">FINALIZE & UPLOAD TO CLOUD</button>
+            
+            <div id="db-items" style="margin-top: 10px; height: 150px; overflow-y: auto; background: #0d1117; border-radius: 6px; padding: 5px; font-size: 12px;">
                 </div>
         </div>
     </div>
 </div>
+
+<style>
+@keyframes scan { 0% { top: 0%; } 100% { top: 100%; } }
+</style>
 </div>
 
     <div id="viewport">
@@ -523,28 +528,16 @@ window.sendKolkataSMS = async function(number, message) {
     };  
 
         window.deleteRecord = async function(key) {
-    // 1. Mandatory confirmation before clearing server data
-    const confirmation = confirm("CRITICAL: Are you sure you want to permanently delete this record from the cloud? This cannot be undone.");
-
-    if (confirmation) {
-        if (key.startsWith("VIOL-")) {
-            // OPTION A: If violation is in LocalStorage
-            localStorage.removeItem(key);
-            // OPTION B: If violation is in Firebase
-            // await remove(ref(db, 'violations/' + key));
-            
-            console.log(`Violation ${key} deleted.`);
-            renderChallans(); // Refresh Portal UI
-        } 
-        else if (key.startsWith("METRO-")) {
-            // Delete User from Firebase Cloud
-            try {
-                await remove(ref(db, 'users/' + key));
-                console.log(`User ${key} removed from server.`);
-                window.renderUserList(); // Refresh Registration UI
-            } catch (e) {
-                console.error("Firebase Delete Error:", e);
-            }
+    if (confirm("Permanently delete this violation log?")) {
+        try {
+            // Directly target the Firebase path
+            const recordRef = ref(db, 'violations/' + key);
+            await remove(recordRef);
+            alert("Record Deleted.");
+            // No need to call renderChallans() manually, 
+            // the onValue listener handles it automatically.
+        } catch (e) {
+            alert("Delete failed: " + e.message);
         }
     }
 };
@@ -553,26 +546,20 @@ window.lookupUser = function() {
     const searchName = document.getElementById('reg-name').value.trim().toLowerCase();
     if (!searchName) return alert("Enter a name to search.");
 
-    const usersRef = ref(db, 'users');
-    onValue(usersRef, (snapshot) => {
-        const data = snapshot.val();
+    onValue(ref(db, 'users'), (snapshot) => {
+        const users = snapshot.val();
         let found = false;
-
-        if (data) {
-            Object.keys(data).forEach(key => {
-                const user = data[key];
-                if (user.name.toLowerCase() === searchName) {
-                    // Populate fields for updating
-                    document.getElementById('reg-mobile').value = user.mobile;
-                    // Store the RFID on the name input so Save knows it's an update
-                    document.getElementById('reg-name').dataset.activeRfid = user.rfid;
-                    
-                    alert(`USER FOUND: ${user.name} (RFID: ${user.rfid}). You can now update the mobile number.`);
+        if (users) {
+            Object.keys(users).forEach(rfid => {
+                if (users[rfid].name.toLowerCase() === searchName) {
+                    document.getElementById('reg-mobile').value = users[rfid].mobile;
+                    document.getElementById('reg-name').dataset.activeRfid = rfid; // Store the ID for update
+                    alert(`USER FOUND: ${users[rfid].name}\nRFID: ${rfid}`);
                     found = true;
                 }
             });
         }
-        if (!found) alert("No user found with that name in the cloud.");
+        if (!found) alert("No matching records in Kolkata Metro database.");
     }, { onlyOnce: true });
 };
   window.renderChallans = function() {
@@ -822,36 +809,33 @@ function lookupUser() {
 
 // 2. Updated Save Function to handle Phone Number Updates
 window.saveRegistration = async function() {
-    const nameInput = document.getElementById('reg-name');
-    const mobileInput = document.getElementById('reg-mobile');
-    const name = nameInput.value.trim();
-    const mobile = mobileInput.value.trim();
-    const existingRfid = nameInput.dataset.activeRfid;
+    const name = document.getElementById('reg-name').value.trim();
+    const mobile = document.getElementById('reg-mobile').value.trim();
+    const existingRfid = document.getElementById('reg-name').dataset.activeRfid;
 
-    if (!name || mobile.length !== 10) return alert("Invalid Name or Mobile.");
+    if (!name || mobile.length !== 10) return alert("Valid Name and 10-digit Mobile required.");
 
-    // If an RFID exists in dataset, we UPDATE. Otherwise, we CREATE NEW.
     const rfid = existingRfid || ("METRO-" + Math.floor(1000 + Math.random() * 9000));
+    
+    const userData = {
+        name: name,
+        mobile: mobile,
+        rfid: rfid,
+        lastUpdated: new Date().toISOString()
+    };
+
+    // If it's a brand new user, include the face descriptors we just captured
+    if (!existingRfid) {
+        userData.descriptors = window.capturedDescriptors;
+    }
 
     try {
-        const userRef = ref(db, 'users/' + rfid);
-        
-        // Use 'update' for existing users to prevent overwriting face data
-        const updateData = { name, mobile, rfid };
-        if (!existingRfid) {
-            updateData.descriptors = window.capturedDescriptors;
-            updateData.regImages = window.tempCapturedImages;
-        }
-
-        await update(userRef, updateData);
-        
-        const msg = `KOLKATA METRO: Records updated for ${name.toUpperCase()}. Your Safety RFID remains ${rfid}.`;
-        await window.sendKolkataSMS(mobile, msg);
-
-        alert(existingRfid ? "CLOUD RECORDS UPDATED" : "NEW ENROLLMENT SUCCESS");
-        location.reload(); 
+        await update(ref(db, 'users/' + rfid), userData);
+        await window.sendKolkataSMS(mobile, `METRO GUARD: Registration successful for ${name}. RFID: ${rfid}`);
+        alert("CLOUD SYNC COMPLETE");
+        window.switchUI('monitor'); // Back to main screen
     } catch (e) {
-        alert("Sync Error: " + e.message);
+        alert("Database Error: " + e.message);
     }
 };
     window.renderUserList = function() {
@@ -899,7 +883,6 @@ window.deleteUser = async (rfid) => {
     tempCanvas.height = videoElement.videoHeight;
     const ctx = tempCanvas.getContext('2d');
     
-    // Capture evidence frame
     ctx.translate(tempCanvas.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(videoElement, 0, 0);
@@ -910,39 +893,36 @@ window.deleteUser = async (rfid) => {
     let matchScore = 0;
 
     try {
-        // 1. Detect the face of the person currently breaching
         const det = await faceapi.detectSingleFace(videoElement)
             .withFaceLandmarks()
             .withFaceDescriptor();
 
         if (det) {
-            // 2. Fetch all registered users from Firebase Cloud
-            onValue(ref(db, 'users'), (snapshot) => {
-                const cloudUsers = snapshot.val();
-                if (!cloudUsers) return;
+            // FIX: We need to wrap the Firebase call in a Promise to wait for it
+            const snapshot = await new Promise((resolve) => {
+                onValue(ref(db, 'users'), (s) => resolve(s), { onlyOnce: true });
+            });
 
+            const cloudUsers = snapshot.val();
+            if (cloudUsers) {
                 Object.keys(cloudUsers).forEach(key => {
                     const user = cloudUsers[key];
-                    // 3. Check all 4 saved angles for this user
-                    user.descriptors.forEach(descArray => {
-                        // CRITICAL: Convert plain array back to Float32Array for face-api
-                        const serverDescriptor = new Float32Array(descArray);
-                        const distance = faceapi.euclideanDistance(det.descriptor, serverDescriptor);
-                        const score = (1 - distance) * 100;
-
-                        if (score > 45 && score > matchScore) {
-                            matchScore = score;
-                            detectedRfid = user.rfid;
-                        }
-                    });
+                    if (user.descriptors) {
+                        user.descriptors.forEach(descArray => {
+                            const serverDescriptor = new Float32Array(descArray);
+                            const distance = faceapi.euclideanDistance(det.descriptor, serverDescriptor);
+                            const score = (1 - distance) * 100;
+                            if (score > 55 && score > matchScore) { // Higher threshold for accuracy
+                                matchScore = score;
+                                detectedRfid = user.rfid;
+                            }
+                        });
+                    }
                 });
-            }, { onlyOnce: true });
+            }
         }
-    } catch (e) {
-        console.error("Biometric Identification Error:", e);
-    }
+    } catch (e) { console.error("Biometric Error:", e); }
 
-    // 4. Save Violation to Firebase Cloud
     const violID = "VIOL-" + Date.now();
     await set(ref(db, 'violations/' + violID), {
         id: violID,
@@ -952,8 +932,6 @@ window.deleteUser = async (rfid) => {
         status: "PENDING",
         confidence: matchScore.toFixed(1)
     });
-
-    console.log(`Cloud Logged: ${detectedRfid} (${matchScore.toFixed(1)}%)`);
 };
     // --- 6. INITIALIZATION ---
     pointCountInput.onchange = updateSliders;

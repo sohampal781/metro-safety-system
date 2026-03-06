@@ -344,6 +344,17 @@
             </div>
         </div>
     </div>
+            <div class="control-group" style="margin-top: 25px; border-top: 2px solid var(--border); padding-top: 20px;">
+    <label style="color:var(--accent); font-weight:bold; letter-spacing: 1px;">[ CLOUD PASSENGER DATABASE ]</label>
+    
+    <input type="text" id="db-search-filter" onkeyup="window.filterPassengerList()" placeholder="Quick Filter by Name..." style="margin: 10px 0; background: #0d1117; border-color: #30363d; padding: 10px; width: 100%; box-sizing: border-box; color: white; border-radius: 6px;">
+
+    <div id="passenger-list-container" style="height: 350px; overflow-y: auto; background: #0d1117; border-radius: 8px; padding: 10px; border: 1px solid #30363d;">
+        <div id="db-items-list">
+            <p style="text-align:center; color:#555; padding-top: 20px;">Loading Cloud Records...</p>
+        </div>
+    </div>
+</div>
 </div>
 
 <style>
@@ -988,41 +999,62 @@ window.sendManualRegistrationSMS = async function() {
         smsBtn.style.background = "var(--danger)";
     }
 };
-    window.renderUserList = function() {
-    const container = document.getElementById('db-items');
+    
+// CONTROL F: RENDER PASSENGER LIST
+window.renderUserList = function() {
+    const container = document.getElementById('db-items-list');
     if (!container) return;
-    container.innerHTML = "<label>SYNCING CLOUD DATABASE...</label>";
 
-    // Pull directly from Firebase
+    // Pull real-time data from Firebase 'users' node
     onValue(ref(db, 'users'), (snapshot) => {
         container.innerHTML = "";
         const data = snapshot.val();
+        
         if (!data) {
-            container.innerHTML = "No users registered.";
+            container.innerHTML = "<p style='text-align:center; color:#8b949e;'>NO REGISTERED PASSENGERS</p>";
             return;
         }
 
-        Object.keys(data).forEach(key => {
-            const u = data[key];
+        // Loop through users and create list items
+        Object.keys(data).reverse().forEach(rfid => {
+            const u = data[rfid];
             const div = document.createElement('div');
-            div.style = "padding:10px; border-bottom:1px solid #444; display:flex; justify-content:space-between; align-items:center; background:#1c2128; margin-bottom:5px; border-radius:5px;";
+            div.style = "padding:12px; border-bottom:1px solid #30363d; display:flex; justify-content:space-between; align-items:center; background:#161b22; margin-bottom:8px; border-radius:6px; border-left: 4px solid var(--accent);";
+            
             div.innerHTML = `
-                <span><b>${u.name}</b><br><small style="color:var(--accent)">${u.rfid}</small></span>
-                <button onclick="window.deleteUser('${key}')" style="width:40px; background:var(--danger); border:none; border-radius:4px; cursor:pointer;">✖</button>
+                <div style="font-size:13px;">
+                    <b style="color:white; display:block;">${u.name.toUpperCase()}</b>
+                    <span style="color:var(--accent); font-family:monospace; font-size:11px;">RFID: ${rfid}</span><br>
+                    <span style="color:var(--success); font-size:11px;">MOB: ${u.mobile}</span>
+                </div>
+                <button onclick="window.deleteUserRecord('${rfid}')" 
+                        style="width:45px; height:35px; background:var(--danger); border:none; border-radius:4px; color:white; cursor:pointer; font-weight:bold;">
+                    DEL
+                </button>
             `;
             container.appendChild(div);
         });
-    }, { onlyOnce: true });
+    });
 };
-// Keep this version instead
-window.deleteUser = async (rfid) => {
-    if(confirm(`PERMANENT DELETE: Remove ${rfid} from cloud?`)) {
+window.filterPassengerList = function() {
+    const term = document.getElementById('db-search-filter').value.toLowerCase();
+    const items = document.querySelectorAll('.passenger-item');
+    
+    items.forEach(item => {
+        const name = item.dataset.name;
+        item.style.display = name.includes(term) ? "flex" : "none";
+    });
+};
+// CONTROL F: DELETE USER RECORD
+window.deleteUserRecord = async function(rfid) {
+    if (confirm(`PERMANENT ACTION: Remove RFID ${rfid} from Kolkata Metro Cloud?`)) {
         try {
-            await remove(ref(db, 'users/' + rfid));
-            alert("User Deleted Successfully");
-            window.renderUserList();
+            const { remove, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+            await remove(dbRef(db, 'users/' + rfid));
+            alert("RECORD DELETED SUCCESSFULLY");
+            // The list will auto-refresh due to the onValue listener
         } catch (e) {
-            alert("Delete failed: " + e.message);
+            alert("Delete Failed: " + e.message);
         }
     }
 };

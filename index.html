@@ -247,6 +247,19 @@
 ::-webkit-scrollbar-thumb:hover {
     background: #00b8e6;
 }
+        #challan-grid, #db-items {
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent) #0d1117;
+}
+
+#challan-grid::-webkit-scrollbar, #db-items::-webkit-scrollbar {
+    width: 6px;
+}
+
+#challan-grid::-webkit-scrollbar-thumb, #db-items::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    border-radius: 10px;
+}
     </style>
 </head>
 <body>
@@ -905,78 +918,68 @@ window.deleteUser = async (rfid) => {
     }
 };
     // --- 5. VIOLATION LOGGING ---
-  async function captureViolation() {
+  window.captureViolation = async function() {
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = videoElement.videoWidth;
     tempCanvas.height = videoElement.videoHeight;
     const ctx = tempCanvas.getContext('2d');
     
-    // 1. Capture the Frame immediately
+    // Capture evidence frame
     ctx.translate(tempCanvas.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(videoElement, 0, 0);
-    
-    // 2. Draw the Yellow Safety Line on the Evidence
-    ctx.setTransform(1, 0, 0, 1, 0, 0); 
-    ctx.beginPath();
-    ctx.strokeStyle = 'yellow';
-    ctx.lineWidth = 10;
-    linePoints.forEach((p, i) => {
-        const cx = (p.x / 100) * tempCanvas.width;
-        const cy = (p.y / 100) * tempCanvas.height;
-        if (i === 0) ctx.moveTo(cx, cy);
-        else ctx.lineTo(cx, cy);
-    });
-    ctx.stroke();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    const dataUrl = tempCanvas.toDataURL('image/jpeg');
+    const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.6);
     let detectedRfid = "UNKNOWN_ID";
     let matchScore = 0;
 
-    // 3. MANDATORY IDENTIFICATION: We await the detection result
     try {
+        // 1. Detect the face of the person currently breaching
         const det = await faceapi.detectSingleFace(videoElement)
             .withFaceLandmarks()
             .withFaceDescriptor();
 
         if (det) {
-            // Scan through all METRO- keys in storage
-            Object.keys(localStorage).forEach(key => {
-                if (key.startsWith("METRO-")) {
-                    const user = JSON.parse(localStorage.getItem(key));
-                    user.descriptors.forEach(desc => {
-                        const dist = faceapi.euclideanDistance(det.descriptor, new Float32Array(desc));
-                        const score = (1 - dist) * 100;
-                        // Higher score threshold (45%) for reliability
+            // 2. Fetch all registered users from Firebase Cloud
+            onValue(ref(db, 'users'), (snapshot) => {
+                const cloudUsers = snapshot.val();
+                if (!cloudUsers) return;
+
+                Object.keys(cloudUsers).forEach(key => {
+                    const user = cloudUsers[key];
+                    // 3. Check all 4 saved angles for this user
+                    user.descriptors.forEach(descArray => {
+                        // CRITICAL: Convert plain array back to Float32Array for face-api
+                        const serverDescriptor = new Float32Array(descArray);
+                        const distance = faceapi.euclideanDistance(det.descriptor, serverDescriptor);
+                        const score = (1 - distance) * 100;
+
                         if (score > 45 && score > matchScore) {
                             matchScore = score;
                             detectedRfid = user.rfid;
                         }
                     });
-                }
-            });
+                });
+            }, { onlyOnce: true });
         }
     } catch (e) {
-        console.error("ID Detection Error:", e);
+        console.error("Biometric Identification Error:", e);
     }
 
-    // 4. Save to LocalStorage ONLY after ID check is done
-    const storageKey = "VIOL-" + Date.now(); 
-    const violationObject = {
-        id: storageKey,
-        img: dataUrl, 
+    // 4. Save Violation to Firebase Cloud
+    const violID = "VIOL-" + Date.now();
+    await set(ref(db, 'violations/' + violID), {
+        id: violID,
+        img: dataUrl,
         time: new Date().toLocaleString(),
-        linkedRfid: detectedRfid, 
+        linkedRfid: detectedRfid,
         status: "PENDING",
         confidence: matchScore.toFixed(1)
-    };
+    });
 
-    localStorage.setItem(storageKey, JSON.stringify(violationObject));
-    
-    // 5. Update UI
-    renderChallans(); 
-    console.log(`Violation Logged. RFID: ${detectedRfid} (${matchScore}%)`);
-}
+    console.log(`Cloud Logged: ${detectedRfid} (${matchScore.toFixed(1)}%)`);
+};
     // --- 6. INITIALIZATION ---
     pointCountInput.onchange = updateSliders;
     updateSliders();

@@ -341,19 +341,22 @@
     const commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
 
    window.switchUI = (mode) => {
-        document.getElementById('monitor-ui').style.display = mode === 'monitor' ? 'block' : 'none';
-        document.getElementById('register-ui').style.display = mode === 'register' ? 'block' : 'none';
-        document.getElementById('challan-overlay').style.display = mode === 'challan' ? 'block' : 'none';
-        
-        // Hide the large video viewport when registering to reduce clutter
-        document.getElementById('viewport').style.visibility = (mode === 'register') ? 'hidden' : 'visible';
+    // 1. If entering Register, stop the Pose Monitoring
+    if (mode === 'register') {
+        window.isMonitoring = false;
+        if (window.camera) window.camera.stop(); // Stop Pose Camera
+    }
 
-        document.getElementById('tab-mon').classList.toggle('active', mode === 'monitor');
-        document.getElementById('tab-reg').classList.toggle('active', mode === 'register');
-        document.getElementById('tab-cha').classList.toggle('active', mode === 'challan');
-        
-        if(mode === 'register') window.renderUserList();
-    };
+    // 2. Tab switching logic
+    document.getElementById('monitor-ui').style.display = mode === 'monitor' ? 'block' : 'none';
+    document.getElementById('register-ui').style.display = mode === 'register' ? 'block' : 'none';
+    document.getElementById('challan-overlay').style.display = mode === 'challan' ? 'block' : 'none';
+    
+    // 3. Viewport control
+    document.getElementById('viewport').style.display = (mode === 'register') ? 'none' : 'flex';
+
+    if(mode === 'register') window.renderUserList();
+};
 window.judgeViolation = async function(key) {
     // 1. Store the active key for the finalizeFine function
     window.currentActiveViolationKey = key; 

@@ -467,28 +467,32 @@ window.fetchRegistrationData = function() {
     
     if (!inputRfid) return alert("ENTER RFID");
 
+    // Fetch from 'users' node to get the MOST RECENT mobile number
     onValue(ref(db, 'users/' + inputRfid), (snapshot) => {
         const user = snapshot.val();
         if (!user) {
-            alert("RFID NOT FOUND");
+            alert("RFID NOT FOUND IN DATABASE");
             display.style.display = 'none';
             return;
         }
 
         display.style.display = 'block';
         
-        // Retrieve the first registration angle from the cloud database
+        // Store the LATEST mobile number on the UI for the finalizeFine function to use
+        display.dataset.latestMobile = user.mobile;
+        display.dataset.passengerName = user.name;
+
         const regPhotoHtml = user.tempImages ? 
             `<img src="${user.tempImages[0]}" style="width:100%; border-radius:10px; border:2px solid var(--accent); margin-bottom:10px;">` : 
-            `<div style="padding:20px; background:#111; color:#555; text-align:center;">PHOTO DATA NOT FOUND</div>`;
+            `<div style="padding:20px; background:#111; color:#555; text-align:center;">NO PHOTO</div>`;
 
         infoDisplay.innerHTML = `
-            <label style="color:var(--accent); font-size:11px; display:block; margin-bottom:5px;">ENROLLMENT RECORD PHOTO</label>
+            <label style="color:var(--accent); font-size:11px; display:block; margin-bottom:5px;">LATEST ENROLLMENT DATA</label>
             ${regPhotoHtml}
             <div style="background:rgba(255,255,255,0.05); padding:12px; border-radius:8px;">
-                <h3 style="color:white; margin:0; letter-spacing:1px;">${user.name.toUpperCase()}</h3>
+                <h3 style="color:white; margin:0;">${user.name.toUpperCase()}</h3>
                 <p style="color:var(--accent); margin:5px 0; font-family:monospace;">RFID: ${user.rfid}</p>
-                <p style="color:var(--success); margin:0;">MOBILE: ${user.mobile}</p>
+                <p style="color:var(--success); margin:0; font-weight:bold;">CURRENT MOBILE: ${user.mobile}</p>
             </div>
         `;
     }, { onlyOnce: true });
@@ -499,38 +503,62 @@ window.fetchRegistrationData = function() {
     renderUserList();   // Refresh the Registered User List
     console.log("System Data Restored from LocalStorage");
 }
+// CONTROL F: FINALIZE FINE (STRICT 160 CHAR LIMIT / SINGLE LINE)
 window.finalizeFine = async function() {
+    const display = document.getElementById('registration-display');
     const rfid = document.getElementById('manual-rfid-input').value.trim();
-    const amount = prompt("ENTER FINE AMOUNT (₹):", "500");
-    const reason = prompt("ENTER VIOLATION REASON:", "Crossing Yellow Line");
     
-    if (!amount || isNaN(amount)) return;
+    // Get latest data from the verification step
+    const latestMobile = display.dataset.latestMobile;
+    const passengerName = display.dataset.passengerName;
 
-    onValue(ref(db, 'users/' + rfid), async (snapshot) => {
-        const user = snapshot.val();
-        if (!user) return alert("Verify user first!");
+    // Prompts for flexibility
+    const amount = prompt("ENTER FINE AMOUNT (₹):", "1000");
+    const offence = prompt("ENTER OFFENCE (Short):", "Crossing Safety Line");
+    const station = "Central"; 
+    
+    if (!amount || isNaN(amount) || !latestMobile) return alert("Invalid Data");
 
-        const challanNo = "KLK" + Date.now().toString().slice(-6);
+    // Generate MG format Challan Number (MG + YYYYMMDD + 4 random digits)
+    const datePart = new Date().toISOString().slice(0,10).replace(/-/g, "");
+    const challanNo = "MG" + datePart + Math.floor(1000 + Math.random() * 9000);
 
-        // COMBINED REASON INTO SINGLE LINE
-        let singleLineMsg = `METRO CHALLAN: NO ${challanNo}. FINE RS ${amount}. REASON: ${reason}. PAY AT STATION MASTER DESK IMMEDIATELY.`;
-        singleLineMsg = singleLineMsg.replace(/(\r\n|\n|\r)/gm, " "); // Double check no new lines
+    // THE 1-LINE TEMPLATE (Strictly No Enters/New Lines)
+    let msg = `KOLKATA METRO RAILWAY: CHN ${challanNo}. STN: ${station}. OFFENCE: ${offence}. FINE: RS ${amount}. PAY TO STATION MASTER WITHIN 7 DAYS TO AVOID LEGAL ACTION.`;
+    
+    // SAFETY CLEANER: Strips all "Enter" keys and collapses extra spaces into one
+    msg = msg.replace(/(\r\n|\n|\r)/gm, " ").replace(/\s+/g, " ").trim();
 
-        try {
-            await update(ref(db, 'violations/' + window.currentActiveViolationKey), {
-                status: "FINED",
-                fineAmount: amount,
-                fineReason: reason,
-                challanNo: challanNo
-            });
-            
-            const success = await window.sendKolkataSMS(user.mobile, singleLineMsg);
-            if(success) alert("CHALLAN ISSUED & SMS SENT");
-            window.closeJudgement();
-        } catch (err) {
-            alert("Error: " + err.message);
+    // Final check for the 160-character boundary
+    console.log("Final SMS Length: " + msg.length);
+    if(msg.length > 160) {
+        alert("CRITICAL: Message is " + msg.length + " chars. Carrier will charge ₹35+. Please shorten the Offence text.");
+        return; // Stop the send so you don't get charged extra
+    }
+
+    try {
+        const { update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+        
+        await update(dbRef(db, 'violations/' + window.currentActiveViolationKey), {
+            status: "FINED",
+            fineAmount: amount,
+            offence: offence,
+            challanNo: challanNo,
+            station: station,
+            linkedMobile: latestMobile
+        });
+        
+        const success = await window.sendKolkataSMS(latestMobile, msg);
+        
+        if(success) {
+            alert("SUCCESS: ₹5 Message sent to " + latestMobile + "\nLength: " + msg.length + " chars.");
+        } else {
+            alert("Gateway Error. Check Fast2SMS API balance.");
         }
-    }, { onlyOnce: true });
+        window.closeJudgement();
+    } catch (err) {
+        alert("Error: " + err.message);
+    }
 };
        window.markAsPaid = async function(violationKey) {
         if(confirm("Confirm Payment? This record will be deleted from the server.")) {

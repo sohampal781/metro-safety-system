@@ -552,53 +552,54 @@ window.sendKolkataSMS = async function(number, message) {
         }
     }
 };
-       function renderChallans() {
+  window.renderChallans = function() {
     const grid = document.getElementById('challan-grid');
     if (!grid) return;
-    grid.innerHTML = "";
+    
+    // 1. Listen for real-time changes on the Firebase Server
+    onValue(ref(db, 'violations'), (snapshot) => {
+        grid.innerHTML = "";
+        const data = snapshot.val();
+        
+        if (!data) {
+            grid.innerHTML = "<h3 style='color:#8b949e; text-align:center; width:100%;'>NO PENDING VIOLATIONS</h3>";
+            return;
+        }
 
-    Object.keys(localStorage).forEach(key => {
-        if(key.startsWith("VIOL-")) {
-            const viol = JSON.parse(localStorage.getItem(key));
+        // 2. Loop through Cloud Data (Reversed for latest first)
+        Object.keys(data).reverse().forEach(key => {
+            const viol = data[key];
+            const isAlreadyFined = (viol.status === "FINED");
             const card = document.createElement('div');
             card.className = 'challan-card';
-            
-            // LOGIC: Check if this specific incident is already processed
-            const isAlreadyFined = (viol.status === "FINED");
+            card.style.borderTopColor = isAlreadyFined ? 'var(--success)' : 'var(--danger)';
 
             card.innerHTML = `
-    <img src="${viol.img}" style="width:100%; border-radius:8px; border: 2px solid ${isAlreadyFined ? '#00e676' : '#ff3333'}">
-    
-    <div style="font-size:12px; margin: 10px 0;">
-        <b style="color:var(--accent)">RFID: ${viol.linkedRfid}</b><br>
-        <span style="color:#8b949e">Time: ${viol.time}</span>
-        
-        ${isAlreadyFined ? `
-            <div style="margin-top:8px; padding:8px; background:rgba(0,210,255,0.1); border-radius:4px; border:1px solid var(--accent);">
-                <b style="color:var(--accent); font-size:10px;">CHALLAN: ${viol.challanNo}</b><br>
-                <span style="color:var(--danger); font-size:10px; font-weight:bold;">
-                    DUE: ${new Date(new Date(viol.time).getTime() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString()}
-                </span>
-            </div>
-        ` : ''}
-    </div>
-    
-   ${isAlreadyFined ? 
-    `<button class="action-btn" style="background:#ff9800; color:black;" onclick="markAsPaid('${key}')">
-        COLLECT ₹${viol.fineAmount} & CLEAR
-     </button>` : 
-    `<button class="action-btn" onclick="judgeViolation('${key}')">
-        ISSUE LEGAL NOTICE
-     </button>`
-}
-    
-    <button class="delete-btn" style="background:#21262d; color:#8b949e; margin-top:8px; border:1px solid var(--border);" 
-            onclick="deleteRecord('${key}')">REMOVE LOG</button>
-`;
-            grid.prepend(card);
-        }
+                <img src="${viol.img}" style="width:100%; border-radius:8px;">
+                <div style="font-size:12px; margin: 10px 0; color: #e6edf3;">
+                    <b style="color:var(--accent)">RFID: ${viol.linkedRfid}</b><br>
+                    <span>Time: ${viol.time}</span>
+                    ${isAlreadyFined ? `
+                        <div style="margin-top:8px; padding:8px; background:rgba(0,210,255,0.1); border:1px solid var(--accent); border-radius:4px;">
+                            <b style="color:var(--accent); font-size:10px;">CHALLAN: ${viol.challanNo}</b>
+                        </div>
+                    ` : ''}
+                </div>
+                ${isAlreadyFined ? 
+                    `<button class="action-btn" style="background:#ff9800; color:black;" onclick="window.markAsPaid('${key}')">
+                        COLLECT ₹${viol.fineAmount} & CLEAR
+                     </button>` : 
+                    `<button class="action-btn" onclick="window.judgeViolation('${key}')">
+                        ISSUE LEGAL NOTICE
+                     </button>`
+                }
+                <button class="delete-btn" style="background:#21262d; color:#8b949e; margin-top:8px;" 
+                        onclick="window.deleteRecord('${key}')">REMOVE LOG</button>
+            `;
+            grid.appendChild(card);
+        });
     });
-}
+};
 
     // --- 3. MONITORING & MATH LOGIC (YOUR ORIGINAL LOGIC) ---
     function updateSliders() {

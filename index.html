@@ -389,32 +389,52 @@ window.closeJudgement = function() {
     document.getElementById('judgement-modal').style.display = 'none';
     document.getElementById('registration-display').style.display = 'none';
 };
-       function fetchRegistrationData() {
+       import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js";
+
+window.fetchRegistrationData = function() {
     const inputRfid = document.getElementById('manual-rfid-input').value.trim();
-    const userRaw = localStorage.getItem(inputRfid);
+    const display = document.getElementById('registration-display');
+    const grid = document.getElementById('reg-photos-grid');
+    const infoDisplay = document.getElementById('reg-user-info');
     
-    if (!userRaw) {
-        alert("RFID NOT REGISTERED");
+    if (!inputRfid) {
+        alert("Enter an RFID first.");
         return;
     }
 
-    const user = JSON.parse(userRaw);
-    const display = document.getElementById('registration-display');
-    const grid = document.getElementById('reg-photos-grid');
-    
-    display.style.display = 'block';
-    // Show the first photo taken during registration
-    grid.innerHTML = `
-        <div style="text-align:center">
-            <label style="color:var(--success)">OFFICIAL REGISTRATION PHOTO</label>
-            <img src="${user.regImages[0]}" style="width:100%; border:3px solid var(--success); border-radius:10px; margin-top:5px;">
-        </div>
-    `;
-    document.getElementById('reg-user-info').innerHTML = `
-        <h3 style="margin:10px 0 5px 0">${user.name}</h3>
-        <p style="color:var(--accent)">PH: ${user.mobile}</p>
-    `;
-}
+    // Connect to the Firebase "users" node on the server
+    const userRef = ref(db, 'users/' + inputRfid);
+
+    onValue(userRef, (snapshot) => {
+        const user = snapshot.val();
+        
+        if (!user) {
+            alert("RFID NOT FOUND ON SERVER");
+            if (display) display.style.display = 'none';
+            return;
+        }
+
+        // Show the verification section
+        if (display) display.style.display = 'block';
+        
+        // Show registration photo from Firebase Cloud
+        if (grid) {
+            grid.innerHTML = `
+                <div style="text-align:center; grid-column: 1 / -1;">
+                    <label style="color:var(--success); font-size:10px;">MATCHED CLOUD PROFILE</label>
+                    <img src="${user.regImages[0]}" style="width:100%; max-width:200px; border:3px solid var(--success); border-radius:10px; margin-top:5px;">
+                </div>
+            `;
+        }
+
+        if (infoDisplay) {
+            infoDisplay.innerHTML = `
+                <h3 style="margin:10px 0 5px 0; color:white;">${user.name.toUpperCase()}</h3>
+                <p style="color:var(--accent); margin:0;">MOB: ${user.mobile}</p>
+            `;
+        }
+    }, { onlyOnce: true });
+};
         function loadDashboardData() {
     // This ensures that even after a refresh, the UI is populated
     renderChallans();   // Refresh the Violation Portal
@@ -950,21 +970,24 @@ async function init() {
             </div>
             <div id="ai-prediction" style="margin-top:20px; font-size:24px; text-align:center; font-weight:bold;"></div>
         </div>
-
         <div class="control-group">
-            <h3 style="color:var(--accent)">REGISTRATION DATA MATCHING</h3>
-            <div style="display:flex; gap:10px; margin-bottom:20px;">
-                <input type="text" id="manual-rfid-input" placeholder="ENTER DETECTED RFID NUMBER" style="flex:1;">
-                <button class="btn-main" style="width:120px;" onclick="fetchRegistrationData()">VERIFY ID</button>
-            </div>
+    <h3 style="color:var(--accent)">REGISTRATION DATA MATCHING</h3>
+    
+    <div style="display:flex; gap:10px; margin-bottom:20px;">
+        <input type="text" id="manual-rfid-input" placeholder="ENTER DETECTED RFID NUMBER" style="flex:1;">
+        <button class="btn-main" style="width:120px; background:var(--accent); color:black; border:none; border-radius:4px; cursor:pointer;" 
+                onclick="window.fetchRegistrationData()">VERIFY ID</button>
+    </div>
 
-            <div id="registration-display" style="display:none;">
-                <p id="reg-user-info" style="font-weight:bold; color:var(--success);"></p>
-                <div id="reg-photos-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-                    </div>
-                <button class="btn-main" style="margin-top:20px; background:var(--success)" onclick="finalizeFine()">CONFIRM & GENERATE CHALLAN</button>
+    <div id="registration-display" style="display:none;">
+        <p id="reg-user-info" style="font-weight:bold; color:var(--success);"></p>
+        <div id="reg-photos-grid" style="display:grid; grid-template-columns:1fr; gap:10px;">
             </div>
-        </div>
+        <button class="btn-main" style="margin-top:20px; background:var(--success); color:black; border:none; border-radius:4px; cursor:pointer; font-weight:bold;" 
+                onclick="window.finalizeFine()">CONFIRM & GENERATE CHALLAN</button>
+    </div>
+</div>
+        
     </div>
 </div>
 </body>

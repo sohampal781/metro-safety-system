@@ -277,15 +277,15 @@
     </div>
 
     <div id="register-ui" style="display:none; height: 100vh; overflow-y: auto; padding: 40px; box-sizing: border-box; background: linear-gradient(145deg, #0a0b10, #161b22);">
-    <div class="registration-header" style="font-size: 24px; letter-spacing: 2px; color: var(--accent); margin-bottom: 30px;">
+    <div class="registration-header" style="font-size: 24px; color: var(--accent); margin-bottom: 30px;">
         KOLKATA METRO | BIOMETRIC ENROLLMENT TERMINAL
     </div>
 
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
         <div class="control-group" style="border: 1px solid var(--accent); background: rgba(0, 210, 255, 0.05);">
-            <label>1. CRITICAL DATA ENTRY</label>
-            <input type="text" id="reg-name" placeholder="PASSENGER FULL NAME" style="margin-bottom: 15px; border-color: var(--accent);">
-            <input type="text" id="reg-mobile" placeholder="10-DIGIT MOBILE NUMBER" style="margin-bottom: 20px; border-color: var(--accent);">
+            <label>1. PASSENGER DATA</label>
+            <input type="text" id="reg-name" placeholder="FULL NAME" style="margin-bottom: 15px;">
+            <input type="text" id="reg-mobile" placeholder="10-DIGIT MOBILE" style="margin-bottom: 20px;">
             
             <div style="width:100%; height:250px; background:#000; border-radius:12px; overflow:hidden; border: 2px solid var(--border);">
                 <video id="reg-video" autoplay muted playsinline style="width:100%; height:100%; object-fit:cover; transform:scaleX(-1);"></video>
@@ -298,13 +298,21 @@
                 <div id="a3" class="angle-box">UP/DN</div>
             </div>
 
-            <button class="action-btn" onclick="window.startSecureCapture()" style="height: 50px; font-size: 16px;">INITIATE SCAN</button>
-            <button class="action-btn" id="save-reg-btn" onclick="window.saveRegistration()" style="background:var(--success); display:none; height: 50px; font-size: 16px;">FINALIZE & SYNC CLOUD</button>
+            <button class="action-btn" onclick="window.startSecureCapture()" style="margin-top:20px;">INITIATE SCAN</button>
+            <button class="action-btn" id="save-reg-btn" onclick="window.saveRegistration()" style="background:var(--success); display:none; margin-top:10px;">FINALIZE & SYNC CLOUD</button>
         </div>
-
+        <div class="control-group">
+    <label>1. PASSENGER DATA</label>
+    <div style="display:flex; gap:10px; margin-bottom:10px;">
+        <input type="text" id="reg-name" placeholder="FULL NAME" style="flex:1;">
+        <button onclick="window.lookupUser()" style="width:80px; font-size:10px; background:#30363d;">SEARCH</button>
+    </div>
+    <input type="text" id="reg-mobile" placeholder="10-DIGIT MOBILE" style="margin-bottom: 20px;">
+    
+    </div>
         <div class="control-group" style="height: 600px; display: flex; flex-direction: column;">
-            <label>2. CLOUD DATABASE (RECENT ENROLLMENTS)</label>
-            <div id="db-items" style="flex-grow: 1; overflow-y: auto; padding-right: 10px; border: 1px solid var(--border); border-radius: 8px; background: #0d1117;">
+            <label>2. ACTIVE CLOUD RECORDS</label>
+            <div id="db-items" style="flex-grow: 1; overflow-y: auto; padding: 10px; background: #0d1117; border-radius: 8px;">
                 </div>
         </div>
     </div>
@@ -552,6 +560,33 @@ window.sendKolkataSMS = async function(number, message) {
         }
     }
 };
+       // --- SEARCH AND LOAD USER FOR UPDATE ---
+window.lookupUser = function() {
+    const searchName = document.getElementById('reg-name').value.trim().toLowerCase();
+    if (!searchName) return alert("Enter a name to search.");
+
+    const usersRef = ref(db, 'users');
+    onValue(usersRef, (snapshot) => {
+        const data = snapshot.val();
+        let found = false;
+
+        if (data) {
+            Object.keys(data).forEach(key => {
+                const user = data[key];
+                if (user.name.toLowerCase() === searchName) {
+                    // Populate fields for updating
+                    document.getElementById('reg-mobile').value = user.mobile;
+                    // Store the RFID on the name input so Save knows it's an update
+                    document.getElementById('reg-name').dataset.activeRfid = user.rfid;
+                    
+                    alert(`USER FOUND: ${user.name} (RFID: ${user.rfid}). You can now update the mobile number.`);
+                    found = true;
+                }
+            });
+        }
+        if (!found) alert("No user found with that name in the cloud.");
+    }, { onlyOnce: true });
+};
   window.renderChallans = function() {
     const grid = document.getElementById('challan-grid');
     if (!grid) return;
@@ -715,22 +750,27 @@ window.sendKolkataSMS = async function(number, message) {
 
     // --- 4. ENROLLMENT & DATABASE FUNCTIONS ---
    window.startSecureCapture = async function() {
-    // Reset data for the new user
+    // Reset enrollment data
     window.capturedDescriptors = [];
     window.tempCapturedImages = [];
     window.captureStep = 0;
     
     const regVideo = document.getElementById('reg-video');
+    const statusDisplay = document.getElementById('status-display');
     
     try {
+        // Request camera specifically for the small registration window
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
         regVideo.srcObject = stream;
         window.isCapturing = true;
         
+        // Reset the visual indicators
         document.querySelectorAll('.angle-box').forEach(b => b.className = 'angle-box');
-        window.runCaptureSequence();
+        
+        // Start the automated sequence
+        window.runCaptureSequence(); 
     } catch (err) {
-        alert("Camera Error: " + err.message);
+        alert("Camera Error: Ensure Monitoring is STOPPED first. " + err.message);
     }
 };
 
@@ -794,34 +834,36 @@ function lookupUser() {
 
 // 2. Updated Save Function to handle Phone Number Updates
 window.saveRegistration = async function() {
-    const name = document.getElementById('reg-name').value.trim();
-    const mobile = document.getElementById('reg-mobile').value.trim();
-    
-    if (!name || mobile.length !== 10) return alert("Enter Name & 10-digit Mobile");
+    const nameInput = document.getElementById('reg-name');
+    const mobileInput = document.getElementById('reg-mobile');
+    const name = nameInput.value.trim();
+    const mobile = mobileInput.value.trim();
+    const existingRfid = nameInput.dataset.activeRfid;
 
-    const rfid = "METRO-" + Math.floor(1000 + Math.random() * 9000); // RFID Generation
-    
+    if (!name || mobile.length !== 10) return alert("Invalid Name or Mobile.");
+
+    // If an RFID exists in dataset, we UPDATE. Otherwise, we CREATE NEW.
+    const rfid = existingRfid || ("METRO-" + Math.floor(1000 + Math.random() * 9000));
+
     try {
-        // Save to Firebase Cloud
-        await set(ref(db, 'users/' + rfid), {
-            rfid, name, mobile,
-            descriptors: window.capturedDescriptors,
-            regImages: window.tempCapturedImages
-        });
-
-        // TRIGGER SMS IMMEDIATELY
-        const regMsg = `KOLKATA METRO: Welcome ${name.toUpperCase()}. Your Safety RFID is ${rfid}. Use this for identification at all metro stations.`;
-        const success = await window.sendKolkataSMS(mobile, regMsg);
-
-        if (success) {
-            alert(`SUCCESS: RFID ${rfid} sent to ${mobile}`);
-        } else {
-            alert(`Registration saved, but SMS failed. Check Fast2SMS balance.`);
-        }
+        const userRef = ref(db, 'users/' + rfid);
         
+        // Use 'update' for existing users to prevent overwriting face data
+        const updateData = { name, mobile, rfid };
+        if (!existingRfid) {
+            updateData.descriptors = window.capturedDescriptors;
+            updateData.regImages = window.tempCapturedImages;
+        }
+
+        await update(userRef, updateData);
+        
+        const msg = `KOLKATA METRO: Records updated for ${name.toUpperCase()}. Your Safety RFID remains ${rfid}.`;
+        await window.sendKolkataSMS(mobile, msg);
+
+        alert(existingRfid ? "CLOUD RECORDS UPDATED" : "NEW ENROLLMENT SUCCESS");
         location.reload(); 
     } catch (e) {
-        alert("Cloud Error: " + e.message);
+        alert("Sync Error: " + e.message);
     }
 };
     window.renderUserList = function() {

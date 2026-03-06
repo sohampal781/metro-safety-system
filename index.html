@@ -526,24 +526,7 @@ function closeJudgement() {
         }
     });
 }
-function deleteRecord(key) {
-    // 1. Mandatory confirmation
-    const confirmDelete = confirm("Are you sure? This incident data will be deleted permanently from the database.");
 
-    if (confirmDelete) {
-        // 2. Remove from LocalStorage
-        localStorage.removeItem(key);
-
-        // 3. Instant UI Update
-        if (key.startsWith("VIOL-")) {
-            renderChallans(); 
-        } else if (key.startsWith("METRO-")) {
-            renderUserList(); 
-        }
-        
-        console.log("Record deleted: " + key);
-    }
-}
     // --- 3. MONITORING & MATH LOGIC (YOUR ORIGINAL LOGIC) ---
     function updateSliders() {
     if (isMonitoring) return;

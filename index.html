@@ -534,28 +534,31 @@ window.finalizeFine = async function() {
     const latestMobile = display.dataset.latestMobile;
     const passengerName = display.dataset.passengerName;
 
-    // Prompts for flexibility
-    const amount = prompt("ENTER FINE AMOUNT (₹):", "1000");
-    const offence = prompt("ENTER OFFENCE (Short):", "Crossing Safety Line");
-    const station = "Central"; 
-    
-    if (!amount || isNaN(amount) || !latestMobile) return alert("Invalid Data");
-
-    // Generate MG format Challan Number (MG + YYYYMMDD + 4 random digits)
+    // Default station and date info
+    const station = "Central Metro"; 
     const datePart = new Date().toISOString().slice(0,10).replace(/-/g, "");
     const challanNo = "MG" + datePart + Math.floor(1000 + Math.random() * 9000);
 
-    // THE 1-LINE TEMPLATE (Strictly No Enters/New Lines)
+    // Prompts for flexibility
+    const amount = prompt("ENTER FINE AMOUNT (₹):", "1000");
+    const offence = prompt("ENTER OFFENCE (e.g. Crossing platform safety line):", "Crossing platform safety line");
+    
+    if (!amount || isNaN(amount) || !latestMobile) return alert("Invalid Data");
+
+    // THE FULL BRANDED TEMPLATE
+    // Note: This often exceeds 160 chars depending on the 'offence' length.
     let msg = `KOLKATA METRO RAILWAY: CHN ${challanNo}. STN: ${station}. OFFENCE: ${offence}. FINE: RS ${amount}. PAY TO STATION MASTER WITHIN 7 DAYS TO AVOID LEGAL ACTION.`;
     
-    // SAFETY CLEANER: Strips all "Enter" keys and collapses extra spaces into one
+    // CLEANER: Removes 'Enters' but keeps the full text
     msg = msg.replace(/(\r\n|\n|\r)/gm, " ").replace(/\s+/g, " ").trim();
 
-    // Final check for the 160-character boundary
-    console.log("Final SMS Length: " + msg.length);
+    // Log length for your reference
+    console.log("Current SMS Length: " + msg.length);
+    
+    // Alert if it's over the single-credit limit, but proceed anyway
     if(msg.length > 160) {
-        alert("CRITICAL: Message is " + msg.length + " chars. Carrier will charge ₹35+. Please shorten the Offence text.");
-        return; // Stop the send so you don't get charged extra
+        const proceed = confirm(`NOTICE: Message is ${msg.length} characters (over 160). This will cost 2+ SMS credits. Proceed?`);
+        if(!proceed) return;
     }
 
     try {
@@ -573,7 +576,7 @@ window.finalizeFine = async function() {
         const success = await window.sendKolkataSMS(latestMobile, msg);
         
         if(success) {
-            alert("SUCCESS: ₹5 Message sent to " + latestMobile + "\nLength: " + msg.length + " chars.");
+            alert("SUCCESS: Message Sent (" + msg.length + " chars)");
         } else {
             alert("Gateway Error. Check Fast2SMS API balance.");
         }

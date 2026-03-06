@@ -682,49 +682,44 @@ window.sendKolkataSMS = async function(number, message) {
     }
 };
 
-// Update runCaptureSequence to show the Save button when finished
-// inside runCaptureSequence loop:
-if (captureStep >= 4) {
-    isCapturing = false;
-    document.getElementById('save-reg-btn').style.display = 'block'; // Show Save Button
-    statusDisplay.innerText = "SCANS COMPLETE - READY TO SAVE";
-}
+window.runCaptureSequence = async function() {
+    const regVideo = document.getElementById('reg-video');
+    const statusDisplay = document.getElementById('status-display');
+    const commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
 
-    async function runCaptureSequence() {
-    if (captureStep >= 4) {
-        isCapturing = false;
-        statusDisplay.innerText = "CAPTURES COMPLETE";
-        statusDisplay.className = "status-card status-safe";
+    if (window.captureStep >= 4) {
+        window.isCapturing = false;
+        statusDisplay.innerText = "SCANS COMPLETE - READY TO SAVE";
+        // Show the save button now that scans are done
+        document.getElementById('save-reg-btn').style.display = 'block';
         return;
     }
 
-    statusDisplay.innerText = commands[captureStep];
+    statusDisplay.innerText = commands[window.captureStep];
     await new Promise(r => setTimeout(r, 2000));
 
-    const det = await faceapi.detectSingleFace(videoElement).withFaceLandmarks().withFaceDescriptor();
+    // Use the registration video element specifically for detection
+    const det = await faceapi.detectSingleFace(regVideo).withFaceLandmarks().withFaceDescriptor();
 
     if (det) {
-        capturedDescriptors.push(Array.from(det.descriptor));
+        window.capturedDescriptors.push(Array.from(det.descriptor));
         
         const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = videoElement.videoWidth;
-        tempCanvas.height = videoElement.videoHeight;
-        tempCanvas.getContext('2d').drawImage(videoElement, 0, 0);
-        tempCapturedImages.push(tempCanvas.toDataURL('image/jpeg'));
+        tempCanvas.width = 400;
+        tempCanvas.height = 300;
+        tempCanvas.getContext('2d').drawImage(regVideo, 0, 0, 400, 300);
+        window.tempCapturedImages.push(tempCanvas.toDataURL('image/jpeg', 0.6));
 
-        // SAFETY CHECK: Prevents the "Cannot set properties of null" error
-        const indicator = document.getElementById(`a${captureStep}`);
-        if (indicator) {
-            indicator.className = "angle-box done";
-        }
+        const indicator = document.getElementById(`a${window.captureStep}`);
+        if (indicator) indicator.className = "angle-box done";
         
-        captureStep++;
-        runCaptureSequence();
+        window.captureStep++;
+        window.runCaptureSequence();
     } else {
         statusDisplay.innerText = "RETRYING SCAN...";
-        setTimeout(runCaptureSequence, 1000);
+        setTimeout(window.runCaptureSequence, 1000);
     }
-}
+};
 
   // 1. Function to find a user and load their current number
 function lookupUser() {
@@ -750,27 +745,32 @@ function lookupUser() {
 window.saveRegistration = async function() {
     const name = document.getElementById('reg-name').value.trim();
     const mobile = document.getElementById('reg-mobile').value.trim();
+    const regVideo = document.getElementById('reg-video');
     
     if (!name || mobile.length !== 10) return alert("Enter Name & 10-digit Mobile");
-    if (capturedDescriptors.length < 4) return alert("Complete all 4 face scans first!");
 
     const rfid = "METRO-" + Math.floor(1000 + Math.random() * 9000);
     
-    const userData = {
-        rfid, name, mobile,
-        descriptors: capturedDescriptors,
-        regImages: tempCapturedImages
-    };
-
-    // Save to Firebase Cloud
     try {
-        await set(ref(db, 'users/' + rfid), userData);
+        await set(ref(db, 'users/' + rfid), {
+            rfid, name, mobile,
+            descriptors: window.capturedDescriptors,
+            regImages: window.tempCapturedImages
+        });
+
+        // STOP THE REGISTRATION CAMERA STREAM
+        if (regVideo.srcObject) {
+            regVideo.srcObject.getTracks().forEach(track => track.stop());
+            regVideo.srcObject = null;
+        }
+
         const regMsg = `KOLKATA METRO: Welcome ${name.toUpperCase()}. Your Safety RFID is ${rfid}. Use this for identification.`;
         await window.sendKolkataSMS(mobile, regMsg);
-        alert("REGISTRATION SUCCESS: RFID sent to " + mobile);
-        location.reload(); 
+        
+        alert("REGISTRATION SUCCESS: RFID sent via SMS.");
+        window.switchUI('monitor'); // Automatically return to monitor mode
     } catch (e) {
-        alert("Server Error: " + e.message);
+        alert("Save Failed: " + e.message);
     }
 };
     window.renderUserList = function() {

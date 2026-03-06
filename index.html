@@ -325,16 +325,11 @@
 
             <button class="action-btn" onclick="window.startSecureCapture()" style="height: 50px;">INITIATE BIOMETRIC SCAN</button>
             <button class="action-btn" id="save-reg-btn" onclick="window.saveRegistration()" style="background: var(--success); display: none; height: 50px;">FINALIZE & UPLOAD TO CLOUD</button>
-            
+            <button id="send-reg-sms-btn" class="action-btn" style="background: #e1b12c; color: black; display: none; height: 50px; margin-top: 10px;"onclick="window.sendManualRegistrationSMS()">SEND REGISTRATION RECEIPT (SMS)</button>
             <div id="db-items" style="margin-top: 10px; height: 150px; overflow-y: auto; background: #0d1117; border-radius: 6px; padding: 5px; font-size: 12px;">
                 </div>
         </div>
     </div>
-            <button id="send-reg-sms-btn" class="action-btn" 
-        style="background: #e1b12c; color: black; display: none; height: 50px; margin-top: 10px;" 
-        onclick="window.sendManualRegistrationSMS()">
-    SEND REGISTRATION RECEIPT (SMS)
-</button>
 </div>
 
 <style>
@@ -493,6 +488,7 @@ window.fetchRegistrationData = function() {
 window.finalizeFine = async function() {
     const rfid = document.getElementById('manual-rfid-input').value.trim();
     const amount = prompt("ENTER FINE AMOUNT (₹):", "500");
+    const reason = prompt("ENTER VIOLATION REASON:", "Crossing Yellow Line");
     
     if (!amount || isNaN(amount)) return;
 
@@ -502,27 +498,20 @@ window.finalizeFine = async function() {
 
         const challanNo = "KLK" + Date.now().toString().slice(-6);
 
-        // CLEAN SINGLE LINE FORMAT: Guarantees delivery and single unit charge (₹5)
-        const singleLineMsg = `KOLKATA METRO RAILWAY: CHALLAN NO ${challanNo}. FINE RS ${amount}. ACTION: PAY AT STATION MASTER DESK IMMEDIATELY.`;
+        // COMBINED REASON INTO SINGLE LINE
+        let singleLineMsg = `METRO CHALLAN: NO ${challanNo}. FINE RS ${amount}. REASON: ${reason}. PAY AT STATION MASTER DESK IMMEDIATELY.`;
+        singleLineMsg = singleLineMsg.replace(/(\r\n|\n|\r)/gm, " "); // Double check no new lines
 
         try {
-            // Update violation status in Firebase
             await update(ref(db, 'violations/' + window.currentActiveViolationKey), {
                 status: "FINED",
                 fineAmount: amount,
+                fineReason: reason,
                 challanNo: challanNo
             });
             
-            // Send to gateway
-            console.log("Sending clean message (Chars: " + singleLineMsg.length + ")");
             const success = await window.sendKolkataSMS(user.mobile, singleLineMsg);
-            
-            if(success) {
-                alert("MESSAGE SENT SUCCESSFULLY");
-            } else {
-                alert("GATEWAY ACCEPTED BUT DELIVERY FAILED");
-            }
-            
+            if(success) alert("CHALLAN ISSUED & SMS SENT");
             window.closeJudgement();
         } catch (err) {
             alert("Error: " + err.message);
@@ -844,7 +833,6 @@ window.saveRegistration = async function() {
 
     if (!name || mobile.length !== 10) return alert("Valid Name and 10-digit Mobile required.");
 
-    // Generate RFID if it's a new user, otherwise use existing
     const rfid = existingRfid || ("METRO-" + Math.floor(1000 + Math.random() * 9000));
     
     const userData = {
@@ -854,71 +842,55 @@ window.saveRegistration = async function() {
         lastUpdated: new Date().toISOString()
     };
 
-    // Include biometric data if a new scan was performed
     if (window.tempCapturedImages && window.tempCapturedImages.length > 0) {
         userData.descriptors = window.capturedDescriptors;
         userData.tempImages = window.tempCapturedImages; 
     }
 
     try {
-        // 1. Update Firebase
         const { update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
         await update(dbRef(db, 'users/' + rfid), userData);
         
-        // 2. Reveal the Manual SMS Button
+        // FORCE REVEAL BUTTON
         const smsBtn = document.getElementById('send-reg-sms-btn');
-        smsBtn.style.display = 'block';
-        smsBtn.innerText = "SEND REGISTRATION RECEIPT (SMS)";
-        smsBtn.style.background = "#e1b12c"; // Golden yellow
+        if(smsBtn) {
+            smsBtn.style.setProperty('display', 'block', 'important');
+            smsBtn.innerText = "SEND REGISTRATION RECEIPT (SMS)";
+            smsBtn.style.background = "#e1b12c";
+        }
         
-        alert("CLOUD SYNC SUCCESSFUL.\nRFID: " + rfid + "\nYou may now send the manual notification.");
-        
-        // Refresh the list in the background
+        alert("CLOUD SYNC SUCCESSFUL. RFID: " + rfid);
         window.renderUserList();
-        
     } catch (e) {
         alert("Database Sync Failed: " + e.message);
     }
 };
-       window.sendManualRegistrationSMS = async function() {
+
+// --- UPDATED MANUAL SMS (STRICT SINGLE LINE) ---
+window.sendManualRegistrationSMS = async function() {
     const name = document.getElementById('reg-name').value.trim().toUpperCase();
     const mobile = document.getElementById('reg-mobile').value.trim();
     
-    // Safety check for empty fields
-    if (!mobile || mobile.length < 10) return alert("No valid mobile number detected.");
+    if (!mobile || mobile.length < 10) return alert("No valid mobile number.");
 
     const smsBtn = document.getElementById('send-reg-sms-btn');
-    
-    // Visual feedback during API call
-    smsBtn.innerText = "CONNECTING TO GATEWAY...";
+    smsBtn.innerText = "SENDING...";
     smsBtn.disabled = true;
 
-    // Construct the message
-    const welcomeMsg = `KOLKATA METRO GUARD: Enrollment Successful for ${name}. Stay safe behind the yellow line!`;
+    // Strict single line formatting
+    let msg = `KOLKATA METRO GUARD: Enrollment Successful for ${name}. Stay safe behind the yellow line!`;
+    msg = msg.replace(/(\r\n|\n|\r)/gm, " "); // Removes any potential "Enter" keys
 
-    try {
-        const success = await window.sendKolkataSMS(mobile, welcomeMsg);
-        
-        if (success) {
-            smsBtn.innerText = "SMS SENT SUCCESSFULLY ✔";
-            smsBtn.style.background = "var(--success)";
-            alert("Notification dispatched to " + mobile);
-            
-            // Optional: Hide button after 3 seconds and go back to monitor
-            setTimeout(() => {
-                smsBtn.style.display = 'none';
-                window.switchUI('monitor');
-            }, 3000);
-        } else {
-            smsBtn.innerText = "GATEWAY ERROR - RETRY?";
-            smsBtn.style.background = "var(--danger)";
-            smsBtn.disabled = false;
-            alert("SMS Gateway rejected the request. Check your API credits.");
-        }
-    } catch (error) {
-        console.error("Manual SMS Error:", error);
+    const success = await window.sendKolkataSMS(mobile, msg);
+    
+    if (success) {
+        smsBtn.innerText = "SMS SENT SUCCESSFULLY ✔";
+        smsBtn.style.background = "var(--success)";
+        setTimeout(() => { smsBtn.style.display = 'none'; }, 2000);
+    } else {
+        smsBtn.innerText = "RETRY SMS";
         smsBtn.disabled = false;
-        smsBtn.innerText = "SEND REGISTRATION RECEIPT (SMS)";
+        alert("SMS Failed. Check API credits.");
     }
 };
     window.renderUserList = function() {

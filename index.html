@@ -201,6 +201,29 @@
 #monitor-ui::-webkit-scrollbar-thumb:hover {
     background: #00b8e6;
 }
+        #register-ui {
+    padding: 20px;
+    background: #0d1117;
+    border-radius: 15px;
+    border: 1px solid var(--accent);
+}
+
+.registration-header {
+    font-size: 14px;
+    color: var(--accent);
+    margin-bottom: 20px;
+    text-align: center;
+    border-bottom: 1px solid #30363d;
+    padding-bottom: 10px;
+}
+
+#db-items div {
+    background: #1c2128;
+    margin-top: 5px;
+    padding: 10px;
+    border-radius: 5px;
+    border-left: 3px solid var(--accent);
+}
     </style>
 </head>
 <body>
@@ -264,7 +287,22 @@
         <h4 style="margin-top:0; color: var(--accent);">VIOLATION FEED</h4>
         <div id="violation-list"></div>
     </div>
-    <script>
+   <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
+    import { getDatabase, ref, set, push, onValue, remove, update } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyCPixQatVPa326_yGej41aD9p5Z5Fyt3Lg",
+        authDomain: "kolkata-metro-fine.firebaseapp.com",
+        databaseURL: "https://kolkata-metro-fine-default-rtdb.firebaseio.com",
+        projectId: "kolkata-metro-fine",
+        storageBucket: "kolkata-metro-fine.firebasestorage.app",
+        messagingSenderId: "835007350697",
+        appId: "1:835007350697:web:8f359ed3fd8c0805ea66b8"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
     // --- 1. CORE SYSTEM VARIABLES ---
     const videoElement = document.getElementById('input-video');
     const canvasElement = document.getElementById('output-canvas');
@@ -354,41 +392,44 @@ async function judgeViolation(key) {
     renderUserList();   // Refresh the Registered User List
     console.log("System Data Restored from LocalStorage");
 }
-async function finalizeFine() {
-    const rfid = document.getElementById('manual-rfid-input').value.trim();
-    const user = JSON.parse(localStorage.getItem(rfid));
-    
-    if (!user) return alert("USER NOT FOUND");
-
-    const penalty = "500"; 
-    const challanID = Math.floor(1000 + Math.random() * 9999);
-
-    if (currentActiveViolationKey) {
-        // --- 1-CREDIT GSM FORMAT (STRICTLY NO UNICODE) ---
-        // We use "Rs" instead of "₹" to keep the 160-char limit
-        const message = `METRO: Fine Rs ${penalty} at Central for Yellow Line Breach. Pay immediately to Station Master to avoid legal action. ID:${challanID}`;
-
-        // 1. Update Logs
-        const violData = JSON.parse(localStorage.getItem(currentActiveViolationKey));
-        violData.status = "FINED";
-        violData.fineAmount = penalty;
-        violData.challanNo = "MG" + challanID;
-        localStorage.setItem(currentActiveViolationKey, JSON.stringify(violData));
-
-        // 2. Automated SMS Dispatch
-        statusDisplay.innerText = "SENDING CHALLAN...";
-        const success = await sendFastSMS(user.mobile, message);
+window.finalizeFine = async function() {
+        const rfid = document.getElementById('manual-rfid-input').value.trim();
+        const amount = prompt("ENTER FINE AMOUNT (₹):", "1000"); // Master sets amount
         
-        if (success) {
-            alert(`SUCCESS: 1 SMS Credit used for ${user.mobile}`);
-        } else {
-            alert("GATEWAY ERROR: Check DND or Balance");
-        }
-        
-        closeJudgement();
-        renderChallans();
+        if (!amount || isNaN(amount)) return alert("Invalid Amount");
+
+        // Find user in Firebase to get mobile
+        onValue(ref(db, 'users/' + rfid), async (snapshot) => {
+            const user = snapshot.val();
+            if (!user) return alert("RFID NOT FOUND");
+
+            const challanNo = "MG" + Date.now().toString().slice(-8);
+            const fineMsg = `Kolkata Metro Railway Challan No: ${challanNo} Station: Central Metro Offence: Crossing platform safety line Penalty: ₹${amount} NOTICE: Please pay the fine to the Station Master within 7 days, otherwise legal action will be taken under Metro Railway safety regulations.`;
+
+            // Update violation status in Firebase
+            if (currentActiveViolationKey) {
+                await update(ref(db, 'violations/' + currentActiveViolationKey), {
+                    status: "FINED",
+                    fineAmount: amount,
+                    challanNo: challanNo
+                });
+                
+                await sendKolkataSMS(user.mobile, fineMsg);
+                alert("CHALLAN ISSUED & SMS SENT");
+                closeJudgement();
+            }
+        }, { onlyOnce: true });
     }
-}
+       window.markAsPaid = async function(violationKey) {
+        if(confirm("Confirm Payment? This record will be deleted from the server.")) {
+            await remove(ref(db, 'violations/' + violationKey));
+            alert("PAYMENT RECEIVED. RECORD DELETED.");
+        }
+    }
+       onValue(ref(db, 'violations'), (snapshot) => {
+        const data = snapshot.val();
+        renderChallans(data);
+    });
 
 // Optimized Gateway Function
 async function sendFastSMS(mobileNumber, fullChallanBody) {
@@ -469,14 +510,14 @@ function closeJudgement() {
         ` : ''}
     </div>
     
-    ${isAlreadyFined ? 
-        `<button class="action-btn" style="background:#00e676; color:black; cursor:not-allowed; opacity:0.8;" disabled>
-            PAID TO MASTER (₹${viol.fineAmount})
-         </button>` : 
-        `<button class="action-btn" onclick="judgeViolation('${key}')">
-            ISSUE LEGAL NOTICE
-         </button>`
-    }
+   ${isAlreadyFined ? 
+    `<button class="action-btn" style="background:#ff9800; color:black;" onclick="markAsPaid('${key}')">
+        COLLECT ₹${viol.fineAmount} & CLEAR
+     </button>` : 
+    `<button class="action-btn" onclick="judgeViolation('${key}')">
+        ISSUE LEGAL NOTICE
+     </button>`
+}
     
     <button class="delete-btn" style="background:#21262d; color:#8b949e; margin-top:8px; border:1px solid var(--border);" 
             onclick="deleteRecord('${key}')">REMOVE LOG</button>
@@ -683,56 +724,30 @@ function lookupUser() {
 }
 
 // 2. Updated Save Function to handle Phone Number Updates
-function saveRegistration() {
-    const nameInput = document.getElementById('reg-name');
-    const mobileInput = document.getElementById('reg-mobile');
-    const name = nameInput.value.trim();
-    const mobile = mobileInput.value.trim();
+window.saveRegistration = async function() {
+        const name = document.getElementById('reg-name').value.trim();
+        const mobile = document.getElementById('reg-mobile').value.trim();
+        
+        if (!name || mobile.length !== 10) return alert("Enter Name & 10-digit Mobile");
 
-    if (!name || mobile.length !== 10) {
-        alert("Enter a valid Name and 10-digit Mobile Number.");
-        return;
-    }
-
-    let existingKey = null;
-    // Search for existing user by name
-    Object.keys(localStorage).forEach(key => {
-        if (key.startsWith("METRO-")) {
-            const u = JSON.parse(localStorage.getItem(key));
-            if (u.name.toLowerCase() === name.toLowerCase()) existingKey = key;
-        }
-    });
-
-    if (existingKey) {
-        // --- PHONE NUMBER UPDATE ONLY ---
-        const userData = JSON.parse(localStorage.getItem(existingKey));
-        userData.mobile = mobile; 
-        localStorage.setItem(existingKey, JSON.stringify(userData));
-        alert(`PHONE UPDATED: ${name} -> ${mobile}`);
-    } else {
-        // --- NEW USER REGISTRATION ---
-        if (capturedDescriptors.length < 4) {
-            alert("New users require 4-angle face capture first.");
-            return;
-        }
-        const rfid = "METRO-" + Math.random().toString(36).substr(2, 6).toUpperCase();
+        const rfid = "METRO-" + Math.floor(1000 + Math.random() * 9000);
+        
         const userData = {
             rfid, name, mobile,
             descriptors: capturedDescriptors,
             regImages: tempCapturedImages
         };
-        localStorage.setItem(rfid, JSON.stringify(userData));
-        alert("NEW USER SAVED: " + rfid);
-    }
 
-    // Reset UI and Clear Capture State
-    nameInput.value = "";
-    mobileInput.value = "";
-    capturedDescriptors = [];
-    tempCapturedImages = [];
-    document.querySelectorAll('.angle-box').forEach(b => b.className = 'angle-box');
-    renderUserList();
-}
+        // Save to Firebase
+        await set(ref(db, 'users/' + rfid), userData);
+        
+        // Single Line SMS
+        const regMsg = `KOLKATA METRO: Welcome ${name.toUpperCase()}. Your Safety RFID is ${rfid}. Use this for identification at all metro stations.`;
+        await sendKolkataSMS(mobile, regMsg);
+
+        alert("REGISTRATION SUCCESS: RFID sent to " + mobile);
+        location.reload(); // Refresh to clear state
+    }
 
     function renderUserList() {
         const container = document.getElementById('db-items');

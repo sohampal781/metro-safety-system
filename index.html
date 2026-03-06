@@ -451,30 +451,30 @@ window.fetchRegistrationData = function() {
     const display = document.getElementById('registration-display');
     const infoDisplay = document.getElementById('reg-user-info');
     
-    if (!inputRfid) return alert("Enter RFID first");
+    if (!inputRfid) return alert("ENTER RFID");
 
-    // Lookup user in Firebase
     onValue(ref(db, 'users/' + inputRfid), (snapshot) => {
         const user = snapshot.val();
         if (!user) {
-            alert("RFID NOT FOUND ON SERVER");
+            alert("RFID NOT FOUND");
             display.style.display = 'none';
             return;
         }
 
         display.style.display = 'block';
         
-        // Check if a registration image exists in the database
+        // Retrieve the first registration angle from the cloud database
         const regPhotoHtml = user.tempImages ? 
-            `<img src="${user.tempImages[0]}" style="width:100%; border-radius:8px; margin-bottom:10px; border:2px solid var(--accent);">` : 
-            `<div style="padding:10px; background:#333; color:#999; text-align:center; margin-bottom:10px;">NO REGISTRATION PHOTO</div>`;
+            `<img src="${user.tempImages[0]}" style="width:100%; border-radius:10px; border:2px solid var(--accent); margin-bottom:10px;">` : 
+            `<div style="padding:20px; background:#111; color:#555; text-align:center;">PHOTO DATA NOT FOUND</div>`;
 
         infoDisplay.innerHTML = `
+            <label style="color:var(--accent); font-size:11px; display:block; margin-bottom:5px;">ENROLLMENT RECORD PHOTO</label>
             ${regPhotoHtml}
-            <div style="background:rgba(0,0,0,0.3); padding:10px; border-radius:5px;">
-                <h3 style="color:white; margin:0;">${user.name.toUpperCase()}</h3>
-                <p style="color:var(--accent); margin:5px 0; font-weight:bold;">MOB: ${user.mobile}</p>
-                <small style="color:#8b949e;">REGISTERED ON: ${new Date(user.lastUpdated).toLocaleDateString()}</small>
+            <div style="background:rgba(255,255,255,0.05); padding:12px; border-radius:8px;">
+                <h3 style="color:white; margin:0; letter-spacing:1px;">${user.name.toUpperCase()}</h3>
+                <p style="color:var(--accent); margin:5px 0; font-family:monospace;">RFID: ${user.rfid}</p>
+                <p style="color:var(--success); margin:0;">MOBILE: ${user.mobile}</p>
             </div>
         `;
     }, { onlyOnce: true });
@@ -497,24 +497,25 @@ window.finalizeFine = async function() {
 
         const challanNo = "KLK" + Date.now().toString().slice(-6);
 
-        // STICKY SINGLE LINE: No names, no enters, no special characters
-        const singleLineMsg = `KOLKATA METRO RAILWAY: CHALLAN NO: ${challanNo}. FINE: RS ${amount}. ACTION: PAY AT STATION MASTER DESK IMMEDIATELY.`;
+        // CLEAN SINGLE LINE FORMAT: Guarantees delivery and single unit charge (₹5)
+        const singleLineMsg = `KOLKATA METRO RAILWAY: CHALLAN NO ${challanNo}. FINE RS ${amount}. ACTION: PAY AT STATION MASTER DESK IMMEDIATELY.`;
 
         try {
+            // Update violation status in Firebase
             await update(ref(db, 'violations/' + window.currentActiveViolationKey), {
                 status: "FINED",
                 fineAmount: amount,
                 challanNo: challanNo
             });
             
-            // Log length for cost monitoring (Target < 160)
-            console.log("SMS Length:", singleLineMsg.length); 
+            // Send to gateway
+            console.log("Sending clean message (Chars: " + singleLineMsg.length + ")");
             const success = await window.sendKolkataSMS(user.mobile, singleLineMsg);
             
             if(success) {
-                alert("CHALLAN ISSUED (1 SMS UNIT CHARGED)");
+                alert("MESSAGE SENT SUCCESSFULLY");
             } else {
-                alert("SMS FAILED");
+                alert("GATEWAY ACCEPTED BUT DELIVERY FAILED");
             }
             
             window.closeJudgement();

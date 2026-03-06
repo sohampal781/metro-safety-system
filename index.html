@@ -526,6 +526,7 @@ window.fetchRegistrationData = function() {
     console.log("System Data Restored from LocalStorage");
 }
 // CONTROL F: FINALIZE FINE (STRICT 160 CHAR LIMIT / SINGLE LINE)
+// CONTROL F: FINALIZE FINE (PURE NUMERIC 6-DIGIT ID FOR MAXIMUM SPACE)
 window.finalizeFine = async function() {
     const display = document.getElementById('registration-display');
     const rfid = document.getElementById('manual-rfid-input').value.trim();
@@ -534,31 +535,27 @@ window.finalizeFine = async function() {
     const latestMobile = display.dataset.latestMobile;
     const passengerName = display.dataset.passengerName;
 
-    // Default station and date info
-    const station = "Central Metro"; 
-    const datePart = new Date().toISOString().slice(0,10).replace(/-/g, "");
-    const challanNo = "MG" + datePart + Math.floor(1000 + Math.random() * 9000);
-
-    // Prompts for flexibility
+    // Prompts
     const amount = prompt("ENTER FINE AMOUNT (₹):", "1000");
-    const offence = prompt("ENTER OFFENCE (e.g. Crossing platform safety line):", "Crossing platform safety line");
+    const offence = prompt("ENTER OFFENCE (Short):", "Crossing Safety Line");
+    const station = "Central"; 
     
     if (!amount || isNaN(amount) || !latestMobile) return alert("Invalid Data");
 
-    // THE FULL BRANDED TEMPLATE
-    // Note: This often exceeds 160 chars depending on the 'offence' length.
-    let msg = `KOLKATA METRO RAILWAY: CHN ${challanNo}. STN: ${station}. OFFENCE: ${offence}. FINE: RS ${amount}. PAY TO STATION MASTER WITHIN 7 DAYS TO AVOID LEGAL ACTION.`;
+    // PURE NUMERIC 6-DIGIT CHALLAN ID (Ex: 482930)
+    const challanNo = Math.floor(100000 + Math.random() * 900000);
+
+    // THE 1-LINE COMPACT TEMPLATE
+    let msg = `KOLKATA METRO: CHN ${challanNo}. STN: ${station}. OFFENCE: ${offence}. FINE: RS ${amount}. PAY TO STATION MASTER WITHIN 7 DAYS TO AVOID LEGAL ACTION.`;
     
-    // CLEANER: Removes 'Enters' but keeps the full text
+    // SAFETY CLEANER: Strips all "Enter" keys and collapses extra spaces into one
     msg = msg.replace(/(\r\n|\n|\r)/gm, " ").replace(/\s+/g, " ").trim();
 
-    // Log length for your reference
-    console.log("Current SMS Length: " + msg.length);
-    
-    // Alert if it's over the single-credit limit, but proceed anyway
+    // Final check for the 160-character boundary (₹5 limit)
+    console.log("Final SMS Length: " + msg.length);
     if(msg.length > 160) {
-        const proceed = confirm(`NOTICE: Message is ${msg.length} characters (over 160). This will cost 2+ SMS credits. Proceed?`);
-        if(!proceed) return;
+        alert("CRITICAL: Message is " + msg.length + " chars. Carrier will charge ₹35+. Please shorten the Offence text.");
+        return; 
     }
 
     try {
@@ -568,7 +565,7 @@ window.finalizeFine = async function() {
             status: "FINED",
             fineAmount: amount,
             offence: offence,
-            challanNo: challanNo,
+            challanNo: challanNo, // Saved as pure numeric
             station: station,
             linkedMobile: latestMobile
         });
@@ -576,9 +573,9 @@ window.finalizeFine = async function() {
         const success = await window.sendKolkataSMS(latestMobile, msg);
         
         if(success) {
-            alert("SUCCESS: Message Sent (" + msg.length + " chars)");
+            alert("SUCCESS: 1-Credit SMS Sent (" + msg.length + " chars)");
         } else {
-            alert("Gateway Error. Check Fast2SMS API balance.");
+            alert("Gateway Error. Check balance.");
         }
         window.closeJudgement();
     } catch (err) {

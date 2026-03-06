@@ -411,30 +411,29 @@ window.commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT",
     if(mode === 'register') window.renderUserList();
 };
 window.judgeViolation = async function(key) {
-    // 1. Store the active key for the finalizeFine function
-    window.currentActiveViolationKey = key; 
+    window.currentActiveViolationKey = key; // Store for the finalizeFine step
     
-    // 2. Retrieve data from LocalStorage (or change to Firebase ref if synced)
-    const violData = JSON.parse(localStorage.getItem(key));
-    if(!violData) return;
+    // Fetch violation data from Firebase
+    onValue(ref(db, 'violations/' + key), (snapshot) => {
+        const violData = snapshot.val();
+        if(!violData) return;
 
-    // 3. Populate and show the modal
-    document.getElementById('judgement-modal').style.display = 'block';
-    document.getElementById('modal-violation-img').src = violData.img;
-    
-    const rfidInput = document.getElementById('manual-rfid-input');
-    const aiPred = document.getElementById('ai-prediction');
+        document.getElementById('judgement-modal').style.display = 'block';
+        document.getElementById('modal-violation-img').src = violData.img;
+        
+        const rfidInput = document.getElementById('manual-rfid-input');
+        const aiPred = document.getElementById('ai-prediction');
 
-    // 4. Auto-fill if Face-API already identified the user
-    if (violData.linkedRfid && violData.linkedRfid !== "UNKNOWN_ID") {
-        rfidInput.value = violData.linkedRfid;
-        aiPred.innerHTML = `<span style="color:var(--success)">USER IDENTIFIED: ${violData.linkedRfid}</span>`;
-        // Auto-fetch details to show name/mobile
-        if(window.fetchRegistrationData) window.fetchRegistrationData(); 
-    } else {
-        rfidInput.value = "";
-        aiPred.innerHTML = `<span style="color:var(--danger)">MANUAL VERIFICATION REQUIRED</span>`;
-    }
+        // Auto-fill if the system identified them during the breach
+        if (violData.linkedRfid && violData.linkedRfid !== "UNKNOWN_ID") {
+            rfidInput.value = violData.linkedRfid;
+            aiPred.innerHTML = `<span style="color:var(--success)">AI MATCH: ${violData.linkedRfid}</span>`;
+            window.fetchRegistrationData(); // Auto-load their profile
+        } else {
+            rfidInput.value = "";
+            aiPred.innerHTML = `<span style="color:var(--danger)">MANUAL ID REQUIRED</span>`;
+        }
+    }, { onlyOnce: true });
 };
 
 // Also ensure closeJudgement is accessible
@@ -445,45 +444,24 @@ window.closeJudgement = function() {
 window.fetchRegistrationData = function() {
     const inputRfid = document.getElementById('manual-rfid-input').value.trim();
     const display = document.getElementById('registration-display');
-    const grid = document.getElementById('reg-photos-grid');
     const infoDisplay = document.getElementById('reg-user-info');
     
-    if (!inputRfid) {
-        alert("Enter an RFID first.");
-        return;
-    }
+    if (!inputRfid) return alert("Enter RFID first");
 
-    // Connect to the Firebase "users" node on the server
-    const userRef = ref(db, 'users/' + inputRfid);
-
-    onValue(userRef, (snapshot) => {
+    // Lookup user in Firebase
+    onValue(ref(db, 'users/' + inputRfid), (snapshot) => {
         const user = snapshot.val();
-        
         if (!user) {
             alert("RFID NOT FOUND ON SERVER");
-            if (display) display.style.display = 'none';
+            display.style.display = 'none';
             return;
         }
 
-        // Show the verification section
-        if (display) display.style.display = 'block';
-        
-        // Show registration photo from Firebase Cloud
-        if (grid) {
-            grid.innerHTML = `
-                <div style="text-align:center; grid-column: 1 / -1;">
-                    <label style="color:var(--success); font-size:10px;">MATCHED CLOUD PROFILE</label>
-                    <img src="${user.regImages[0]}" style="width:100%; max-width:200px; border:3px solid var(--success); border-radius:10px; margin-top:5px;">
-                </div>
-            `;
-        }
-
-        if (infoDisplay) {
-            infoDisplay.innerHTML = `
-                <h3 style="margin:10px 0 5px 0; color:white;">${user.name.toUpperCase()}</h3>
-                <p style="color:var(--accent); margin:0;">MOB: ${user.mobile}</p>
-            `;
-        }
+        display.style.display = 'block';
+        infoDisplay.innerHTML = `
+            <h3 style="color:white; margin:0;">${user.name.toUpperCase()}</h3>
+            <p style="color:var(--accent); margin:5px 0;">MOB: ${user.mobile}</p>
+        `;
     }, { onlyOnce: true });
 };
         function loadDashboardData() {
@@ -493,33 +471,30 @@ window.fetchRegistrationData = function() {
     console.log("System Data Restored from LocalStorage");
 }
 window.finalizeFine = async function() {
-        const rfid = document.getElementById('manual-rfid-input').value.trim();
-        const amount = prompt("ENTER FINE AMOUNT (₹):", "1000"); // Master sets amount
+    const rfid = document.getElementById('manual-rfid-input').value.trim();
+    const amount = prompt("ENTER FINE AMOUNT (₹):", "500");
+    
+    if (!amount || isNaN(amount)) return;
+
+    onValue(ref(db, 'users/' + rfid), async (snapshot) => {
+        const user = snapshot.val();
+        if (!user) return alert("Verify user first!");
+
+        const challanNo = "KLK" + Date.now().toString().slice(-6);
+        const fineMsg = `METRO GUARD: Challan ${challanNo} issued to ${user.name}. Fine: ₹${amount} for Safety Line Violation. Please pay at Station Master's desk.`;
+
+        // Update violation status in Firebase
+        await update(ref(db, 'violations/' + window.currentActiveViolationKey), {
+            status: "FINED",
+            fineAmount: amount,
+            challanNo: challanNo
+        });
         
-        if (!amount || isNaN(amount)) return alert("Invalid Amount");
-
-        // Find user in Firebase to get mobile
-        onValue(ref(db, 'users/' + rfid), async (snapshot) => {
-            const user = snapshot.val();
-            if (!user) return alert("RFID NOT FOUND");
-
-            const challanNo = "MG" + Date.now().toString().slice(-8);
-            const fineMsg = `Kolkata Metro Railway Challan No: ${challanNo} Station: Central Metro Offence: Crossing platform safety line Penalty: ₹${amount} NOTICE: Please pay the fine to the Station Master within 7 days, otherwise legal action will be taken under Metro Railway safety regulations.`;
-
-            // Update violation status in Firebase
-            if (currentActiveViolationKey) {
-                await update(ref(db, 'violations/' + currentActiveViolationKey), {
-                    status: "FINED",
-                    fineAmount: amount,
-                    challanNo: challanNo
-                });
-                
-                await sendKolkataSMS(user.mobile, fineMsg);
-                alert("CHALLAN ISSUED & SMS SENT");
-                closeJudgement();
-            }
-        }, { onlyOnce: true });
-    }
+        await window.sendKolkataSMS(user.mobile, fineMsg);
+        alert("CHALLAN ISSUED & SMS SENT");
+        window.closeJudgement();
+    }, { onlyOnce: true });
+};
        window.markAsPaid = async function(violationKey) {
         if(confirm("Confirm Payment? This record will be deleted from the server.")) {
             await remove(ref(db, 'violations/' + violationKey));
@@ -1017,43 +992,30 @@ async function init() {
    
     init();
 </script>
-    <div id="judgement-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:9999; padding:40px; box-sizing:border-box; overflow-y:auto;">
-    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid var(--accent); padding-bottom:10px;">
-        <h2 style="color:var(--accent); margin:0;">INCIDENT VERIFICATION TERMINAL</h2>
-        <button onclick="closeJudgement()" style="background:var(--danger); color:white; border:none; padding:10px 20px; border-radius:5px; cursor:pointer; font-weight:bold;">EXIT TERMINAL</button>
+   <div id="judgement-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:9999; padding:40px; box-sizing:border-box; overflow-y:auto;">
+    <div style="display:flex; justify-content:space-between; margin-bottom:20px;">
+        <h2 style="color:var(--accent);">INCIDENT VERIFICATION</h2>
+        <button onclick="window.closeJudgement()" style="background:var(--danger); border:none; color:white; padding:10px; cursor:pointer;">EXIT</button>
     </div>
 
-    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:30px; margin-top:20px;">
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:30px;">
         <div class="control-group">
-            <h3 style="color:var(--danger)">EVIDENCE FOOTAGE</h3>
-            <img id="modal-violation-img" style="width:100%; border:2px solid var(--danger); border-radius:10px;">
-            <div style="background:#000; padding:10px; margin-top:10px; border-radius:5px; text-align:center;">
-                <p id="incident-time" style="font-family:monospace; color:#aaa;"></p>
-                <div style="display:flex; justify-content:center; gap:10px;">
-                    <button class="btn" style="width:auto; font-size:10px;">⏪ -10s FOOTAGE</button>
-                    <button class="btn" style="width:auto; font-size:10px;">⏩ +10s FOOTAGE</button>
-                </div>
-            </div>
-            <div id="ai-prediction" style="margin-top:20px; font-size:24px; text-align:center; font-weight:bold;"></div>
+            <img id="modal-violation-img" style="width:100%; border-radius:10px;">
+            <div id="ai-prediction" style="margin-top:15px; text-align:center; font-weight:bold;"></div>
         </div>
-        <div class="control-group">
-    <h3 style="color:var(--accent)">REGISTRATION DATA MATCHING</h3>
-    
-    <div style="display:flex; gap:10px; margin-bottom:20px;">
-        <input type="text" id="manual-rfid-input" placeholder="ENTER DETECTED RFID NUMBER" style="flex:1;">
-        <button class="btn-main" style="width:120px; background:var(--accent); color:black; border:none; border-radius:4px; cursor:pointer;" 
-                onclick="window.fetchRegistrationData()">VERIFY ID</button>
-    </div>
 
-    <div id="registration-display" style="display:none;">
-        <p id="reg-user-info" style="font-weight:bold; color:var(--success);"></p>
-        <div id="reg-photos-grid" style="display:grid; grid-template-columns:1fr; gap:10px;">
+        <div class="control-group">
+            <label>VERIFY PASSENGER RFID</label>
+            <div style="display:flex; gap:10px; margin-bottom:20px;">
+                <input type="text" id="manual-rfid-input" placeholder="RFID NUMBER">
+                <button class="action-btn" style="width:100px; margin:0;" onclick="window.fetchRegistrationData()">VERIFY</button>
             </div>
-        <button class="btn-main" style="margin-top:20px; background:var(--success); color:black; border:none; border-radius:4px; cursor:pointer; font-weight:bold;" 
-                onclick="window.finalizeFine()">CONFIRM & GENERATE CHALLAN</button>
-    </div>
-</div>
-        
+
+            <div id="registration-display" style="display:none; background:rgba(255,255,255,0.05); padding:20px; border-radius:8px;">
+                <div id="reg-user-info"></div>
+                <button class="action-btn" style="background:var(--success); color:black;" onclick="window.finalizeFine()">CONFIRM & GENERATE CHALLAN</button>
+            </div>
+        </div>
     </div>
 </div>
 </body>

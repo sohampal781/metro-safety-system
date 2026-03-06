@@ -389,8 +389,6 @@ window.closeJudgement = function() {
     document.getElementById('judgement-modal').style.display = 'none';
     document.getElementById('registration-display').style.display = 'none';
 };
-       import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js";
-
 window.fetchRegistrationData = function() {
     const inputRfid = document.getElementById('manual-rfid-input').value.trim();
     const display = document.getElementById('registration-display');
@@ -765,42 +763,32 @@ function lookupUser() {
 window.saveRegistration = async function() {
     const name = document.getElementById('reg-name').value.trim();
     const mobile = document.getElementById('reg-mobile').value.trim();
-    const regVideo = document.getElementById('reg-video');
     
-    // Check if the window-scoped arrays actually have data
     if (!name || mobile.length !== 10) return alert("Enter Name & 10-digit Mobile");
-    if (window.capturedDescriptors.length < 4) return alert("Complete all 4 face scans first!");
 
-    const rfid = "METRO-" + Math.floor(1000 + Math.random() * 9000);
+    const rfid = "METRO-" + Math.floor(1000 + Math.random() * 9000); // RFID Generation
     
     try {
-        // Save using window-scoped data
+        // Save to Firebase Cloud
         await set(ref(db, 'users/' + rfid), {
-            rfid: rfid,
-            name: name,
-            mobile: mobile,
+            rfid, name, mobile,
             descriptors: window.capturedDescriptors,
-            regImages: window.tempCapturedImages,
-            timestamp: Date.now()
+            regImages: window.tempCapturedImages
         });
 
-        // 1. STOP THE REGISTRATION CAMERA (Releases hardware lock)
-        if (regVideo.srcObject) {
-            regVideo.srcObject.getTracks().forEach(track => track.stop());
-            regVideo.srcObject = null;
-        }
-
-        // 2. Send the RFID via SMS
+        // TRIGGER SMS IMMEDIATELY
         const regMsg = `KOLKATA METRO: Welcome ${name.toUpperCase()}. Your Safety RFID is ${rfid}. Use this for identification at all metro stations.`;
-        await window.sendKolkataSMS(mobile, regMsg);
+        const success = await window.sendKolkataSMS(mobile, regMsg);
 
-        alert("REGISTRATION SUCCESS: RFID sent to " + mobile);
+        if (success) {
+            alert(`SUCCESS: RFID ${rfid} sent to ${mobile}`);
+        } else {
+            alert(`Registration saved, but SMS failed. Check Fast2SMS balance.`);
+        }
         
-        // 3. UI Cleanup
-        document.getElementById('save-reg-btn').style.display = 'none';
-        window.switchUI('monitor'); 
+        location.reload(); 
     } catch (e) {
-        alert("Cloud Sync Error: " + e.message);
+        alert("Cloud Error: " + e.message);
     }
 };
     window.renderUserList = function() {

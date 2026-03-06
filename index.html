@@ -418,27 +418,38 @@ window.capturedDescriptors = [];
 window.tempCapturedImages = [];
 window.commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
    window.switchUI = (mode) => {
-    // 1. Hide/Show main layout containers
+    // 1. Core Visibility: Hide/Show main layout containers
     document.getElementById('monitor-ui').style.display = mode === 'monitor' ? 'block' : 'none';
     document.getElementById('register-ui').style.display = mode === 'register' ? 'block' : 'none';
     document.getElementById('challan-overlay').style.display = mode === 'challan' ? 'block' : 'none';
     
-    // 2. Full-Screen Innovation: Hide the background monitoring viewport during registration
+    // 2. Full-Screen Registration: Hide the video viewport to focus on enrollment/database
     const viewport = document.getElementById('viewport');
+    const sidebar = document.getElementById('sidebar');
+    
     if (mode === 'register') {
         viewport.style.display = 'none';
-        document.getElementById('sidebar').style.width = '100%'; // Expand sidebar to full screen
+        sidebar.style.width = '100%'; // Expand to full screen
+        
+        // --- TRIGGER DATABASE SYNC ---
+        // This ensures the RFID list and delete buttons load every time
+        window.renderUserList(); 
     } else {
         viewport.style.display = 'flex';
-        document.getElementById('sidebar').style.width = '380px'; // Return to normal
+        sidebar.style.width = '380px'; // Return to standard width
     }
 
-    // 3. Tab active states
+    // 3. Tab active states (Visual highlights)
     document.getElementById('tab-mon').classList.toggle('active', mode === 'monitor');
     document.getElementById('tab-reg').classList.toggle('active', mode === 'register');
     document.getElementById('tab-cha').classList.toggle('active', mode === 'challan');
     
-    if(mode === 'register') window.renderUserList();
+    // 4. Portal Auto-Refresh: Refresh violations when entering the Portal
+    if (mode === 'challan') {
+        window.renderChallans();
+    }
+    
+    console.log("System Mode Switched to: " + mode.toUpperCase());
 };
 window.judgeViolation = async function(key) {
     window.currentActiveViolationKey = key; // Store for the finalizeFine step

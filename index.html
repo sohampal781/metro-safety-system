@@ -288,34 +288,62 @@
         <div id="slider-container"></div>
         <button id="start-btn">LOCK & START MONITORING</button>
     </div>
-        <div id="register-ui" style="display:none; padding: 20px; background: #0a0b10; height: 90vh; overflow-y: auto;">
-    <div class="registration-header" style="font-size: 18px; color: var(--accent); margin-bottom: 20px; text-align:center;">
+        <div id="register-ui" style="display:none; padding: 20px; background: #0a0b10; height: 100vh; overflow-y: scroll; box-sizing: border-box; padding-bottom: 100px;">
+    
+    <div class="registration-header" style="font-size: 18px; color: var(--accent); margin-bottom: 20px; text-align:center; border-bottom: 1px solid var(--accent); padding-bottom:10px;">
         KOLKATA METRO | ENROLLMENT & UPDATE TERMINAL
     </div>
 
-    <div class="control-group" style="border-top: 1px dashed var(--accent); margin-top: 20px; padding-top: 20px;">
-        <label>UPDATE EXISTING RECORDS</label>
-        <div style="display: flex; gap: 5px; margin-bottom: 10px;">
-            <input type="text" id="update-search-name" placeholder="SEARCH NAME TO UPDATE">
-            <button onclick="window.lookupUserForUpdate()" style="width: 100px; background: #30363d;">SEARCH</button>
-        </div>
+    <div style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 12px; margin-bottom: 30px; border: 1px solid #30363d;">
+        <label style="color:var(--success); font-weight:bold; font-size: 14px; margin-bottom: 15px;">[ MODE: NEW REGISTRATION ]</label>
         
-        <div id="update-fields" style="display:none; background: rgba(0,210,255,0.05); padding: 15px; border-radius: 8px;">
-            <label>NEW MOBILE NUMBER</label>
-            <input type="text" id="update-mobile" placeholder="ENTER NEW NUMBER">
-            
-            <div style="display:flex; gap:10px; margin-top:10px;">
-                <button class="action-btn" onclick="window.saveUpdate(false)" style="background:#444; color:white;">SAVE (NO SMS)</button>
-                <button class="action-btn" onclick="window.saveUpdate(true)" style="background:var(--success); color:black;">SAVE & SEND SMS</button>
+        <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+            <div style="width: 320px;">
+                <div style="position: relative; width: 100%; height: 200px; background: #000; border-radius: 8px; overflow: hidden; border: 1px solid var(--border);">
+                    <video id="reg-video" autoplay muted playsinline style="width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1);"></video>
+                </div>
+                <div class="angle-status" style="margin-top: 10px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;">
+                    <div id="a0" class="angle-box">FRONT</div>
+                    <div id="a1" class="angle-box">LEFT</div>
+                    <div id="a2" class="angle-box">RIGHT</div>
+                    <div id="a3" class="angle-box">UP/DN</div>
+                </div>
+            </div>
+
+            <div style="flex-grow: 1; min-width: 250px;">
+                <input type="text" id="reg-name" placeholder="PASSENGER NAME" style="margin-bottom: 10px;">
+                <input type="text" id="reg-mobile" placeholder="MOBILE NUMBER" style="margin-bottom: 10px;">
+                <button class="action-btn" onclick="window.startSecureCapture()">START BIOMETRIC SCAN</button>
+                <button class="action-btn" id="save-reg-btn" onclick="window.saveRegistration()" style="background: var(--success); display: none;">FINALIZE ENROLLMENT</button>
+                <button id="send-reg-sms-btn" class="action-btn" style="background: #e1b12c; color: black; display: none;" onclick="window.sendManualRegistrationSMS()">SEND WELCOME SMS</button>
             </div>
         </div>
     </div>
-    
-    <button id="send-reg-sms-btn" class="action-btn" 
-            style="background: #e1b12c; color: black; display: none; height: 50px; margin-top: 10px;" 
-            onclick="window.sendManualRegistrationSMS()">
-        SEND REGISTRATION RECEIPT (SMS)
-    </button>
+
+    <div style="background: rgba(0,210,255,0.05); padding: 15px; border-radius: 12px; border: 1px solid var(--accent);">
+        <label style="color:var(--accent); font-weight:bold; font-size: 14px; margin-bottom: 15px;">[ MODE: UPDATE / FORGOT RFID ]</label>
+        
+        <div style="display: flex; gap: 5px; margin-bottom: 15px;">
+            <input type="text" id="update-search-input" placeholder="ENTER RFID OR MOBILE NUMBER">
+            <button onclick="window.searchUserForUpdate()" style="width: 120px; background: var(--accent); color: black;">FETCH DATA</button>
+        </div>
+
+        <div id="update-form" style="display:none; border-top: 1px solid #30363d; padding-top: 15px;">
+            <div class="control-group">
+                <label>MODIFY NAME</label>
+                <input type="text" id="edit-name">
+            </div>
+            <div class="control-group">
+                <label>MODIFY MOBILE</label>
+                <input type="text" id="edit-mobile">
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
+                <button class="action-btn" onclick="window.finalizeUpdate(false)" style="background: #444; color: white;">UPDATE ONLY</button>
+                <button class="action-btn" onclick="window.finalizeUpdate(true)" style="background: var(--success); color: black;">UPDATE & SMS</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <style>
@@ -1070,7 +1098,76 @@ window.deleteUser = async (rfid) => {
         console.error("Model Loading Failed: ", e);
     }
 }
+// CONTROL F: SEARCH BY RFID OR PHONE
+window.searchUserForUpdate = function() {
+    const input = document.getElementById('update-search-input').value.trim();
+    if (!input) return alert("Please enter RFID or Mobile Number");
 
+    onValue(ref(db, 'users'), (snapshot) => {
+        const users = snapshot.val();
+        let foundUser = null;
+        let foundRfid = null;
+
+        if (users) {
+            // Check if input is a direct RFID (Key)
+            if (users[input]) {
+                foundUser = users[input];
+                foundRfid = input;
+            } else {
+                // Otherwise, search through mobile numbers
+                Object.keys(users).forEach(rfid => {
+                    if (users[rfid].mobile === input) {
+                        foundUser = users[rfid];
+                        foundRfid = rfid;
+                    }
+                });
+            }
+        }
+
+        if (foundUser) {
+            document.getElementById('update-form').style.display = 'block';
+            document.getElementById('update-form').dataset.currentRfid = foundRfid;
+            document.getElementById('edit-name').value = foundUser.name;
+            document.getElementById('edit-mobile').value = foundUser.mobile;
+            alert("Record Found: " + foundUser.name + " (" + foundRfid + ")");
+        } else {
+            alert("No passenger found with those details.");
+        }
+    }, { onlyOnce: true });
+};
+
+// CONTROL F: FINALIZE UPDATE (SMS OPTIONAL)
+window.finalizeUpdate = async function(shouldSendSms) {
+    const rfid = document.getElementById('update-form').dataset.currentRfid;
+    const newName = document.getElementById('edit-name').value.trim();
+    const newMobile = document.getElementById('edit-mobile').value.trim();
+
+    if (!newName || newMobile.length < 10) return alert("Please enter valid name and mobile");
+
+    try {
+        const { update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+        
+        await update(dbRef(db, 'users/' + rfid), {
+            name: newName,
+            mobile: newMobile,
+            lastUpdate: new Date().toLocaleString()
+        });
+
+        if (shouldSendSms) {
+            let msg = `METRO GUARD: Your profile for RFID ${rfid} has been updated. Secure travel initiated!`;
+            msg = msg.replace(/(\r\n|\n|\r)/gm, " "); // Single line enforcement
+            await window.sendKolkataSMS(newMobile, msg);
+            alert("Database Updated & SMS Sent.");
+        } else {
+            alert("Database Updated (No SMS Sent).");
+        }
+
+        document.getElementById('update-form').style.display = 'none';
+        window.renderUserList();
+    } catch (e) {
+        alert("Update Failed: " + e.message);
+    }
+};
 // Update your init function
 async function init() {
     await loadFaceModels(); // Add this line

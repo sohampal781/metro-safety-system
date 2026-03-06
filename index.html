@@ -288,48 +288,34 @@
         <div id="slider-container"></div>
         <button id="start-btn">LOCK & START MONITORING</button>
     </div>
-        <div id="register-ui" style="display:none; padding: 20px; background: #0a0b10;">
+        <div id="register-ui" style="display:none; padding: 20px; background: #0a0b10; height: 90vh; overflow-y: auto;">
     <div class="registration-header" style="font-size: 18px; color: var(--accent); margin-bottom: 20px; text-align:center;">
-        KOLKATA METRO | ENROLLMENT TERMINAL
+        KOLKATA METRO | ENROLLMENT & UPDATE TERMINAL
     </div>
 
-    <div style="display: flex; gap: 20px; max-width: 900px; margin: 0 auto;">
+    <div class="control-group" style="border-top: 1px dashed var(--accent); margin-top: 20px; padding-top: 20px;">
+        <label>UPDATE EXISTING RECORDS</label>
+        <div style="display: flex; gap: 5px; margin-bottom: 10px;">
+            <input type="text" id="update-search-name" placeholder="SEARCH NAME TO UPDATE">
+            <button onclick="window.lookupUserForUpdate()" style="width: 100px; background: #30363d;">SEARCH</button>
+        </div>
         
-        <div style="width: 320px; flex-shrink: 0;">
-            <div style="position: relative; width: 100%; height: 240px; background: #000; border-radius: 12px; overflow: hidden; border: 2px solid var(--border);">
-                <video id="reg-video" autoplay muted playsinline style="width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1);"></video>
-                <div style="position: absolute; top: 0; left: 0; width: 100%; height: 2px; background: var(--accent); box-shadow: 0 0 15px var(--accent); animation: scan 2s infinite linear;"></div>
-            </div>
+        <div id="update-fields" style="display:none; background: rgba(0,210,255,0.05); padding: 15px; border-radius: 8px;">
+            <label>NEW MOBILE NUMBER</label>
+            <input type="text" id="update-mobile" placeholder="ENTER NEW NUMBER">
             
-            <div class="angle-status" style="margin-top: 15px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;">
-                <div id="a0" class="angle-box">FRONT</div>
-                <div id="a1" class="angle-box">LEFT</div>
-                <div id="a2" class="angle-box">RIGHT</div>
-                <div id="a3" class="angle-box">UP/DN</div>
+            <div style="display:flex; gap:10px; margin-top:10px;">
+                <button class="action-btn" onclick="window.saveUpdate(false)" style="background:#444; color:white;">SAVE (NO SMS)</button>
+                <button class="action-btn" onclick="window.saveUpdate(true)" style="background:var(--success); color:black;">SAVE & SEND SMS</button>
             </div>
-        </div>
-
-        <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 10px;">
-            <div class="control-group">
-                <label>Passenger Name</label>
-                <div style="display: flex; gap: 5px;">
-                    <input type="text" id="reg-name" placeholder="FULL NAME">
-                    <button onclick="window.lookupUser()" style="width: 80px; background: #30363d; font-size: 10px;">SEARCH</button>
-                </div>
-            </div>
-
-            <div class="control-group">
-                <label>Mobile Number</label>
-                <input type="text" id="reg-mobile" placeholder="10-DIGIT MOBILE">
-            </div>
-
-            <button class="action-btn" onclick="window.startSecureCapture()" style="height: 50px;">INITIATE BIOMETRIC SCAN</button>
-            <button class="action-btn" id="save-reg-btn" onclick="window.saveRegistration()" style="background: var(--success); display: none; height: 50px;">FINALIZE & UPLOAD TO CLOUD</button>
-            <button id="send-reg-sms-btn" class="action-btn" style="background: #e1b12c; color: black; display: none; height: 50px; margin-top: 10px;"onclick="window.sendManualRegistrationSMS()">SEND REGISTRATION RECEIPT (SMS)</button>
-            <div id="db-items" style="margin-top: 10px; height: 150px; overflow-y: auto; background: #0d1117; border-radius: 6px; padding: 5px; font-size: 12px;">
-                </div>
         </div>
     </div>
+    
+    <button id="send-reg-sms-btn" class="action-btn" 
+            style="background: #e1b12c; color: black; display: none; height: 50px; margin-top: 10px;" 
+            onclick="window.sendManualRegistrationSMS()">
+        SEND REGISTRATION RECEIPT (SMS)
+    </button>
 </div>
 
 <style>
@@ -867,6 +853,60 @@ window.saveRegistration = async function() {
 };
 
 // --- UPDATED MANUAL SMS (STRICT SINGLE LINE) ---
+// CONTROL F: LOOKUP FOR UPDATE
+window.lookupUserForUpdate = function() {
+    const searchName = document.getElementById('update-search-name').value.trim().toLowerCase();
+    if (!searchName) return alert("Enter name to search.");
+
+    onValue(ref(db, 'users'), (snapshot) => {
+        const users = snapshot.val();
+        let found = false;
+        if (users) {
+            Object.keys(users).forEach(rfid => {
+                if (users[rfid].name.toLowerCase() === searchName) {
+                    document.getElementById('update-mobile').value = users[rfid].mobile;
+                    document.getElementById('update-fields').dataset.activeRfid = rfid;
+                    document.getElementById('update-fields').style.display = 'block';
+                    alert("User Record Loaded. You can now update the mobile.");
+                    found = true;
+                }
+            });
+        }
+        if (!found) alert("No record found for " + searchName);
+    }, { onlyOnce: true });
+};
+
+// CONTROL F: SAVE UPDATE (SMS OPTIONAL)
+window.saveUpdate = async function(sendSms) {
+    const rfid = document.getElementById('update-fields').dataset.activeRfid;
+    const newMobile = document.getElementById('update-mobile').value.trim();
+    
+    if (newMobile.length !== 10) return alert("Enter a valid 10-digit number.");
+
+    try {
+        const { update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+        await update(dbRef(db, 'users/' + rfid), { 
+            mobile: newMobile,
+            lastUpdated: new Date().toISOString()
+        });
+
+        alert("Database Updated Successfully.");
+
+        if (sendSms) {
+            let msg = `METRO GUARD: Your contact info has been updated. New Mobile: ${newMobile}.`;
+            msg = msg.replace(/(\r\n|\n|\r)/gm, " "); 
+            const success = await window.sendKolkataSMS(newMobile, msg);
+            if(success) alert("Confirmation SMS Sent.");
+        }
+
+        document.getElementById('update-fields').style.display = 'none';
+        window.renderUserList();
+    } catch (e) {
+        alert("Update Failed: " + e.message);
+    }
+};
+
+// CONTROL F: MANUAL REGISTRATION SMS (STRICT SINGLE LINE)
 window.sendManualRegistrationSMS = async function() {
     const name = document.getElementById('reg-name').value.trim().toUpperCase();
     const mobile = document.getElementById('reg-mobile').value.trim();
@@ -877,20 +917,19 @@ window.sendManualRegistrationSMS = async function() {
     smsBtn.innerText = "SENDING...";
     smsBtn.disabled = true;
 
-    // Strict single line formatting
     let msg = `KOLKATA METRO GUARD: Enrollment Successful for ${name}. Stay safe behind the yellow line!`;
-    msg = msg.replace(/(\r\n|\n|\r)/gm, " "); // Removes any potential "Enter" keys
+    msg = msg.replace(/(\r\n|\n|\r)/gm, " "); 
 
     const success = await window.sendKolkataSMS(mobile, msg);
     
     if (success) {
         smsBtn.innerText = "SMS SENT SUCCESSFULLY ✔";
         smsBtn.style.background = "var(--success)";
-        setTimeout(() => { smsBtn.style.display = 'none'; }, 2000);
+        setTimeout(() => { smsBtn.style.display = 'none'; }, 3000);
     } else {
         smsBtn.innerText = "RETRY SMS";
         smsBtn.disabled = false;
-        alert("SMS Failed. Check API credits.");
+        smsBtn.style.background = "var(--danger)";
     }
 };
     window.renderUserList = function() {

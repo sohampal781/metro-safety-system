@@ -912,45 +912,38 @@ window.deleteUser = async (rfid) => {
 
         if (det) {
             console.log("Face found in frame. Pulling Cloud Users...");
-            
-            // Import 'get' inside the function to ensure it's available
             const { get, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
             const snapshot = await get(dbRef(db, 'users'));
             
-           if (snapshot.exists()) {
+            if (snapshot.exists()) {
                 const cloudUsers = snapshot.val();
                 console.log("Total Users found in Cloud:", Object.keys(cloudUsers).length);
 
                 for (let rfid in cloudUsers) {
                     const user = cloudUsers[rfid];
-                    
-                    // DEBUG: Check if descriptors exist for this specific user
-                    if (!user.descriptors) {
-                        console.warn(`User ${rfid} has NO face descriptors saved!`);
-                        continue;
-                    }
+                    if (user.descriptors) {
+                        // Firebase sometimes stores arrays as objects; Object.values fixes this
+                        const descriptorsToCompare = Object.values(user.descriptors);
+                        
+                        descriptorsToCompare.forEach((descArray, index) => {
+                            const serverDescriptor = new Float32Array(Object.values(descArray));
+                            const distance = faceapi.euclideanDistance(det.descriptor, serverDescriptor);
+                            const currentScore = (1 - distance) * 100;
 
-                    console.log(`Comparing against ${user.name}...`);
-
-                    user.descriptors.forEach((descArray, index) => {
-                        // FIX: Ensure the array is clean numbers
-                        const serverDescriptor = new Float32Array(Object.values(descArray));
-                        const distance = faceapi.euclideanDistance(det.descriptor, serverDescriptor);
-                        const currentScore = (1 - distance) * 100;
-
-                        console.log(` - Angle ${index}: ${currentScore.toFixed(1)}%`);
-
-                        if (currentScore > highestScore) {
-                            highestScore = currentScore;
-                            if (highestScore > 10) { // Threshold for Kolkata Metro environment
-                                detectedRfid = rfid;
+                            if (currentScore > highestScore) {
+                                highestScore = currentScore;
+                                // Threshold: 45% is usually good for real-world conditions
+                                if (highestScore > 45) { 
+                                    detectedRfid = rfid;
+                                }
                             }
-                        }
-                    });
+                        });
+                    }
                 }
             } else {
-                console.error("Firebase returned NO users. Check your database path.");
-            } else {
+                console.warn("Database is empty. No users to compare.");
+            }
+        } else {
             console.warn("Face-API: No face detected in the video stream.");
         }
     } catch (e) {

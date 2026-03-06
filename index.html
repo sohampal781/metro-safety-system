@@ -757,21 +757,22 @@ window.saveRegistration = async function() {
             if(key.startsWith("METRO-")) {
                 const u = JSON.parse(localStorage.getItem(key));
                 container.innerHTML += `
-                    <div style="padding:5px; border-bottom:1px solid #444; display:flex; justify-content:space-between;">
-                        <span>${u.name}</span>
-                        <span style="color:red; cursor:pointer;" onclick="deleteRecord('${key}')">✖</span>
-                    </div>`;
+    <div style="padding:10px; border-bottom:1px solid #444; display:flex; justify-content:space-between; align-items:center;">
+        <span>${u.name} (${u.rfid})</span>
+        <span style="color:var(--danger); cursor:pointer; font-weight:bold; padding: 5px;" 
+              onclick="window.deleteUser('${key}')">✖</span>
+    </div>`;
             }
         });
     }
-
-    function deleteRecord(key) {
-        if(confirm("Delete record?")) {
-            localStorage.removeItem(key);
-            renderUserList();
-        }
+// Keep this version instead
+window.deleteUser = async (rfid) => {
+    if(confirm(`Are you sure you want to permanently remove ${rfid} from the cloud server?`)) {
+        const userRef = ref(db, 'users/' + rfid);
+        await remove(userRef);
+        alert("User deleted from server.");
     }
-
+};
     // --- 5. VIOLATION LOGGING ---
   async function captureViolation() {
     const tempCanvas = document.createElement('canvas');

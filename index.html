@@ -319,27 +319,27 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
     // --- 1. CORE SYSTEM VARIABLES ---
-    const videoElement = document.getElementById('input-video');
-    const canvasElement = document.getElementById('output-canvas');
-    const canvasCtx = canvasElement.getContext('2d');
-    const sliderContainer = document.getElementById('slider-container');
-    const pointCountInput = document.getElementById('point-count');
-    const startBtn = document.getElementById('start-btn');
-    const statusDisplay = document.getElementById('status-display');
-    const violationList = document.getElementById('violation-list');
+  // --- 1. CORE SYSTEM VARIABLES ---
+const videoElement = document.getElementById('input-video');
+const canvasElement = document.getElementById('output-canvas');
+const canvasCtx = canvasElement.getContext('2d');
+const sliderContainer = document.getElementById('slider-container');
+const pointCountInput = document.getElementById('point-count');
+const startBtn = document.getElementById('start-btn');
+const statusDisplay = document.getElementById('status-display');
 
-    let isMonitoring = false;
-    let linePoints = [];
-    let breachStartTime = null;
-    const BREACH_THRESHOLD = 1500; 
+// Global Monitoring State
+window.isMonitoring = false;
+window.linePoints = [];
+window.breachStartTime = null;
+const BREACH_THRESHOLD = 1500; 
 
-    // Enrollment & Capture State
-    let isCapturing = false;
-    let captureStep = 0;
-    let capturedDescriptors = [];
-    let tempCapturedImages = [];
-    const commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
-
+// Global Enrollment & Capture State (Shared across functions)
+window.isCapturing = false;
+window.captureStep = 0;
+window.capturedDescriptors = [];
+window.tempCapturedImages = [];
+window.commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
    window.switchUI = (mode) => {
     // 1. If entering Register, stop the Pose Monitoring
     if (mode === 'register') {
@@ -664,21 +664,22 @@ window.sendKolkataSMS = async function(number, message) {
 
     // --- 4. ENROLLMENT & DATABASE FUNCTIONS ---
    window.startSecureCapture = async function() {
+    // Reset data for the new user
+    window.capturedDescriptors = [];
+    window.tempCapturedImages = [];
+    window.captureStep = 0;
+    
     const regVideo = document.getElementById('reg-video');
     
-    // Start local stream for registration
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
         regVideo.srcObject = stream;
+        window.isCapturing = true;
         
-        isCapturing = true;
-        captureStep = 0;
         document.querySelectorAll('.angle-box').forEach(b => b.className = 'angle-box');
-        
-        // Start the scanning sequence
         window.runCaptureSequence();
     } catch (err) {
-        alert("Camera access denied: " + err.message);
+        alert("Camera Error: " + err.message);
     }
 };
 
@@ -690,7 +691,6 @@ window.runCaptureSequence = async function() {
     if (window.captureStep >= 4) {
         window.isCapturing = false;
         statusDisplay.innerText = "SCANS COMPLETE - READY TO SAVE";
-        // Show the save button now that scans are done
         document.getElementById('save-reg-btn').style.display = 'block';
         return;
     }
@@ -698,10 +698,11 @@ window.runCaptureSequence = async function() {
     statusDisplay.innerText = commands[window.captureStep];
     await new Promise(r => setTimeout(r, 2000));
 
-    // Use the registration video element specifically for detection
+    // Detect face from the registration video element
     const det = await faceapi.detectSingleFace(regVideo).withFaceLandmarks().withFaceDescriptor();
 
     if (det) {
+        // FIX: Use window. prefix to avoid the 'undefined' error
         window.capturedDescriptors.push(Array.from(det.descriptor));
         
         const tempCanvas = document.createElement('canvas');
@@ -714,13 +715,12 @@ window.runCaptureSequence = async function() {
         if (indicator) indicator.className = "angle-box done";
         
         window.captureStep++;
-        window.runCaptureSequence();
+        window.runCaptureSequence(); // Call itself for the next angle
     } else {
         statusDisplay.innerText = "RETRYING SCAN...";
         setTimeout(window.runCaptureSequence, 1000);
     }
 };
-
   // 1. Function to find a user and load their current number
 function lookupUser() {
     const searchName = document.getElementById('reg-name').value.trim().toLowerCase();
@@ -747,30 +747,40 @@ window.saveRegistration = async function() {
     const mobile = document.getElementById('reg-mobile').value.trim();
     const regVideo = document.getElementById('reg-video');
     
+    // Check if the window-scoped arrays actually have data
     if (!name || mobile.length !== 10) return alert("Enter Name & 10-digit Mobile");
+    if (window.capturedDescriptors.length < 4) return alert("Complete all 4 face scans first!");
 
     const rfid = "METRO-" + Math.floor(1000 + Math.random() * 9000);
     
     try {
+        // Save using window-scoped data
         await set(ref(db, 'users/' + rfid), {
-            rfid, name, mobile,
+            rfid: rfid,
+            name: name,
+            mobile: mobile,
             descriptors: window.capturedDescriptors,
-            regImages: window.tempCapturedImages
+            regImages: window.tempCapturedImages,
+            timestamp: Date.now()
         });
 
-        // STOP THE REGISTRATION CAMERA STREAM
+        // 1. STOP THE REGISTRATION CAMERA (Releases hardware lock)
         if (regVideo.srcObject) {
             regVideo.srcObject.getTracks().forEach(track => track.stop());
             regVideo.srcObject = null;
         }
 
-        const regMsg = `KOLKATA METRO: Welcome ${name.toUpperCase()}. Your Safety RFID is ${rfid}. Use this for identification.`;
+        // 2. Send the RFID via SMS
+        const regMsg = `KOLKATA METRO: Welcome ${name.toUpperCase()}. Your Safety RFID is ${rfid}. Use this for identification at all metro stations.`;
         await window.sendKolkataSMS(mobile, regMsg);
+
+        alert("REGISTRATION SUCCESS: RFID sent to " + mobile);
         
-        alert("REGISTRATION SUCCESS: RFID sent via SMS.");
-        window.switchUI('monitor'); // Automatically return to monitor mode
+        // 3. UI Cleanup
+        document.getElementById('save-reg-btn').style.display = 'none';
+        window.switchUI('monitor'); 
     } catch (e) {
-        alert("Save Failed: " + e.message);
+        alert("Cloud Sync Error: " + e.message);
     }
 };
     window.renderUserList = function() {

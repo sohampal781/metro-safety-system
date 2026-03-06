@@ -224,6 +224,29 @@
     border-radius: 5px;
     border-left: 3px solid var(--accent);
 }
+        /* Universal Scrollbar for "Innovative" Feel */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent) #0d1117;
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #0d1117;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    border-radius: 10px;
+    border: 2px solid #0d1117;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #00b8e6;
+}
     </style>
 </head>
 <body>
@@ -253,35 +276,38 @@
         <button id="start-btn">LOCK & START MONITORING</button>
     </div>
 
-    <div id="register-ui" style="display:none;">
-    <div class="registration-header">ENROLLMENT TERMINAL</div>
-    
-    <div class="control-group">
-        <label>Enrollment Details</label>
-        <input type="text" id="reg-name" placeholder="Full Name">
-        <input type="text" id="reg-mobile" placeholder="10-Digit Mobile">
+    <div id="register-ui" style="display:none; height: 100vh; overflow-y: auto; padding: 40px; box-sizing: border-box; background: linear-gradient(145deg, #0a0b10, #161b22);">
+    <div class="registration-header" style="font-size: 24px; letter-spacing: 2px; color: var(--accent); margin-bottom: 30px;">
+        KOLKATA METRO | BIOMETRIC ENROLLMENT TERMINAL
     </div>
 
-    <div style="position:relative; width:100%; height:180px; background:#000; border-radius:8px; overflow:hidden; margin-bottom:15px;">
-        <video id="reg-video" autoplay muted playsinline style="width:100%; height:100%; object-fit:cover; transform:scaleX(-1);"></video>
-        <div id="scan-overlay" style="position:absolute; top:5px; left:5px; font-size:10px; color:var(--accent);">CAMERA READY</div>
-    </div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
+        <div class="control-group" style="border: 1px solid var(--accent); background: rgba(0, 210, 255, 0.05);">
+            <label>1. CRITICAL DATA ENTRY</label>
+            <input type="text" id="reg-name" placeholder="PASSENGER FULL NAME" style="margin-bottom: 15px; border-color: var(--accent);">
+            <input type="text" id="reg-mobile" placeholder="10-DIGIT MOBILE NUMBER" style="margin-bottom: 20px; border-color: var(--accent);">
+            
+            <div style="width:100%; height:250px; background:#000; border-radius:12px; overflow:hidden; border: 2px solid var(--border);">
+                <video id="reg-video" autoplay muted playsinline style="width:100%; height:100%; object-fit:cover; transform:scaleX(-1);"></video>
+            </div>
+            
+            <div class="angle-status" style="margin-top: 20px;">
+                <div id="a0" class="angle-box">FRONT</div>
+                <div id="a1" class="angle-box">LEFT</div>
+                <div id="a2" class="angle-box">RIGHT</div>
+                <div id="a3" class="angle-box">UP/DN</div>
+            </div>
 
-    <div class="angle-status">
-        <div id="a0" class="angle-box">FRONT</div>
-        <div id="a1" class="angle-box">LEFT</div>
-        <div id="a2" class="angle-box">RIGHT</div>
-        <div id="a3" class="angle-box">UP/DN</div>
-    </div>
+            <button class="action-btn" onclick="window.startSecureCapture()" style="height: 50px; font-size: 16px;">INITIATE SCAN</button>
+            <button class="action-btn" id="save-reg-btn" onclick="window.saveRegistration()" style="background:var(--success); display:none; height: 50px; font-size: 16px;">FINALIZE & SYNC CLOUD</button>
+        </div>
 
-    <button class="action-btn" onclick="window.startSecureCapture()">1. START SCAN</button>
-    
-    <button class="action-btn" id="save-reg-btn" onclick="window.saveRegistration()" 
-            style="background:var(--success); margin-top:10px; display:none;">
-        2. SAVE TO CLOUD & SEND SMS
-    </button>
-    
-    <div id="db-items" style="margin-top:15px; font-size:11px;"></div>
+        <div class="control-group" style="height: 600px; display: flex; flex-direction: column;">
+            <label>2. CLOUD DATABASE (RECENT ENROLLMENTS)</label>
+            <div id="db-items" style="flex-grow: 1; overflow-y: auto; padding-right: 10px; border: 1px solid var(--border); border-radius: 8px; background: #0d1117;">
+                </div>
+        </div>
+    </div>
 </div>
 </div>
 
@@ -341,20 +367,26 @@ window.capturedDescriptors = [];
 window.tempCapturedImages = [];
 window.commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
    window.switchUI = (mode) => {
-    // 1. If entering Register, stop the Pose Monitoring
-    if (mode === 'register') {
-        window.isMonitoring = false;
-        if (window.camera) window.camera.stop(); // Stop Pose Camera
-    }
-
-    // 2. Tab switching logic
+    // 1. Hide/Show main layout containers
     document.getElementById('monitor-ui').style.display = mode === 'monitor' ? 'block' : 'none';
     document.getElementById('register-ui').style.display = mode === 'register' ? 'block' : 'none';
     document.getElementById('challan-overlay').style.display = mode === 'challan' ? 'block' : 'none';
     
-    // 3. Viewport control
-    document.getElementById('viewport').style.display = (mode === 'register') ? 'none' : 'flex';
+    // 2. Full-Screen Innovation: Hide the background monitoring viewport during registration
+    const viewport = document.getElementById('viewport');
+    if (mode === 'register') {
+        viewport.style.display = 'none';
+        document.getElementById('sidebar').style.width = '100%'; // Expand sidebar to full screen
+    } else {
+        viewport.style.display = 'flex';
+        document.getElementById('sidebar').style.width = '380px'; // Return to normal
+    }
 
+    // 3. Tab active states
+    document.getElementById('tab-mon').classList.toggle('active', mode === 'monitor');
+    document.getElementById('tab-reg').classList.toggle('active', mode === 'register');
+    document.getElementById('tab-cha').classList.toggle('active', mode === 'challan');
+    
     if(mode === 'register') window.renderUserList();
 };
 window.judgeViolation = async function(key) {

@@ -883,12 +883,31 @@ window.deleteUser = async (rfid) => {
     tempCanvas.height = videoElement.videoHeight;
     const ctx = tempCanvas.getContext('2d');
     
+    // 1. DRAW THE RAW VIDEO FRAME (Mirrored to match UI)
+    ctx.save();
     ctx.translate(tempCanvas.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(videoElement, 0, 0);
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.restore();
 
-    const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.6);
+    // 2. DRAW THE YELLOW SAFETY LINE ON TOP OF THE PHOTO
+    // This ensures the line is "burned" into the evidence image
+    ctx.beginPath();
+    ctx.strokeStyle = 'yellow';
+    ctx.lineWidth = 10; // Make it thick so it's clear in the challan
+    ctx.lineCap = "round";
+    
+    window.linePoints.forEach((p, i) => {
+        const lx = (p.x / 100) * tempCanvas.width;
+        const ly = (p.y / 100) * tempCanvas.height;
+        if (i === 0) ctx.moveTo(lx, ly);
+        else ctx.lineTo(lx, ly);
+    });
+    ctx.stroke();
+
+    // 3. CAPTURE DATA URL
+    const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.7);
+
     let detectedRfid = "UNKNOWN_ID";
     let matchScore = 0;
 
@@ -898,40 +917,45 @@ window.deleteUser = async (rfid) => {
             .withFaceDescriptor();
 
         if (det) {
-            // FIX: We need to wrap the Firebase call in a Promise to wait for it
-            const snapshot = await new Promise((resolve) => {
-                onValue(ref(db, 'users'), (s) => resolve(s), { onlyOnce: true });
-            });
-
-            const cloudUsers = snapshot.val();
-            if (cloudUsers) {
-                Object.keys(cloudUsers).forEach(key => {
-                    const user = cloudUsers[key];
+            // Using Firebase 'get' to ensure we wait for data
+            const { get, ref } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+            const snapshot = await get(ref(db, 'users'));
+            
+            if (snapshot.exists()) {
+                const cloudUsers = snapshot.val();
+                for (let rfid in cloudUsers) {
+                    const user = cloudUsers[rfid];
                     if (user.descriptors) {
                         user.descriptors.forEach(descArray => {
                             const serverDescriptor = new Float32Array(descArray);
                             const distance = faceapi.euclideanDistance(det.descriptor, serverDescriptor);
                             const score = (1 - distance) * 100;
-                            if (score > 55 && score > matchScore) { // Higher threshold for accuracy
+
+                            if (score > 48 && score > matchScore) {
                                 matchScore = score;
-                                detectedRfid = user.rfid;
+                                detectedRfid = rfid; 
                             }
                         });
                     }
-                });
+                }
             }
         }
-    } catch (e) { console.error("Biometric Error:", e); }
+    } catch (e) { console.error("Detection Error:", e); }
 
+    // 4. UPLOAD VIOLATION WITH LINE OVERLAY
     const violID = "VIOL-" + Date.now();
-    await set(ref(db, 'violations/' + violID), {
+    const { set, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+    
+    await set(dbRef(db, 'violations/' + violID), {
         id: violID,
-        img: dataUrl,
+        img: dataUrl, // This now contains the yellow line!
         time: new Date().toLocaleString(),
         linkedRfid: detectedRfid,
         status: "PENDING",
         confidence: matchScore.toFixed(1)
     });
+
+    console.log(`Cloud Logged: ${detectedRfid} (${matchScore.toFixed(1)}%)`);
 };
     // --- 6. INITIALIZATION ---
     pointCountInput.onchange = updateSliders;

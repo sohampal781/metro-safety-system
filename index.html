@@ -905,7 +905,7 @@ window.deleteUser = async (rfid) => {
 
     // 2. The Biometric Logic
     let detectedRfid = "UNKNOWN_ID";
-    let highestScore = 0;
+    let bestMatchScore = 0;
 
     try {
         const det = await faceapi.detectSingleFace(videoElement).withFaceLandmarks().withFaceDescriptor();
@@ -917,37 +917,37 @@ window.deleteUser = async (rfid) => {
             
             if (snapshot.exists()) {
                 const cloudUsers = snapshot.val();
-                console.log("Total Users found in Cloud:", Object.keys(cloudUsers).length);
-
+                
                 for (let rfid in cloudUsers) {
                     const user = cloudUsers[rfid];
-                    if (user.descriptors) {
-                        // Firebase sometimes stores arrays as objects; Object.values fixes this
-                        const descriptorsToCompare = Object.values(user.descriptors);
-                        
-                        descriptorsToCompare.forEach((descArray, index) => {
-                            const serverDescriptor = new Float32Array(Object.values(descArray));
-                            const distance = faceapi.euclideanDistance(det.descriptor, serverDescriptor);
-                            const currentScore = (1 - distance) * 100;
+                    if (!user.descriptors) continue;
 
-                            if (currentScore > highestScore) {
-                                highestScore = currentScore;
-                                // Threshold: 45% is usually good for real-world conditions
-                                if (highestScore > 45) { 
-                                    detectedRfid = rfid;
-                                }
+                    // Convert Firebase object/array to standard Array of Arrays
+                    const descriptorsToCompare = Object.values(user.descriptors);
+                    
+                    for (const descData of descriptorsToCompare) {
+                        // Ensure we are working with a Float32Array
+                        const serverDescriptor = new Float32Array(Object.values(descData));
+                        
+                        // Calculate Distance (0 is perfect match, 1 is total difference)
+                        const distance = faceapi.euclideanDistance(det.descriptor, serverDescriptor);
+                        
+                        // Convert to confidence percentage
+                        const confidence = (1 - distance) * 100;
+
+                        if (confidence > bestMatchScore) {
+                            bestMatchScore = confidence;
+                            // Threshold check: lower to 40% for better matching in metro lighting
+                            if (bestMatchScore > 40) { 
+                                detectedRfid = rfid;
                             }
-                        });
+                        }
                     }
                 }
-            } else {
-                console.warn("Database is empty. No users to compare.");
             }
-        } else {
-            console.warn("Face-API: No face detected in the video stream.");
         }
     } catch (e) {
-        console.error("Critical Recognition Error:", e);
+        console.error("Biometric Error:", e);
     }
 
     // 3. Final Cloud Log
@@ -960,10 +960,10 @@ window.deleteUser = async (rfid) => {
         time: new Date().toLocaleString(),
         linkedRfid: detectedRfid,
         status: "PENDING",
-        confidence: highestScore.toFixed(1)
+        confidence: bestMatchScore.toFixed(1)
     });
 
-    console.log(`Log Created: ${detectedRfid} (${highestScore.toFixed(1)}%)`);
+    console.log(`Log Created: ${detectedRfid} (${bestMatchScore.toFixed(1)}%)`);
 };
     // --- 6. INITIALIZATION ---
     pointCountInput.onchange = updateSliders;

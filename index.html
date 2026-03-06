@@ -481,23 +481,42 @@ window.finalizeFine = async function() {
     
     if (!amount || isNaN(amount)) return;
 
+    // Fetch user details from Firebase
     onValue(ref(db, 'users/' + rfid), async (snapshot) => {
         const user = snapshot.val();
         if (!user) return alert("Verify user first!");
 
         const challanNo = "KLK" + Date.now().toString().slice(-6);
-        const fineMsg = `METRO GUARD: Challan ${challanNo} issued to ${user.name}. Fine: ₹${amount} for Safety Line Violation. Please pay at Station Master's desk.`;
 
-        // Update violation status in Firebase
-        await update(ref(db, 'violations/' + window.currentActiveViolationKey), {
-            status: "FINED",
-            fineAmount: amount,
-            challanNo: challanNo
-        });
-        
-        await window.sendKolkataSMS(user.mobile, fineMsg);
-        alert("CHALLAN ISSUED & SMS SENT");
-        window.closeJudgement();
+        // Combine 3 sections into 1 single message string using \n for line breaks
+        // This ensures you are charged for only 1 SMS by the supplier
+        const singleUnifiedMessage = 
+            `METRO GUARD: Safety violation for ${user.name.toUpperCase()}.\n\n` +
+            `CHALLAN: No. ${challanNo} | Fine: ₹${amount}.\n\n` +
+            `ACTION: Pay at Station Master desk immediately.`;
+
+        try {
+            // 1. Update the violation record status in Cloud
+            await update(ref(db, 'violations/' + window.currentActiveViolationKey), {
+                status: "FINED",
+                fineAmount: amount,
+                challanNo: challanNo
+            });
+            
+            // 2. Send as ONE single SMS to save costs
+            console.log("Sending single unified penalty message...");
+            const success = await window.sendKolkataSMS(user.mobile, singleUnifiedMessage);
+            
+            if(success) {
+                alert("CHALLAN ISSUED: Single message sent to " + user.mobile);
+            } else {
+                alert("Database updated, but SMS gateway failed.");
+            }
+            
+            window.closeJudgement();
+        } catch (err) {
+            alert("Error: " + err.message);
+        }
     }, { onlyOnce: true });
 };
        window.markAsPaid = async function(violationKey) {
@@ -877,7 +896,7 @@ window.deleteUser = async (rfid) => {
     }
 };
     // --- 5. VIOLATION LOGGING ---
-  window.captureViolation = async function() {
+ window.captureViolation = async function() {
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = videoElement.videoWidth;
     tempCanvas.height = videoElement.videoHeight;
@@ -903,42 +922,35 @@ window.deleteUser = async (rfid) => {
 
     const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.6);
 
-    // 2. The Biometric Logic
+    // 2. Robust Biometric Logic
     let detectedRfid = "UNKNOWN_ID";
-    let bestMatchScore = 0;
+    let highestScore = 0;
 
     try {
         const det = await faceapi.detectSingleFace(videoElement).withFaceLandmarks().withFaceDescriptor();
 
         if (det) {
-            console.log("Face found in frame. Pulling Cloud Users...");
             const { get, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
             const snapshot = await get(dbRef(db, 'users'));
             
             if (snapshot.exists()) {
                 const cloudUsers = snapshot.val();
-                
+
                 for (let rfid in cloudUsers) {
                     const user = cloudUsers[rfid];
                     if (!user.descriptors) continue;
 
-                    // Convert Firebase object/array to standard Array of Arrays
-                    const descriptorsToCompare = Object.values(user.descriptors);
+                    const savedDescriptors = Object.values(user.descriptors);
                     
-                    for (const descData of descriptorsToCompare) {
-                        // Ensure we are working with a Float32Array
-                        const serverDescriptor = new Float32Array(Object.values(descData));
-                        
-                        // Calculate Distance (0 is perfect match, 1 is total difference)
+                    for (const rawDesc of savedDescriptors) {
+                        // Reconstruct Float32Array to fix comparison math
+                        const serverDescriptor = new Float32Array(Object.values(rawDesc));
                         const distance = faceapi.euclideanDistance(det.descriptor, serverDescriptor);
-                        
-                        // Convert to confidence percentage
-                        const confidence = (1 - distance) * 100;
+                        const score = (1 - distance) * 100;
 
-                        if (confidence > bestMatchScore) {
-                            bestMatchScore = confidence;
-                            // Threshold check: lower to 40% for better matching in metro lighting
-                            if (bestMatchScore > 40) { 
+                        if (score > highestScore) {
+                            highestScore = score;
+                            if (highestScore > 40) { 
                                 detectedRfid = rfid;
                             }
                         }
@@ -946,11 +958,9 @@ window.deleteUser = async (rfid) => {
                 }
             }
         }
-    } catch (e) {
-        console.error("Biometric Error:", e);
-    }
+    } catch (e) { console.error("Biometric Error:", e); }
 
-    // 3. Final Cloud Log
+    // 3. Save Log
     const violID = "VIOL-" + Date.now();
     const { set, ref: saveRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
     
@@ -960,10 +970,8 @@ window.deleteUser = async (rfid) => {
         time: new Date().toLocaleString(),
         linkedRfid: detectedRfid,
         status: "PENDING",
-        confidence: bestMatchScore.toFixed(1)
+        confidence: highestScore.toFixed(1)
     });
-
-    console.log(`Log Created: ${detectedRfid} (${bestMatchScore.toFixed(1)}%)`);
 };
     // --- 6. INITIALIZATION ---
     pointCountInput.onchange = updateSliders;

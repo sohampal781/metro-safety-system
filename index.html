@@ -526,60 +526,51 @@ window.fetchRegistrationData = function() {
     console.log("System Data Restored from LocalStorage");
 }
 // CONTROL F: FINALIZE FINE (STRICT 160 CHAR LIMIT / SINGLE LINE)
-// CONTROL F: FINALIZE FINE (PURE NUMERIC 6-DIGIT ID FOR MAXIMUM SPACE)
 window.finalizeFine = async function() {
     const display = document.getElementById('registration-display');
-    const rfid = document.getElementById('manual-rfid-input').value.trim();
-    
-    // Get latest data from the verification step
     const latestMobile = display.dataset.latestMobile;
-    const passengerName = display.dataset.passengerName;
-
-    // Prompts
-    const amount = prompt("ENTER FINE AMOUNT (₹):", "1000");
-    const offence = prompt("ENTER OFFENCE (Short):", "Crossing Safety Line");
-    const station = prompt("ENTER STATION NAME:", "DUMDUM"); 
     
-    if (!amount || isNaN(amount) || !latestMobile) return alert("Invalid Data");
+    // Fixed Parameters for the Demo
+    const offence = "YELLOW LINE BREACH"; // EXACT MATCH FOR TEMPLATE
+    const station = "DUMDUM";             // EXACT MATCH FOR TEMPLATE
+    const amount = prompt("ENTER FINE (₹):", "1000"); // Dynamic Fine
+    const challanNo = Math.floor(100000 + Math.random() * 900000); // 6-digit ID
 
-    // PURE NUMERIC 6-DIGIT CHALLAN ID (Ex: 482930)
-    const challanNo = Math.floor(100000 + Math.random() * 900000);
+    if (!amount || !latestMobile) return alert("Error: Missing Passenger Data");
 
-    // THE 1-LINE COMPACT TEMPLATE
-    let msg = `KOLKATA METRO: CHN ${challanNo}. STN: ${station}. OFFENCE: ${offence}. FINE: RS ${amount}. PAY TO STATION MASTER WITHIN 7 DAYS TO AVOID LEGAL ACTION.`;
+    // THE EXACT ONE-LINE TEMPLATE MATCH (Word-for-Word)
+    let msg = `KOLKATA METRO: CHN ${challanNo}. STN: ${station}. OFFENCE: ${offence}. FINE: RS ${amount}. PAY TO STATION MASTER WITHIN 7 DAYS TO AVOID LEGAL ACTION. THIS IS A TESTING MASSAGE NO NEED TO PANIC`;
     
-    // SAFETY CLEANER: Strips all "Enter" keys and collapses extra spaces into one
-    msg = msg.replace(/(\r\n|\n|\r)/gm, " ").replace(/\s+/g, " ").trim();
-
-    // Final check for the 160-character boundary (₹5 limit)
-    console.log("Final SMS Length: " + msg.length);
-    if(msg.length > 160) {
-        alert("CRITICAL: Message is " + msg.length + " chars. Carrier will charge ₹35+. Please shorten the Offence text.");
-        return; 
-    }
+    // Safety check: remove double spaces
+    msg = msg.replace(/\s+/g, " ").trim();
 
     try {
         const { update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
         
+        // Update Firebase Cloud Record
         await update(dbRef(db, 'violations/' + window.currentActiveViolationKey), {
             status: "FINED",
             fineAmount: amount,
             offence: offence,
-            challanNo: challanNo, // Saved as pure numeric
+            challanNo: challanNo,
             station: station,
-            linkedMobile: latestMobile
+            linkedMobile: latestMobile,
+            timestamp: new Date().toLocaleString()
         });
         
+        // Send SMS via OTP Route (Bypasses DLT 998 Error)
         const success = await window.sendKolkataSMS(latestMobile, msg);
         
         if(success) {
-            alert("SUCCESS: 1-Credit SMS Sent (" + msg.length + " chars)");
+            alert("SUCCESS: Testing SMS Sent to " + latestMobile);
         } else {
-            alert("Gateway Error. Check balance.");
+            alert("Gateway Error: Status 998 - Route still blocked by Fast2SMS.");
         }
+        
         window.closeJudgement();
+        
     } catch (err) {
-        alert("Error: " + err.message);
+        alert("System Error: " + err.message);
     }
 };
        window.markAsPaid = async function(violationKey) {

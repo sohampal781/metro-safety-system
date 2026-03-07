@@ -529,8 +529,8 @@ window.fetchRegistrationData = function() {
 window.finalizeFine = async function() {
     const display = document.getElementById('registration-display');
     const latestMobile = display.dataset.latestMobile;
+    const currentStatus = document.getElementById('status-display');
     
-    // Hardcoded for your specific DLT Template requirements
     const offence = "YELLOW LINE BREACH"; 
     const station = "DUMDUM";             
     const amount = prompt("ENTER FINE (₹):", "1000"); 
@@ -538,10 +538,7 @@ window.finalizeFine = async function() {
 
     if (!amount || !latestMobile) return alert("Error: Missing Data");
 
-    // EXACT 1-LINE TEMPLATE (Matches what you sent to Customer Care)
     let msg = `KOLKATA METRO: CHN ${challanNo}. STN: ${station}. OFFENCE: ${offence}. FINE: RS ${amount}. PAY TO STATION MASTER WITHIN 7 DAYS TO AVOID LEGAL ACTION. THIS IS A TESTING MASSAGE NO NEED TO PANIC`;
-    
-    // Removing extra spaces to ensure the Gateway recognizes the string
     msg = msg.replace(/\s+/g, " ").trim();
 
     try {
@@ -550,26 +547,31 @@ window.finalizeFine = async function() {
         await update(dbRef(db, 'violations/' + window.currentActiveViolationKey), {
             status: "FINED",
             fineAmount: amount,
-            offence: offence,
             challanNo: challanNo,
-            station: station,
             linkedMobile: latestMobile
         });
         
-        // Sending via your original logic (Transactional Route)
-        const success = await window.sendKolkataSMS(latestMobile, msg);
+        // Trigger SMS
+        window.sendKolkataSMS(latestMobile, msg);
         
-        if(success) {
-            alert("SUCCESS: Testing SMS Sent.");
-        } else {
-            // If this still fails, the Gateway hasn't activated the template yet
-            alert("Gateway Error: Route 998. Waiting for Template Approval.");
-        }
+        // START 15-SECOND RESET TIMER
+        let timeLeft = 15;
+        currentStatus.className = "status-card status-safe";
         
-        window.closeJudgement();
-        
+        const resetTimer = setInterval(() => {
+            timeLeft--;
+            currentStatus.innerText = `CHALLAN ISSUED. RESETTING IN ${timeLeft}s`;
+            
+            if (timeLeft <= 0) {
+                clearInterval(resetTimer);
+                window.closeJudgement(); // Close the modal
+                currentStatus.innerText = "SYSTEM READY";
+                console.log("Dashboard Auto-Reset Complete");
+            }
+        }, 1000);
+
     } catch (err) {
-        alert("System Error: " + err.message);
+        alert("Firebase Error: " + err.message);
     }
 };
        window.markAsPaid = async function(violationKey) {
@@ -584,30 +586,26 @@ window.finalizeFine = async function() {
     });
 
 // Optimized Gateway Function
-window.sendKolkataSMS = async function(number, message) {
+window.sendKolkataSMS = function(number, message) {
     const apiKey = "BFWG8AZHXJHJAvN1YU0kI6z4ayfRdCpDh8HCFu0VPvhBZDdULPeptxeSl2u1";
     const cleanMsg = message.replace(/(\r\n|\n|\r)/gm, " ").trim();
     
+    // The exact URL that worked for you
     const targetUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${apiKey}&route=q&message=${encodeURIComponent(cleanMsg)}&numbers=${number}`;
 
-    // METHOD: Navigator Beacon or Image Ping
-    // These methods do not care about CORS policies because they don't look for a response.
-    try {
-        if (navigator.sendBeacon) {
-            // Best for background requests on modern browsers
-            navigator.sendBeacon(targetUrl);
-        } else {
-            // Fallback for older browsers
-            const img = new Image();
-            img.src = targetUrl;
-        }
-        
-        console.log("SMS Signal Sent to Gateway");
-        return true; // We assume true because your manual test worked!
-    } catch (e) {
-        console.error("Signal failed:", e);
-        return false;
-    }
+    // Create a hidden iframe to "ping" the URL
+    let iframe = document.createElement('iframe');
+    iframe.style.display = "none";
+    iframe.src = targetUrl;
+    document.body.appendChild(iframe);
+
+    // Remove it after 5 seconds to keep the DOM clean
+    setTimeout(() => {
+        document.body.removeChild(iframe);
+    }, 5000);
+
+    console.log("SMS Triggered via Hidden Frame");
+    return true; 
 };
         window.deleteRecord = async function(key) {
     if (confirm("Permanently delete this violation log?")) {

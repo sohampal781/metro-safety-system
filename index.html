@@ -897,7 +897,8 @@ window.saveRegistration = async function() {
 
     if (!name || mobile.length !== 10) return alert("Valid Name and 10-digit Mobile required.");
 
-    const rfid = existingRfid || ("METRO-" + Math.floor(1000 + Math.random() * 9000));
+    // Generate numeric RFID if new
+    const rfid = existingRfid || ("METRO-" + Math.floor(100000 + Math.random() * 900000));
     
     const userData = {
         name: name,
@@ -915,21 +916,78 @@ window.saveRegistration = async function() {
         const { update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
         await update(dbRef(db, 'users/' + rfid), userData);
         
-        // FORCE REVEAL BUTTON
+        // 1. Show the SMS Button
         const smsBtn = document.getElementById('send-reg-sms-btn');
-        if(smsBtn) {
-            smsBtn.style.setProperty('display', 'block', 'important');
-            smsBtn.innerText = "SEND REGISTRATION RECEIPT (SMS)";
-            smsBtn.style.background = "#e1b12c";
-        }
+        smsBtn.style.display = 'block';
+        smsBtn.style.background = "#e1b12c";
         
-        alert("CLOUD SYNC SUCCESSFUL. RFID: " + rfid);
+        // 2. Notify Success
+        document.getElementById('status-display').innerText = `ENROLLED: ${rfid}`;
+        document.getElementById('status-display').className = "status-card status-safe";
+        
+        // 3. Start the 15-second countdown to reset
+        window.startPostRegistrationTimer();
+        
         window.renderUserList();
     } catch (e) {
         alert("Database Sync Failed: " + e.message);
     }
 };
+// CONTROL F: RESET REGISTRATION SYSTEM
+window.resetRegistrationSystem = function() {
+    // 1. Clear Inputs
+    document.getElementById('reg-name').value = "";
+    document.getElementById('reg-mobile').value = "";
+    delete document.getElementById('reg-name').dataset.activeRfid;
 
+    // 2. Reset Biometric Variables
+    window.capturedDescriptors = [];
+    window.tempCapturedImages = [];
+    window.captureStep = 0;
+    window.isCapturing = false;
+
+    // 3. Reset UI Elements
+    document.querySelectorAll('.angle-box').forEach(box => {
+        box.className = 'angle-box';
+        box.innerText = box.innerText.replace(" ✔", ""); // Remove checkmarks if any
+    });
+
+    document.getElementById('save-reg-btn').style.display = 'none';
+    document.getElementById('send-reg-sms-btn').style.display = 'none';
+    
+    // 4. Update Status
+    document.getElementById('status-display').innerText = "SYSTEM READY";
+    document.getElementById('status-display').className = "status-card status-safe";
+    
+    console.log("Registration Form Reset Successfully.");
+};
+
+// CONTROL F: START 15s COUNTDOWN
+window.startPostRegistrationTimer = function() {
+    let timeLeft = 15;
+    const smsBtn = document.getElementById('send-reg-sms-btn');
+    
+    const countdown = setInterval(() => {
+        timeLeft--;
+        if (smsBtn && smsBtn.style.display !== 'none') {
+            smsBtn.innerText = `SEND WELCOME SMS (${timeLeft}s)`;
+        }
+
+        if (timeLeft <= 0) {
+            clearInterval(countdown);
+            window.resetRegistrationSystem();
+            alert("Timeout reached. System reset for next passenger.");
+        }
+    }, 1000);
+
+    // Stop timer if SMS is clicked early
+    smsBtn.onclick = async () => {
+        clearInterval(countdown);
+        await window.sendManualRegistrationSMS();
+        // Reset immediately after SMS is sent
+        setTimeout(window.resetRegistrationSystem, 2000); 
+    };
+};
 // --- UPDATED MANUAL SMS (STRICT SINGLE LINE) ---
 // CONTROL F: LOOKUP FOR UPDATE
 window.lookupUserForUpdate = function() {

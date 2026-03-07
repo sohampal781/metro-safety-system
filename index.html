@@ -598,28 +598,30 @@ window.sendKolkataSMS = async function(number, message) {
     const apiKey = "HzZRzYz09iEIB7Glr3OmdOgt3PMocm66xPHcXWoaUvMaN9UKvlinysQDafuD";
     const cleanMsg = message.replace(/(\r\n|\n|\r)/gm, " ").trim();
     
-    // Using a CORS proxy to allow the browser to talk to Fast2SMS
-    const proxy = "https://cors-anywhere.herokuapp.com/"; 
-    const targetUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${apiKey}&route=q&message=${encodeURIComponent(cleanMsg)}&numbers=${number}`;
+    // Switch to route=otp for better success rates during testing
+    const targetUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${apiKey}&route=otp&message=${encodeURIComponent(cleanMsg)}&numbers=${number}`;
     
+    // We try direct first, then fallback to a different proxy if it fails
     try {
-        const response = await fetch(proxy + targetUrl, {
-            method: 'GET',
-            headers: {
-                "x-requested-with": "xhr"
-            }
-        });
+        const response = await fetch(targetUrl);
         const result = await response.json();
-        console.log("Gateway Response:", result);
+        console.log("Direct SMS Response:", result);
         return result.return === true;
     } catch (error) {
-        console.error("SMS Error:", error);
-        // Fallback: If proxy fails, try direct (some browsers/environments may allow it)
+        console.warn("Direct request blocked by CORS. Trying Proxy...");
+        
+        // Use a more reliable "all-origins" proxy
+        const proxyUrl = "https://api.allorigins.win/get?url=" + encodeURIComponent(targetUrl);
+        
         try {
-            const directRes = await fetch(targetUrl);
-            const directData = await directRes.json();
-            return directData.return === true;
-        } catch(e) {
+            const proxyRes = await fetch(proxyUrl);
+            const proxyData = await proxyRes.json();
+            // AllOrigins wraps the response in a 'contents' string
+            const result = JSON.parse(proxyData.contents); 
+            console.log("Proxy SMS Response:", result);
+            return result.return === true;
+        } catch (proxyError) {
+            console.error("Both Direct and Proxy failed.", proxyError);
             return false;
         }
     }

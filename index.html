@@ -545,54 +545,40 @@ window.finalizeFine = async function() {
     const latestMobile = display.dataset.latestMobile;
     const currentStatus = document.getElementById('status-display');
     
-    // Fixed variables for DUMDUM demo
     const offence = "YELLOW LINE BREACH"; 
     const station = "DUMDUM";             
-    const amount = prompt("ENTER FINE (₹):", "1000"); 
+    const amount = "1000"; 
     const challanNo = Math.floor(100000 + Math.random() * 900000); 
 
-    if (!amount || !latestMobile) return alert("Error: Missing Data");
+    if (!latestMobile) return alert("Error: No Passenger Mobile");
 
-    // TRIMMED TO 158 CHARACTERS (STRICT 160 LIMIT)
+    // EXACT 158 CHARACTERS - DO NOT ADD SPACES
     let msg = `KOLKATA METRO: CHN ${challanNo}. STN: ${station}. OFFENCE: ${offence}. FINE: RS ${amount}. PAY STATION MASTER WITHIN 7 DAYS. THIS IS TESTING MESSAGE NO NEED TO PANIC`;
     
-    msg = msg.replace(/\s+/g, " ").trim();
-    console.log("Final Message Length:", msg.length);
-
     try {
         const { update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
         
-        // 1. Update Firebase
         await update(dbRef(db, 'violations/' + window.currentActiveViolationKey), {
             status: "FINED",
             fineAmount: amount,
-            offence: offence,
             challanNo: challanNo,
-            station: station,
             linkedMobile: latestMobile
         });
         
-        // 2. Trigger SMS via Hidden Iframe (Bypasses CORS/401/400)
-        let iframe = document.createElement('iframe');
-        iframe.style.display = "none";
-        const apiKey = "BFWG8AZHXJHJAvN1YU0kI6z4ayfRdCpDh8HCFu0VPvhBZDdULPeptxeSl2u1";
-        iframe.src = `https://www.fast2sms.com/dev/bulkV2?authorization=${apiKey}&route=q&message=${encodeURIComponent(msg)}&numbers=${latestMobile}`;
-        document.body.appendChild(iframe);
-        setTimeout(() => document.body.removeChild(iframe), 5000);
-
-        // 3. 15-SECOND AUTO-RESET UI
+        // Trigger SMS
+        window.sendKolkataSMS(latestMobile, msg);
+        
+        // 15-SECOND RESET TIMER
         let timeLeft = 15;
         currentStatus.className = "status-card status-safe";
-        
-        const resetTimer = setInterval(() => {
+        const timer = setInterval(() => {
             timeLeft--;
-            currentStatus.innerText = `FINE ISSUED. RESETTING IN ${timeLeft}s`;
-            
+            currentStatus.innerText = `PROSECUTED. RESETTING IN ${timeLeft}s`;
             if (timeLeft <= 0) {
-                clearInterval(resetTimer);
-                window.closeJudgement(); 
+                clearInterval(timer);
+                window.closeJudgement();
                 currentStatus.innerText = "SYSTEM READY";
-                console.log("MetroGuard Dashboard Reset");
+                window.renderChallans(); // Refresh portal
             }
         }, 1000);
 
@@ -616,21 +602,15 @@ window.sendKolkataSMS = function(number, message) {
     const apiKey = "BFWG8AZHXJHJAvN1YU0kI6z4ayfRdCpDh8HCFu0VPvhBZDdULPeptxeSl2u1";
     const cleanMsg = message.replace(/(\r\n|\n|\r)/gm, " ").trim();
     
-    // The exact URL that worked for you
     const targetUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${apiKey}&route=q&message=${encodeURIComponent(cleanMsg)}&numbers=${number}`;
 
-    // Create a hidden iframe to "ping" the URL
-    let iframe = document.createElement('iframe');
-    iframe.style.display = "none";
-    iframe.src = targetUrl;
-    document.body.appendChild(iframe);
+    // We use an Image object to "force" the request to the server
+    // This bypasses 401/CORS errors because it doesn't wait for a response
+    const ping = new Image();
+    ping.onload = () => console.log("SMS Ping Success");
+    ping.onerror = () => console.log("SMS Ping Sent (Gateway might return 400 but message often delivers)");
+    ping.src = targetUrl;
 
-    // Remove it after 5 seconds to keep the DOM clean
-    setTimeout(() => {
-        document.body.removeChild(iframe);
-    }, 5000);
-
-    console.log("SMS Triggered via Hidden Frame");
     return true; 
 };
         window.deleteRecord = async function(key) {

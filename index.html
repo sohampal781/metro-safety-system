@@ -530,41 +530,40 @@ window.finalizeFine = async function() {
     const display = document.getElementById('registration-display');
     const latestMobile = display.dataset.latestMobile;
     
-    // Fixed Parameters for the Demo
-    const offence = "YELLOW LINE BREACH"; // EXACT MATCH FOR TEMPLATE
-    const station = "DUMDUM";             // EXACT MATCH FOR TEMPLATE
-    const amount = prompt("ENTER FINE (₹):", "1000"); // Dynamic Fine
-    const challanNo = Math.floor(100000 + Math.random() * 900000); // 6-digit ID
+    // Hardcoded for your specific DLT Template requirements
+    const offence = "YELLOW LINE BREACH"; 
+    const station = "DUMDUM";             
+    const amount = prompt("ENTER FINE (₹):", "1000"); 
+    const challanNo = Math.floor(100000 + Math.random() * 900000); 
 
-    if (!amount || !latestMobile) return alert("Error: Missing Passenger Data");
+    if (!amount || !latestMobile) return alert("Error: Missing Data");
 
-    // THE EXACT ONE-LINE TEMPLATE MATCH (Word-for-Word)
+    // EXACT 1-LINE TEMPLATE (Matches what you sent to Customer Care)
     let msg = `KOLKATA METRO: CHN ${challanNo}. STN: ${station}. OFFENCE: ${offence}. FINE: RS ${amount}. PAY TO STATION MASTER WITHIN 7 DAYS TO AVOID LEGAL ACTION. THIS IS A TESTING MASSAGE NO NEED TO PANIC`;
     
-    // Safety check: remove double spaces
+    // Removing extra spaces to ensure the Gateway recognizes the string
     msg = msg.replace(/\s+/g, " ").trim();
 
     try {
         const { update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
         
-        // Update Firebase Cloud Record
         await update(dbRef(db, 'violations/' + window.currentActiveViolationKey), {
             status: "FINED",
             fineAmount: amount,
             offence: offence,
             challanNo: challanNo,
             station: station,
-            linkedMobile: latestMobile,
-            timestamp: new Date().toLocaleString()
+            linkedMobile: latestMobile
         });
         
-        // Send SMS via OTP Route (Bypasses DLT 998 Error)
+        // Sending via your original logic (Transactional Route)
         const success = await window.sendKolkataSMS(latestMobile, msg);
         
         if(success) {
-            alert("SUCCESS: Testing SMS Sent to " + latestMobile);
+            alert("SUCCESS: Testing SMS Sent.");
         } else {
-            alert("Gateway Error: Status 998 - Route still blocked by Fast2SMS.");
+            // If this still fails, the Gateway hasn't activated the template yet
+            alert("Gateway Error: Route 998. Waiting for Template Approval.");
         }
         
         window.closeJudgement();
@@ -589,8 +588,10 @@ window.sendKolkataSMS = async function(number, message) {
     const apiKey = "BFWG8AZHXJHJAvN1YU0kI6z4ayfRdCpDh8HCFu0VPvhBZDdULPeptxeSl2u1";
     const cleanMsg = message.replace(/(\r\n|\n|\r)/gm, " ").trim();
     
-    // For OTP route, the message text must be passed in 'variables_values'
-    const targetUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${apiKey}&route=otp&variables_values=${encodeURIComponent(cleanMsg)}&numbers=${number}`;
+    // Original "route=q" (Transactional) logic
+    const targetUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${apiKey}&route=q&message=${encodeURIComponent(cleanMsg)}&numbers=${number}`;
+    
+    // Using AllOrigins to bypass the 403 Forbidden/CORS error
     const proxyUrl = "https://api.allorigins.win/get?url=" + encodeURIComponent(targetUrl);
     
     try {
@@ -598,7 +599,7 @@ window.sendKolkataSMS = async function(number, message) {
         const data = await response.json();
         const result = JSON.parse(data.contents);
         
-        console.log("SMS Status:", result);
+        console.log("Transactional Response:", result);
         return result.return === true;
     } catch (error) {
         console.error("SMS Error:", error);

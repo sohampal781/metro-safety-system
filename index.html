@@ -595,38 +595,25 @@ window.finalizeFine = async function() {
 
 // Optimized Gateway Function
 window.sendKolkataSMS = async function(number, message) {
-    const apiKey = "HzZRzYz09iEIB7Glr3OmdOgt3PMocm66xPHcXWoaUvMaN9UKvlinysQDafuD";
+    const apiKey = "BFWG8AZHXJHJAvN1YU0kI6z4ayfRdCpDh8HCFu0VPvhBZDdULPeptxeSl2u1";
     const cleanMsg = message.replace(/(\r\n|\n|\r)/gm, " ").trim();
     
-    // Switch to route=otp for better success rates during testing
-    const targetUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${apiKey}&route=otp&message=${encodeURIComponent(cleanMsg)}&numbers=${number}`;
+    // For OTP route, the message text must be passed in 'variables_values'
+    const targetUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${apiKey}&route=otp&variables_values=${encodeURIComponent(cleanMsg)}&numbers=${number}`;
+    const proxyUrl = "https://api.allorigins.win/get?url=" + encodeURIComponent(targetUrl);
     
-    // We try direct first, then fallback to a different proxy if it fails
     try {
-        const response = await fetch(targetUrl);
-        const result = await response.json();
-        console.log("Direct SMS Response:", result);
+        const response = await fetch(proxyUrl);
+        const data = await response.json();
+        const result = JSON.parse(data.contents);
+        
+        console.log("SMS Status:", result);
         return result.return === true;
     } catch (error) {
-        console.warn("Direct request blocked by CORS. Trying Proxy...");
-        
-        // Use a more reliable "all-origins" proxy
-        const proxyUrl = "https://api.allorigins.win/get?url=" + encodeURIComponent(targetUrl);
-        
-        try {
-            const proxyRes = await fetch(proxyUrl);
-            const proxyData = await proxyRes.json();
-            // AllOrigins wraps the response in a 'contents' string
-            const result = JSON.parse(proxyData.contents); 
-            console.log("Proxy SMS Response:", result);
-            return result.return === true;
-        } catch (proxyError) {
-            console.error("Both Direct and Proxy failed.", proxyError);
-            return false;
-        }
+        console.error("SMS Error:", error);
+        return false;
     }
 };
-
         window.deleteRecord = async function(key) {
     if (confirm("Permanently delete this violation log?")) {
         try {

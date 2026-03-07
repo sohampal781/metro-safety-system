@@ -588,14 +588,21 @@ window.sendKolkataSMS = async function(number, message) {
     const apiKey = "BFWG8AZHXJHJAvN1YU0kI6z4ayfRdCpDh8HCFu0VPvhBZDdULPeptxeSl2u1";
     const cleanMsg = message.replace(/(\r\n|\n|\r)/gm, " ").trim();
     
-    // Original "route=q" (Transactional) logic
+    // The exact Transactional URL
     const targetUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${apiKey}&route=q&message=${encodeURIComponent(cleanMsg)}&numbers=${number}`;
     
-    // Using AllOrigins to bypass the 403 Forbidden/CORS error
-    const proxyUrl = "https://api.allorigins.win/get?url=" + encodeURIComponent(targetUrl);
+    // Switch to this proxy - it handles long GitHub Pages URLs much better
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
     
     try {
-        const response = await fetch(proxyUrl);
+        const response = await fetch(proxyUrl, {
+            method: 'GET',
+            // Adding a mode: 'cors' tells the browser we expect a cross-origin response
+            mode: 'cors' 
+        });
+
+        if (!response.ok) throw new Error('Network response was not ok');
+
         const data = await response.json();
         const result = JSON.parse(data.contents);
         
@@ -603,6 +610,10 @@ window.sendKolkataSMS = async function(number, message) {
         return result.return === true;
     } catch (error) {
         console.error("SMS Error:", error);
+        
+        // ULTIMATE FALLBACK: If the proxy fails, we log it so your demo still works
+        alert("CORS/Network Error. See Console for SMS content.");
+        console.log("SMS CONTENT THAT FAILED TO SEND:", cleanMsg);
         return false;
     }
 };

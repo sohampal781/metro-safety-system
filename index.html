@@ -545,45 +545,56 @@ window.finalizeFine = async function() {
     const latestMobile = display.dataset.latestMobile;
     const currentStatus = document.getElementById('status-display');
     
+    // 1. Get Inputs
+    const amount = prompt("ENTER FINE AMOUNT:", "1000");
+    if (!amount) return; // Stop if cancelled
+
     const offence = "YELLOW LINE BREACH"; 
     const station = "DUMDUM";             
-    const amount = "1000"; 
     const challanNo = Math.floor(100000 + Math.random() * 900000); 
 
-    if (!latestMobile) return alert("Error: No Passenger Mobile");
-
-    // EXACT 158 CHARACTERS - DO NOT ADD SPACES
+    // 2. Build Message (158 Chars)
     let msg = `KOLKATA METRO: CHN ${challanNo}. STN: ${station}. OFFENCE: ${offence}. FINE: RS ${amount}. PAY STATION MASTER WITHIN 7 DAYS. THIS IS TESTING MESSAGE NO NEED TO PANIC`;
-    
+
     try {
         const { update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
         
+        // 3. Update Firebase
         await update(dbRef(db, 'violations/' + window.currentActiveViolationKey), {
             status: "FINED",
             fineAmount: amount,
+            offence: offence,
             challanNo: challanNo,
+            station: station,
             linkedMobile: latestMobile
         });
         
-        // Trigger SMS
+        // 4. Send SMS & Log to Console
         window.sendKolkataSMS(latestMobile, msg);
-        
-        // 15-SECOND RESET TIMER
+        console.log(`%c[DATABASE UPDATED]`, "color: #00e676", `Challan ${challanNo} for ${latestMobile}`);
+
+        // 5. 15-SECOND UI COUNTDOWN
         let timeLeft = 15;
         currentStatus.className = "status-card status-safe";
-        const timer = setInterval(() => {
+        
+        const resetTimer = setInterval(() => {
             timeLeft--;
-            currentStatus.innerText = `PROSECUTED. RESETTING IN ${timeLeft}s`;
+            currentStatus.innerHTML = `
+                <div style="color:var(--success)">PROSECUTION COMPLETE</div>
+                <div style="font-size:14px">SYSTEM RESET IN ${timeLeft}s</div>
+            `;
+            
             if (timeLeft <= 0) {
-                clearInterval(timer);
-                window.closeJudgement();
+                clearInterval(resetTimer);
+                window.closeJudgement(); 
                 currentStatus.innerText = "SYSTEM READY";
-                window.renderChallans(); // Refresh portal
+                window.renderChallans(); // Update the Portal Sections
             }
         }, 1000);
 
     } catch (err) {
-        alert("Firebase Error: " + err.message);
+        console.error("Firebase Error:", err);
+        alert("Failed to save to Cloud.");
     }
 };
        window.markAsPaid = async function(violationKey) {
@@ -601,16 +612,21 @@ window.finalizeFine = async function() {
 window.sendKolkataSMS = function(number, message) {
     const apiKey = "BFWG8AZHXJHJAvN1YU0kI6z4ayfRdCpDh8HCFu0VPvhBZDdULPeptxeSl2u1";
     const cleanMsg = message.replace(/(\r\n|\n|\r)/gm, " ").trim();
-    
     const targetUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${apiKey}&route=q&message=${encodeURIComponent(cleanMsg)}&numbers=${number}`;
 
-    // We use an Image object to "force" the request to the server
-    // This bypasses 401/CORS errors because it doesn't wait for a response
+    console.log("%c[SMS OUTGOING]", "color: #00d2ff; font-weight: bold;", cleanMsg);
+
+    // Create the ping
     const ping = new Image();
-    ping.onload = () => console.log("SMS Ping Success");
-    ping.onerror = () => console.log("SMS Ping Sent (Gateway might return 400 but message often delivers)");
     ping.src = targetUrl;
 
+    // Show a temporary "Toast" notification on the UI
+    const toast = document.createElement('div');
+    toast.style = "position:fixed; top:20px; right:20px; background:var(--success); color:black; padding:15px; border-radius:8px; z-index:10000; font-weight:bold; animation: slideIn 0.5s forwards;";
+    toast.innerText = `✔ SMS SENT TO ${number}`;
+    document.body.appendChild(toast);
+
+    setTimeout(() => { toast.remove(); }, 4000);
     return true; 
 };
         window.deleteRecord = async function(key) {

@@ -367,12 +367,26 @@
         <canvas id="output-canvas"></canvas>
 
         <div id="challan-overlay">
-            <div class="challan-header">
-                <h1>KOLKATA METRO RAILWAY E-CHALLAN SYSTEM</h1>
-                <button class="action-btn" style="width:100px; margin:0;" onclick="switchUI('monitor')">CLOSE</button>
-            </div>
-            <div id="challan-grid" class="challan-grid"></div>
+    <div class="challan-header">
+        <h1 style="margin:0;">METRO RAILWAY | VIOLATION PORTAL</h1>
+        <div style="display:flex; gap:10px; flex-grow:1; max-width:500px; margin: 0 40px;">
+            <input type="text" id="portal-search" placeholder="SEARCH BY CHALLAN NO. OR RFID..." onkeyup="window.renderChallans()">
         </div>
+        <button class="action-btn" style="width:100px; margin:0;" onclick="switchUI('monitor')">CLOSE</button>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+        <section>
+            <h2 style="color:var(--danger); border-bottom: 1px solid var(--danger); padding-bottom:10px;">[ PENDING INVESTIGATION ]</h2>
+            <div id="grid-pending" class="challan-grid"></div>
+        </section>
+
+        <section>
+            <h2 style="color:var(--success); border-bottom: 1px solid var(--success); padding-bottom:10px;">[ PROSECUTED / FINED ]</h2>
+            <div id="grid-prosecuted" class="challan-grid"></div>
+        </section>
+    </div>
+</div>
     </div>
 
     <div id="fine-tab" style="display:none;">
@@ -655,52 +669,66 @@ window.lookupUser = function() {
     }, { onlyOnce: true });
 };
   window.renderChallans = function() {
-    const grid = document.getElementById('challan-grid');
-    if (!grid) return;
-    
-    // 1. Listen for real-time changes on the Firebase Server
+    const pendingGrid = document.getElementById('grid-pending');
+    const prosecutedGrid = document.getElementById('grid-prosecuted');
+    const searchTerm = document.getElementById('portal-search').value.trim().toLowerCase();
+
+    if (!pendingGrid || !prosecutedGrid) return;
+
     onValue(ref(db, 'violations'), (snapshot) => {
-        grid.innerHTML = "";
+        pendingGrid.innerHTML = "";
+        prosecutedGrid.innerHTML = "";
         const data = snapshot.val();
         
-        if (!data) {
-            grid.innerHTML = "<h3 style='color:#8b949e; text-align:center; width:100%;'>NO PENDING VIOLATIONS</h3>";
-            return;
-        }
+        if (!data) return;
 
-        // 2. Loop through Cloud Data (Reversed for latest first)
         Object.keys(data).reverse().forEach(key => {
             const viol = data[key];
             const isAlreadyFined = (viol.status === "FINED");
+            
+            // Search Filter Logic (Matches Challan No or RFID)
+            const cNo = (viol.challanNo || "").toString();
+            const rfid = (viol.linkedRfid || "").toLowerCase();
+            if (searchTerm && !cNo.includes(searchTerm) && !rfid.includes(searchTerm)) return;
+
+            // Create the Card UI
             const card = document.createElement('div');
             card.className = 'challan-card';
             card.style.borderTopColor = isAlreadyFined ? 'var(--success)' : 'var(--danger)';
 
             card.innerHTML = `
                 <img src="${viol.img}" style="width:100%; border-radius:8px;">
-                <div style="font-size:12px; margin: 10px 0; color: #e6edf3;">
+                <div style="font-size:12px; margin: 10px 0;">
                     <b style="color:var(--accent)">RFID: ${viol.linkedRfid}</b><br>
                     <span>Time: ${viol.time}</span>
                     ${isAlreadyFined ? `
                         <div style="margin-top:8px; padding:8px; background:rgba(0,210,255,0.1); border:1px solid var(--accent); border-radius:4px;">
-                            <b style="color:var(--accent); font-size:10px;">CHALLAN: ${viol.challanNo}</b>
+                            <b style="color:var(--accent)">CHALLAN NO: ${viol.challanNo}</b><br>
+                            <span style="font-size:10px;">STN: ${viol.station || 'DUMDUM'}</span>
                         </div>
                     ` : ''}
                 </div>
+                
                 ${isAlreadyFined ? 
                     `<button class="action-btn" style="background:#ff9800; color:black;" onclick="window.markAsPaid('${key}')">
-                        COLLECT ₹${viol.fineAmount} & CLEAR
+                        COLLECT ₹${viol.fineAmount || 1000} & CLEAR
                      </button>` : 
                     `<button class="action-btn" onclick="window.judgeViolation('${key}')">
                         ISSUE LEGAL NOTICE
                      </button>`
                 }
                 <button class="delete-btn" style="background:#21262d; color:#8b949e; margin-top:8px;" 
-                        onclick="window.deleteRecord('${key}')">REMOVE LOG</button>
+                        onclick="window.deleteRecord('${key}')">PURGE LOG</button>
             `;
-            grid.appendChild(card);
+
+            // Sort into correct section
+            if (isAlreadyFined) {
+                prosecutedGrid.appendChild(card);
+            } else {
+                pendingGrid.appendChild(card);
+            }
         });
-    });
+    }, { onlyOnce: false }); // Real-time sync enabled
 };
 
     // --- 3. MONITORING & MATH LOGIC (YOUR ORIGINAL LOGIC) ---

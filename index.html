@@ -595,19 +595,35 @@ window.finalizeFine = async function() {
 
 // Optimized Gateway Function
 window.sendKolkataSMS = async function(number, message) {
-        const apiKey = "HzZRzYz09iEIB7Glr3OmdOgt3PMocm66xPHcXWoaUvMaN9UKvlinysQDafuD";
-        const cleanMsg = message.replace(/(\r\n|\n|\r)/gm, " ").trim();
-        const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${apiKey}&route=q&message=${encodeURIComponent(cleanMsg)}&numbers=${number}`;
-        
+    const apiKey = "HzZRzYz09iEIB7Glr3OmdOgt3PMocm66xPHcXWoaUvMaN9UKvlinysQDafuD";
+    const cleanMsg = message.replace(/(\r\n|\n|\r)/gm, " ").trim();
+    
+    // Using a CORS proxy to allow the browser to talk to Fast2SMS
+    const proxy = "https://cors-anywhere.herokuapp.com/"; 
+    const targetUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${apiKey}&route=q&message=${encodeURIComponent(cleanMsg)}&numbers=${number}`;
+    
+    try {
+        const response = await fetch(proxy + targetUrl, {
+            method: 'GET',
+            headers: {
+                "x-requested-with": "xhr"
+            }
+        });
+        const result = await response.json();
+        console.log("Gateway Response:", result);
+        return result.return === true;
+    } catch (error) {
+        console.error("SMS Error:", error);
+        // Fallback: If proxy fails, try direct (some browsers/environments may allow it)
         try {
-            const response = await fetch(url);
-            const result = await response.json();
-            return result.return === true;
-        } catch (error) {
-            console.error("SMS Error:", error);
+            const directRes = await fetch(targetUrl);
+            const directData = await directRes.json();
+            return directData.return === true;
+        } catch(e) {
             return false;
         }
-    };  
+    }
+};
 
         window.deleteRecord = async function(key) {
     if (confirm("Permanently delete this violation log?")) {

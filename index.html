@@ -1249,16 +1249,25 @@ window.deleteUserRecord = async function(rfid) {
         startBtn.classList.toggle('active');
     };
         async function loadFaceModels() {
-    // This URL contains the actual JSON and Shard files needed for detection
-    const MODEL_URL = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights';
+    // High-speed CDN for faster loading in India
+    const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
+    const statusDisplay = document.getElementById('status-display');
     
     try {
+        statusDisplay.innerText = "INITIALIZING AI...";
+        statusDisplay.className = "status-card status-loading"; // Yellow status
+
         await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
         await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
         await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-        console.log("Face Models Loaded Successfully");
+        
+        console.log("✅ AI Models Loaded Successfully");
+        statusDisplay.innerText = "SYSTEM READY";
+        statusDisplay.className = "status-card status-safe";
     } catch (e) {
-        console.error("Model Loading Failed: ", e);
+        console.error("❌ Model Loading Failed: ", e);
+        statusDisplay.innerText = "AI OFFLINE - CHECK CONNECTION";
+        statusDisplay.className = "status-card status-breach";
     }
 }
 // CONTROL F: SEARCH BY RFID OR PHONE

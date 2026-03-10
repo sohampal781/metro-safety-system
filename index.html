@@ -767,7 +767,7 @@ window.lookupUser = function() {
         });
     }, { onlyOnce: false });
 };
-       window.openProsecutionModal = function(key) {
+       window.openProsecutionModal = async function(key) {
     window.currentActiveViolationKey = key;
     const { onValue, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
 

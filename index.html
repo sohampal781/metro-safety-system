@@ -465,19 +465,6 @@ window.commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT",
     
     console.log("System Mode Switched to: " + mode.toUpperCase());
 };
-
-    // 3. Tab active states (Visual highlights)
-    document.getElementById('tab-mon').classList.toggle('active', mode === 'monitor');
-    document.getElementById('tab-reg').classList.toggle('active', mode === 'register');
-    document.getElementById('tab-cha').classList.toggle('active', mode === 'challan');
-    
-    // 4. Portal Auto-Refresh: Refresh violations when entering the Portal
-    if (mode === 'challan') {
-        window.renderChallans();
-    }
-    
-    console.log("System Mode Switched to: " + mode.toUpperCase());
-};
 window.judgeViolation = async function(key) {
     window.currentActiveViolationKey = key; // Store for the finalizeFine step
     

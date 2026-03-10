@@ -28,16 +28,6 @@ body {
     overflow: hidden;
 }
 
-#sidebar {
-    width: 380px;
-    height: 100vh;
-    background: #0d1117;
-    border-right: 1px solid #30363d;
-    display: flex;
-    flex-direction: column;
-    z-index: 10;
-}
-
 #main-viewport {
     flex-grow: 1; /* Occupies all remaining space */
     position: relative;
@@ -68,9 +58,42 @@ body {
     overflow-y: auto;
 }
 
-.active-view {
-    display: block !important; /* Only shown when active */
+/* RESET OVERLAPPING */
+#sidebar {
+    width: 380px;
+    height: 100vh;
+    position: fixed;
+    left: 0;
+    top: 0;
+    background: #0d1117;
+    z-index: 100;
+    border-right: 1px solid #30363d;
 }
+
+#viewport {
+    margin-left: 380px; /* Forces camera to stay right of sidebar */
+    width: calc(100vw - 380px);
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+}
+
+/* CHALLAN PORTAL (Full Screen) */
+#challan-overlay {
+    display: none; 
+    position: fixed;
+    inset: 0; /* Covers everything including sidebar */
+    background: #05070a;
+    z-index: 99999; /* Highest priority */
+    padding: 40px;
+    overflow-y: auto;
+}
+
+/* Tab Content Visibility */
+#monitor-ui, #register-ui { display: none; }
+.active-view { display: block !important; }
 @keyframes pulse { 50% { opacity: 0.5; } }
 
 .control-group { background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; margin-bottom: 12px; border: var(--glass-border); }
@@ -81,18 +104,10 @@ input, select, button { width: 100%; padding: 12px; background: #161b22; border:
 .angle-box { padding: 8px; font-size: 10px; text-align: center; background: #21262d; border-radius: 4px; }
 .angle-box.done { background: var(--success); color: black; }
 
-#viewport { flex-grow: 1; position: relative; background: #000; display: flex; align-items: center; justify-content: center; }
+
 video, canvas { position: absolute; width: 95%; height: 90%; border-radius: 12px; transform: scaleX(-1); object-fit: contain; }
 
-#challan-overlay {#challan-overlay {
-    display: none !important; /* Prevents the flash on refresh */
-    position: fixed;
-    inset: 0;
-    background: #0a0b10;
-    z-index: 99999;
-    padding: 30px;
-    overflow-y: auto;
-}
+
     #judgement-modal {
     display: none; 
     position: fixed; 
@@ -301,40 +316,34 @@ window.captureStep = 0;
 window.capturedDescriptors = [];
 window.tempCapturedImages = [];
 window.commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
-   window.switchUI = (mode) => {
-    // 1. Define all possible UI containers
-    const containers = {
-        'monitor': 'monitor-ui',
-        'register': 'register-ui',
-        'challan': 'challan-overlay'
-    };
-
-    // 2. Hide everything first
-    Object.values(containers).forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.classList.remove('active-view');
-    });
-
-    // 3. Show only the selected mode
-    const targetId = containers[mode];
-    const targetEl = document.getElementById(targetId);
-    if (targetEl) targetEl.classList.add('active-view');
-
-    // 4. Handle Camera Viewport visibility
-    // If we are in 'Challan' mode, we usually want the full portal, not the live feed.
+  window.switchUI = (mode) => {
+    // 1. Reset Sidebar UI
+    document.getElementById('monitor-ui').style.display = 'none';
+    document.getElementById('register-ui').style.display = 'none';
+    
+    // 2. Hide/Show Main Containers
     const viewport = document.getElementById('viewport');
-    if (mode === 'challan') {
-        viewport.style.display = 'none';
-        window.renderChallans(); // Refresh data
-    } else {
+    const challanPortal = document.getElementById('challan-overlay');
+    
+    if (mode === 'monitor') {
+        document.getElementById('monitor-ui').style.display = 'block';
         viewport.style.display = 'flex';
+        challanPortal.style.display = 'none';
+    } 
+    else if (mode === 'register') {
+        document.getElementById('register-ui').style.display = 'block';
+        viewport.style.display = 'flex'; // Keep camera for biometrics
+        challanPortal.style.display = 'none';
+    } 
+    else if (mode === 'challan') {
+        viewport.style.display = 'none'; // Stop overlapping
+        challanPortal.style.display = 'block';
+        window.renderChallans(); // Load data
     }
 
-    // 5. Update Tab Button Styles
+    // 3. Update Tab Button Styles
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-    const btnId = `tab-${mode.substring(0, 3)}`;
-    const activeBtn = document.getElementById(btnId);
-    if (activeBtn) activeBtn.classList.add('active');
+    document.getElementById('tab-' + mode.substring(0, 3)).classList.add('active');
 };
 window.judgeViolation = async function(key) {
     window.currentActiveViolationKey = key;
@@ -622,6 +631,27 @@ window.renderChallans = function() {
         if (isFined || isPaid) prosecutedGrid.appendChild(card);
         else pendingGrid.appendChild(card);
     });
+};
+       window.sendKolkataSMS = async function(number, message) {
+    const apiKey = "BFWG8AZHXJHJAvN1YU0kI6z4ayfRdCpDh8HCFu0VPvhBZDdULPeptxeSl2u1";
+    const cleanMsg = encodeURIComponent(message.replace(/(\r\n|\n|\r)/gm, " "));
+    const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${apiKey}&route=q&message=${cleanMsg}&numbers=${number}`;
+
+    try {
+        // Use fetch instead of Image() for reliability
+        await fetch(url, { mode: 'no-cors' });
+        
+        // UI Notification
+        const toast = document.createElement('div');
+        toast.style = "position:fixed; top:20px; right:20px; background:#00e676; color:black; padding:15px; border-radius:8px; z-index:100000; font-weight:bold;";
+        toast.innerText = `✔ SMS DISPATCHED TO ${number}`;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 4000);
+        return true;
+    } catch (e) {
+        console.error("SMS Failed:", e);
+        return false;
+    }
 };
        window.openProsecutionModal = async function(key) {
     window.currentActiveViolationKey = key;

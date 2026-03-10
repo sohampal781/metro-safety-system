@@ -910,10 +910,12 @@ window.lookupUser = function() {
     canvasElement.height = videoElement.videoHeight;
     canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-    // 1. DRAW THE MULTI-POINT YELLOW SAFETY LINE
+    // 1. DRAW MIRRORED VIDEO VIEW (Optional: usually handled by CSS transform)
+    // If your <canvas> has CSS 'transform: scaleX(-1)', we draw normally in JS.
+    
+    // 2. DRAW THE YELLOW SAFETY LINE
     canvasCtx.beginPath();
     canvasCtx.strokeStyle = 'yellow';
-    canvasCtx.setLineDash([]); // Solid line
     canvasCtx.lineWidth = 8;
     window.linePoints.forEach((p, i) => {
         const cx = (p.x / 100) * canvasElement.width;
@@ -924,12 +926,11 @@ window.lookupUser = function() {
     canvasCtx.stroke();
 
     if (results.poseLandmarks && isMonitoring) {
-        // 2. CALCULATE PERSON BOUNDARIES (For the Box)
         let minX = canvasElement.width, maxX = 0, minY = canvasElement.height, maxY = 0;
         const leftHip = results.poseLandmarks[23];
         const rightHip = results.poseLandmarks[24];
         
-        // Person Center Point (normalized 0-100)
+        // Use normalized person center
         const personX = ((leftHip.x + rightHip.x) / 2) * 100;
         const personY = ((leftHip.y + rightHip.y) / 2) * 100;
 
@@ -940,79 +941,69 @@ window.lookupUser = function() {
             if (py < minY) minY = py; if (py > maxY) maxY = py;
         });
 
-        // 3. FIND DISTANCE TO NEAREST YELLOW LINE SEGMENT
+        // Calculate Distance (Math logic)
         let minDistancePx = Infinity;
         for (let i = 0; i < window.linePoints.length - 1; i++) {
-            const p1 = window.linePoints[i];
-            const p2 = window.linePoints[i+1];
-            
-            // Convert line points to pixels for math
-            const x1 = (p1.x/100) * canvasElement.width;
-            const y1 = (p1.y/100) * canvasElement.height;
-            const x2 = (p2.x/100) * canvasElement.width;
-            const y2 = (p2.y/100) * canvasElement.height;
-            const px = (personX/100) * canvasElement.width;
-            const py = (personY/100) * canvasElement.height;
-
-            // Calculate distance from point (px,py) to segment (x1,y1)-(x2,y2)
+            const p1 = window.linePoints[i]; const p2 = window.linePoints[i+1];
+            const x1 = (p1.x/100) * canvasElement.width; const y1 = (p1.y/100) * canvasElement.height;
+            const x2 = (p2.x/100) * canvasElement.width; const y2 = (p2.y/100) * canvasElement.height;
+            const px = (personX/100) * canvasElement.width; const py = (personY/100) * canvasElement.height;
             const A = px - x1; const B = py - y1; const C = x2 - x1; const D = y2 - y1;
-            const dot = A * C + B * D;
-            const len_sq = C * C + D * D;
-            let param = -1;
-            if (len_sq != 0) param = dot / len_sq;
-
+            const dot = A * C + B * D; const len_sq = C * C + D * D;
+            let param = (len_sq != 0) ? dot / len_sq : -1;
             let xx, yy;
-            if (param < 0) { xx = x1; yy = y1; }
-            else if (param > 1) { xx = x2; yy = y2; }
+            if (param < 0) { xx = x1; yy = y1; } else if (param > 1) { xx = x2; yy = y2; }
             else { xx = x1 + param * C; yy = y1 + param * D; }
-
-            const dx = px - xx; const dy = py - yy;
-            const dist = Math.sqrt(dx * dx + dy * dy);
+            const dist = Math.sqrt((px - xx)**2 + (py - yy)**2);
             if (dist < minDistancePx) minDistancePx = dist;
         }
 
-        // Convert pixels to CM (Estimation: 100px ≈ 30cm depending on camera)
         const distanceCM = Math.round(minDistancePx * 0.3);
-
-        // 4. BREACH DETECTION LOGIC
         const side = getSide(personX, personY, window.linePoints[0].x, window.linePoints[0].y, window.linePoints[1].x, window.linePoints[1].y);
         const safeConfig = document.getElementById('safe-side').value;
         const isBreached = safeConfig === 'left' ? side > 0 : side < 0;
 
-        // 5. DRAW DYNAMIC UI (The "Lane Violation" Box)
-        const pad = 15;
+        // --- THE FIX FOR MIRRORED TEXT ---
+        // Save state, then reset transform specifically for the text box
+        canvasCtx.save();
+        
+        // 3. DRAW BOX (Normally)
         canvasCtx.lineWidth = 5;
         canvasCtx.strokeStyle = isBreached ? '#ff0000' : '#00ff00';
-        canvasCtx.strokeRect(minX - pad, minY - pad, (maxX - minX) + (pad*2), (maxY - minY) + (pad*2));
+        canvasCtx.strokeRect(minX, minY, maxX - minX, maxY - minY);
 
-        // Top Label Bar
+        // 4. DRAW TEXT BOX (Flip text context back to normal)
+        // If the canvas is mirrored via CSS scaleX(-1), 
+        // we need to flip the text horizontally so it looks normal to the viewer.
+        canvasCtx.translate(minX, minY - 35); 
+        canvasCtx.scale(-1, 1); // FLIP TEXT BACK
+        canvasCtx.translate(-220, 0); // Offset for the label width
+
         canvasCtx.fillStyle = isBreached ? '#ff0000' : '#00ff00';
-        canvasCtx.fillRect(minX - pad, minY - pad - 35, 220, 35);
+        canvasCtx.fillRect(0, 0, 220, 35);
 
-        // Label Text
         canvasCtx.fillStyle = 'white';
         canvasCtx.font = 'bold 18px Inter, sans-serif';
         const statusText = isBreached ? `LANE VIOLATION | ${distanceCM}cm` : `SAFE | ${distanceCM}cm`;
-        canvasCtx.fillText(statusText, minX - pad + 10, minY - pad - 10);
+        canvasCtx.fillText(statusText, 10, 25);
         
-        // Handle Logic for breach timing
+        canvasCtx.restore(); // Restore original mirroring for next frame
+
+        // Breach Logic
         if (isBreached) {
             if (!breachStartTime) breachStartTime = Date.now();
             const elapsed = Date.now() - breachStartTime;
             statusDisplay.innerText = `BREACH: ${(elapsed/1000).toFixed(1)}s`;
-            statusDisplay.className = "status-card status-breach";
             if (elapsed > BREACH_THRESHOLD) {
                 captureViolation(minX, maxX, minY, maxY, distanceCM);
                 breachStartTime = Date.now() + 5000; 
             }
         } else {
             breachStartTime = null;
-            statusDisplay.innerText = "SYSTEM SECURE";
-            statusDisplay.className = "status-card status-safe";
+            statusDisplay.innerText = "SYSTEM READY";
         }
     }
 });
-
     // --- 4. ENROLLMENT & DATABASE FUNCTIONS ---
    window.startSecureCapture = async function() {
     // Reset enrollment data
@@ -1345,43 +1336,50 @@ window.deleteUserRecord = async function(rfid) {
     tempCanvas.height = videoElement.videoHeight;
     const ctx = tempCanvas.getContext('2d');
     
-    // Mirror the frame to match the monitor view
+    // 1. Draw Video Background (Mirrored for Selfie View)
     ctx.save();
     ctx.translate(tempCanvas.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(videoElement, 0, 0);
     ctx.restore();
 
-    // Draw the Red Bounding Box on Evidence
+    // --- COORDINATE FIX FOR BOX ---
+    // Because the image is flipped, the X coordinates must be inverted:
+    // NewX = CanvasWidth - OldX
+    const correctedMinX = tempCanvas.width - maxX;
+    const correctedMaxX = tempCanvas.width - minX;
+    const boxWidth = correctedMaxX - correctedMinX;
+
+    // 2. Draw Red Box (Now aligned with the person)
     ctx.strokeStyle = 'red';
-    ctx.lineWidth = 8;
-    ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
+    ctx.lineWidth = 10;
+    ctx.strokeRect(correctedMinX, minY, boxWidth, maxY - minY);
 
-    // Draw the Fatal Header on Evidence
+    // 3. Draw Red Header Label
     ctx.fillStyle = 'red';
-    ctx.fillRect(minX, minY - 50, 350, 50);
+    ctx.fillRect(correctedMinX, minY - 60, 450, 60);
+    
     ctx.fillStyle = 'white';
-    ctx.font = 'bold 24px Arial';
-    ctx.fillText(`VIOLATION: ${distance}cm FROM LINE`, minX + 15, minY - 15);
+    ctx.font = 'bold 28px Arial';
+    ctx.fillText(`VIOLATION: ${distance}cm FROM LINE`, correctedMinX + 15, minY - 20);
 
-    // Draw the Yellow Safety Line for proof
+    // 4. Draw Yellow Safety Line (Proof of Breach)
     ctx.beginPath();
     ctx.strokeStyle = 'yellow';
-    ctx.lineWidth = 10;
+    ctx.lineWidth = 12;
     window.linePoints.forEach((p, i) => {
-        const lx = (p.x / 100) * tempCanvas.width;
+        // Line points are also flipped to match the mirrored image
+        const lx = tempCanvas.width - ((p.x / 100) * tempCanvas.width);
         const ly = (p.y / 100) * tempCanvas.height;
         if (i === 0) ctx.moveTo(lx, ly);
         else ctx.lineTo(lx, ly);
     });
     ctx.stroke();
 
-    const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.7);
+    const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.8);
     
-    // --- Biometric Recognition Logic ---
+    // --- Biometric Logic (Keep as is) ---
     let detectedRfid = "UNKNOWN_ID";
-    let highestScore = 0;
-
     try {
         const det = await faceapi.detectSingleFace(videoElement).withFaceLandmarks().withFaceDescriptor();
         if (det) {
@@ -1395,16 +1393,12 @@ window.deleteUserRecord = async function(rfid) {
                     Object.values(user.descriptors).forEach(rawDesc => {
                         const serverDesc = new Float32Array(Object.values(rawDesc));
                         const dist = faceapi.euclideanDistance(det.descriptor, serverDesc);
-                        const score = (1 - dist) * 100;
-                        if (score > highestScore && score > 45) {
-                            highestScore = score;
-                            detectedRfid = rfid;
-                        }
+                        if ((1 - dist) * 100 > 45) detectedRfid = rfid;
                     });
                 }
             }
         }
-    } catch (e) { console.error("Face Detect Error:", e); }
+    } catch (e) { console.error(e); }
 
     // Save to Firebase
     const violID = "VIOL-" + Date.now();

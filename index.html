@@ -1412,24 +1412,17 @@ window.openEvidenceFile = async function(violationKey) {
 window.finalizeProsecution = async function() {
     const rfid = document.getElementById('manual-rfid-input').value.trim();
     const display = document.getElementById('registration-display');
-    
-    // Attempt to get the mobile number from the display dataset or the database logic
     const latestMobile = (display && display.dataset.latestMobile) ? display.dataset.latestMobile : null;
     
     const baseFine = document.getElementById('fine-amount').value;
     const finalFine = document.getElementById('negotiated-amount').value || baseFine;
-    const reason = document.getElementById('negotiation-reason').value;
+    const reason = "YELLOW LINE BREACH"; // Standard reason for this project
     const challanNo = "METRO-" + Math.floor(100000 + Math.random() * 900000);
-
-    if (finalFine < baseFine && !reason) {
-        return alert("MANDATORY: Enter reason for fine negotiation/reduction.");
-    }
 
     const updates = {
         status: "FINED",
         fineAmount: finalFine,
-        originalFine: baseFine,
-        negotiationReason: reason || "Standard Rate",
+        offence: reason,
         challanNo: challanNo,
         prosecutionTime: new Date().toLocaleString()
     };
@@ -1438,24 +1431,17 @@ window.finalizeProsecution = async function() {
         const { update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
         await update(dbRef(db, 'violations/' + window.currentActiveViolationKey), updates);
         
-        // --- SMS TRIGGER WITH TESTING WARNING ---
+        // --- SMS TRIGGER WITH REASON ---
         if (latestMobile) {
-            let msg = `KOLKATA METRO: CHN ${challanNo}. FINE: RS ${finalFine}. THIS IS TESTING MESSAGE DON'T PANIC.`;
+            let msg = `KOLKATA METRO: CHN ${challanNo}. REASON: ${reason}. FINE: RS ${finalFine}. THIS IS TESTING MESSAGE DON'T PANIC.`;
             window.sendKolkataSMS(latestMobile, msg);
-        } else {
-            console.warn("SMS not sent: No mobile number linked to this session.");
         }
 
         alert("OFFICIAL CHALLAN GENERATED: " + challanNo);
-        
-        // Safely close the modal
-        if (window.closeJudgement) {
-            window.closeJudgement();
-        }
+        if (window.closeJudgement) window.closeJudgement();
 
     } catch (e) {
-        console.error("Prosecution Error:", e);
-        alert("Critical Error: Check Console.");
+        console.error("SMS/DB Error:", e);
     }
 };
 // CONTROL F: FINALIZE UPDATE (SMS OPTIONAL)

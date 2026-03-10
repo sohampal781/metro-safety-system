@@ -1340,6 +1340,179 @@ window.finalizeUpdate = async function(shouldSendSms) {
         alert("Update Failed: " + e.message);
     }
 };
+    window.fetchDetailedProsecutionData = async function() {
+    const rfidInput = document.getElementById('manual-rfid-input').value.trim();
+    const infoDisplay = document.getElementById('prosecution-controls');
+    const historyDiv = document.getElementById('offence-history');
+    const gallery = document.getElementById('biometric-gallery');
+
+    if (!rfidInput) {
+        alert("CRITICAL: RFID Tag required for database retrieval.");
+        return;
+    }
+
+    // 1. Fetch Passenger Profile & Biometric Records
+    const { onValue, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+    
+    onValue(dbRef(db, 'users/' + rfidInput), (snapshot) => {
+        const user = snapshot.val();
+        if (!user) {
+            alert("RECORD NOT FOUND: Please verify RFID or perform manual enrollment.");
+            return;
+        }
+
+        // Reveal the prosecution UI
+        infoDisplay.style.display = 'block';
+        
+        // Load All 4 Registration Angles (The 4-point evidence check)
+        gallery.innerHTML = "";
+        if (user.tempImages && Array.isArray(user.tempImages)) {
+            user.tempImages.forEach((imgData, index) => {
+                const imgWrap = document.createElement('div');
+                imgWrap.innerHTML = `
+                    <img src="${imgData}" style="width:100%; border:1px solid var(--accent); border-radius:4px; filter: grayscale(0.5);">
+                    <div style="font-size:8px; text-align:center; color:var(--accent)">ANGLE ${index + 1}</div>
+                `;
+                gallery.appendChild(imgWrap);
+            });
+        }
+
+        // 2. Scan Violation History for Repeat Offender Status
+        onValue(dbRef(db, 'violations'), (vSnap) => {
+            const allViolations = vSnap.val();
+            let historyHtml = "";
+            let violationCount = 0;
+            let totalFinesPaid = 0;
+
+            if (allViolations) {
+                Object.values(allViolations).forEach(v => {
+                    if (v.linkedRfid === rfidInput && v.status === "FINED") {
+                        violationCount++;
+                        totalFinesPaid += parseInt(v.fineAmount || 0);
+                        historyHtml += `
+                            <div style="padding:5px; border-bottom:1px solid #333; font-family:monospace; font-size:11px;">
+                                <span style="color:var(--danger)">[BREACH]</span> ${v.time} | CHN: ${v.challanNo} | AMT: ₹${v.fineAmount}
+                            </div>`;
+                    }
+                });
+            }
+
+            if (violationCount > 0) {
+                historyDiv.innerHTML = historyHtml;
+                // Auto-Escalate Fine: 1000 base + 500 per previous offense
+                const escalatedFine = 1000 + (violationCount * 500);
+                document.getElementById('fine-amount').value = escalatedFine;
+                alert(`POLICE ALERT: Repeat Offender. Previous Violations: ${violationCount}. Escalated Fine: ₹${escalatedFine}`);
+            } else {
+                historyDiv.innerHTML = "<div style='color:var(--success); padding:10px;'>CLEAN RECORD: First-time offender.</div>";
+                document.getElementById('fine-amount').value = 1000;
+            }
+        }, { onlyOnce: true });
+    }, { onlyOnce: true });
+};
+       window.finalizeProsecution = async function() {
+    const rfid = document.getElementById('manual-rfid-input').value.trim();
+    const baseFine = parseInt(document.getElementById('fine-amount').value);
+    const negotiatedFine = document.getElementById('negotiated-amount').value;
+    const reason = document.getElementById('negotiation-reason').value.trim();
+    
+    // Determine final amount
+    const finalAmount = negotiatedFine ? parseInt(negotiatedFine) : baseFine;
+    
+    // Enforcement: If price is reduced, a reason is MANDATORY
+    if (finalAmount < baseFine && reason.length < 5) {
+        alert("LEGAL REQUIREMENT: You must provide a valid reason for fine reduction/negotiation (e.g., Senior Citizen, Medical Emergency).");
+        return;
+    }
+
+    const challanNo = "CHN-" + Math.floor(100000 + Math.random() * 900000);
+    const prosecutionTime = new Date().toLocaleString();
+
+    try {
+        const { update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+        
+        const prosecutionData = {
+            status: "FINED",
+            fineAmount: finalAmount,
+            originalBaseFine: baseFine,
+            negotiationReason: reason || "Standard penalty applied",
+            challanNo: challanNo,
+            prosecutionDate: prosecutionTime,
+            officerAction: "LEGAL_NOTICE_ISSUED"
+        };
+
+        // Update the specific violation record
+        await update(dbRef(db, 'violations/' + window.currentActiveViolationKey), prosecutionData);
+
+        // Send Official Traffic Police Style SMS
+        const smsMsg = `KOLKATA METRO POLICE: Challan ${challanNo} issued to RFID ${rfid}. Offence: Yellow Line Breach. Fine: Rs ${finalAmount}. Pay at Counter within 7 days.`;
+        window.sendKolkataSMS(document.getElementById('edit-mobile')?.value || "9000000000", smsMsg);
+
+        console.log(`[PROSECUTION COMPLETE] Challan: ${challanNo} | Final Amt: ${finalAmount}`);
+        
+        // Reset and Refresh
+        alert(`CHALLAN GENERATED SUCCESSFULLY\nNo: ${challanNo}\nAmount: ₹${finalAmount}`);
+        window.closeJudgement();
+        window.renderChallans(); // Refresh the portal view
+
+    } catch (error) {
+        console.error("Prosecution Database Error:", error);
+        alert("Critical Failure: Could not save prosecution data to cloud.");
+    }
+};
+       window.openEvidenceFile = function(violationKey) {
+    const { onValue, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+    
+    onValue(dbRef(db, 'violations/' + violationKey), (snapshot) => {
+        const v = snapshot.val();
+        if (!v) return;
+
+        const evidenceWindow = window.open("", "_blank", "width=700,height=900");
+        
+        const htmlContent = `
+            <html>
+            <head>
+                <title>Metro Railway Prosecution - Case ${v.challanNo}</title>
+                <style>
+                    body { font-family: 'Courier New', monospace; padding: 30px; line-height: 1.6; background: #fff; color: #000; }
+                    .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; }
+                    .evidence-img { width: 100%; border: 1px solid #000; margin: 20px 0; }
+                    .data-row { display: flex; justify-content: space-between; border-bottom: 1px dashed #ccc; }
+                    .stamp { border: 3px solid red; color: red; padding: 10px; display: inline-block; transform: rotate(-10deg); font-weight: bold; margin-top: 20px; }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h2>METRO RAILWAY, KOLKATA</h2>
+                    <h3>DEPARTMENT OF PUBLIC SAFETY & PROSECUTION</h3>
+                </div>
+                
+                <p><b>CASE FILE:</b> ${v.id}</p>
+                <p><b>CHALLAN NO:</b> ${v.challanNo || "PENDING"}</p>
+                
+                <div class="data-row"><span>PASSENGER RFID:</span> <b>${v.linkedRfid}</b></div>
+                <div class="data-row"><span>INCIDENT TIME:</span> <b>${v.time}</b></div>
+                <div class="data-row"><span>STATION:</span> <b>DUMDUM (NORTH)</b></div>
+                
+                <h3>PRIMARY EVIDENCE (CCTV)</h3>
+                <img src="${v.img}" class="evidence-img">
+                
+                <h3>PROSECUTION DETAILS</h3>
+                <div class="data-row"><span>FINE AMOUNT:</span> <b>₹${v.fineAmount}</b></div>
+                <div class="data-row"><span>NEGOTIATION LOG:</span> <i>${v.negotiationReason || "None"}</i></div>
+                
+                <div class="stamp">OFFICIAL RECORD - VERIFIED</div>
+                
+                <div style="margin-top:50px; text-align:center;">
+                    <button onclick="window.print()">PRINT CASE FILE</button>
+                </div>
+            </body>
+            </html>
+        `;
+        
+        evidenceWindow.document.write(htmlContent);
+    }, { onlyOnce: true });
+};
 // Update your init function
 async function init() {
     await loadFaceModels(); // Add this line
@@ -1354,28 +1527,60 @@ async function init() {
    
     init();
 </script>
-   <div id="judgement-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:9999; padding:40px; box-sizing:border-box; overflow-y:auto;">
-    <div style="display:flex; justify-content:space-between; margin-bottom:20px;">
-        <h2 style="color:var(--accent);">INCIDENT VERIFICATION</h2>
-        <button onclick="window.closeJudgement()" style="background:var(--danger); border:none; color:white; padding:10px; cursor:pointer;">EXIT</button>
+   <div id="judgement-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg); z-index:9999; padding:20px; box-sizing:border-box; overflow-y:auto; border: 4px solid var(--police-blue);">
+    <div style="display:flex; justify-content:space-between; align-items:center; background:var(--police-blue); padding:15px; margin:-20px -20px 20px -20px;">
+        <h2 style="margin:0; color:white; letter-spacing:2px;">METRO PROSECUTION UNIT - CASE FILE</h2>
+        <button onclick="window.closeJudgement()" style="background:var(--danger); border:none; color:white; padding:10px 25px; cursor:pointer; font-weight:bold;">CLOSE FILE</button>
     </div>
 
-    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:30px;">
-        <div class="control-group">
-            <img id="modal-violation-img" style="width:100%; border-radius:10px;">
-            <div id="ai-prediction" style="margin-top:15px; text-align:center; font-weight:bold;"></div>
-        </div>
-
-        <div class="control-group">
-            <label>VERIFY PASSENGER RFID</label>
-            <div style="display:flex; gap:10px; margin-bottom:20px;">
-                <input type="text" id="manual-rfid-input" placeholder="RFID NUMBER">
-                <button class="action-btn" style="width:100px; margin:0;" onclick="window.fetchRegistrationData()">VERIFY</button>
+    <div style="display:grid; grid-template-columns: 1.2fr 1fr; gap:20px;">
+        
+        <div style="display:flex; flex-direction:column; gap:15px;">
+            <div class="control-group" style="border-color: var(--danger);">
+                <label style="color:var(--danger); font-weight:bold;">INCIDENT EVIDENCE (CCTV SNAPSHOT)</label>
+                <img id="modal-violation-img" style="width:100%; border:2px solid var(--danger); border-radius:5px;">
             </div>
 
-            <div id="registration-display" style="display:none; background:rgba(255,255,255,0.05); padding:20px; border-radius:8px;">
-                <div id="reg-user-info"></div>
-                <button class="action-btn" style="background:var(--success); color:black;" onclick="window.finalizeFine()">CONFIRM & GENERATE CHALLAN</button>
+            <div class="control-group">
+                <label>PASSENGER BIOMETRIC RECODRS (ALL ANGLES)</label>
+                <div id="biometric-gallery" style="display:grid; grid-template-columns:repeat(4, 1fr); gap:5px;">
+                    </div>
+            </div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:15px;">
+            <div class="control-group">
+                <label>PASSENGER VERIFICATION</label>
+                <div style="display:flex; gap:10px;">
+                    <input type="text" id="manual-rfid-input" placeholder="SCAN RFID">
+                    <button class="action-btn" style="width:120px; margin:0;" onclick="window.fetchDetailedProsecutionData()">LOAD FILE</button>
+                </div>
+            </div>
+
+            <div id="prosecution-controls" style="display:none;">
+                <div style="background:rgba(255,152,0,0.1); border:1px solid #ff9800; padding:10px; border-radius:5px; margin-bottom:15px;">
+                    <label style="color:#ff9800;">PREVIOUS OFFENCES</label>
+                    <div id="offence-history" style="font-size:12px; max-height:100px; overflow-y:auto;">
+                        Searching records...
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label>PENALTY CALCULATION</label>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                        <div>
+                            <span style="font-size:10px;">STANDARD FINE</span>
+                            <input type="number" id="fine-amount" value="1000">
+                        </div>
+                        <div>
+                            <span style="font-size:10px;">NEGOTIATED AMT</span>
+                            <input type="number" id="negotiated-amount" placeholder="Final Amt">
+                        </div>
+                    </div>
+                    <textarea id="negotiation-reason" placeholder="REASON FOR NEGOTIATION (e.g., First time, Senior Citizen, Student...)" style="width:100%; margin-top:10px; background:#0d1117; border:1px solid var(--border); color:white; padding:5px;"></textarea>
+                </div>
+
+                <button class="action-btn" style="background:var(--success); color:black; height:60px; font-size:18px;" onclick="window.finalizeProsecution()">GENERATE OFFICIAL CHALLAN</button>
             </div>
         </div>
     </div>

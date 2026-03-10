@@ -431,7 +431,7 @@ window.captureStep = 0;
 window.capturedDescriptors = [];
 window.tempCapturedImages = [];
 window.commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
-   window.switchUI = (mode) => {
+   window.switchUI = async (mode) => {
     // 1. Core Visibility: Hide/Show main layout containers
     document.getElementById('monitor-ui').style.display = mode === 'monitor' ? 'block' : 'none';
     document.getElementById('register-ui').style.display = mode === 'register' ? 'block' : 'none';
@@ -447,11 +447,24 @@ window.commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT",
         
         // --- TRIGGER DATABASE SYNC ---
         // This ensures the RFID list and delete buttons load every time
-        window.renderUserList(); 
+        await window.renderUserList(); 
     } else {
         viewport.style.display = 'flex';
         sidebar.style.width = '380px'; // Return to standard width
     }
+
+    // 3. Tab active states (Visual highlights)
+    document.getElementById('tab-mon').classList.toggle('active', mode === 'monitor');
+    document.getElementById('tab-reg').classList.toggle('active', mode === 'register');
+    document.getElementById('tab-cha').classList.toggle('active', mode === 'challan');
+    
+    // 4. Portal Auto-Refresh: Refresh violations when entering the Portal
+    if (mode === 'challan') {
+        await window.renderChallans();
+    }
+    
+    console.log("System Mode Switched to: " + mode.toUpperCase());
+};
 
     // 3. Tab active states (Visual highlights)
     document.getElementById('tab-mon').classList.toggle('active', mode === 'monitor');
@@ -664,14 +677,16 @@ window.lookupUser = function() {
         if (!found) alert("No matching records in Kolkata Metro database.");
     }, { onlyOnce: true });
 };
-  window.renderChallans = function() {
+  window.renderChallans = async function() {
     const pendingGrid = document.getElementById('grid-pending');
     const prosecutedGrid = document.getElementById('grid-prosecuted');
     const searchTerm = document.getElementById('portal-search').value.trim().toLowerCase();
 
     if (!pendingGrid || !prosecutedGrid) return;
 
-    onValue(ref(db, 'violations'), (snapshot) => {
+    const { onValue, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+
+    onValue(dbRef(db, 'violations'), (snapshot) => {
         pendingGrid.innerHTML = "";
         prosecutedGrid.innerHTML = "";
         const data = snapshot.val();
@@ -706,9 +721,14 @@ window.lookupUser = function() {
                 </div>
                 
                 ${isAlreadyFined ? 
-                    `<button class="action-btn" style="background:#ff9800; color:black;" onclick="window.markAsPaid('${key}')">
-                        COLLECT ₹${viol.fineAmount || 1000} & CLEAR
-                     </button>` : 
+                    `<div style="display:flex; gap:5px;">
+                        <button class="action-btn" style="background:#ff9800; color:black; flex:1;" onclick="window.markAsPaid('${key}')">
+                            CLEAR
+                        </button>
+                        <button class="action-btn" style="background:var(--accent); color:black; flex:1;" onclick="window.openEvidenceFile('${key}')">
+                            FILE
+                        </button>
+                    </div>` : 
                     `<button class="action-btn" onclick="window.judgeViolation('${key}')">
                         ISSUE LEGAL NOTICE
                      </button>`
@@ -724,7 +744,7 @@ window.lookupUser = function() {
                 pendingGrid.appendChild(card);
             }
         });
-    }, { onlyOnce: false }); // Real-time sync enabled
+    }, { onlyOnce: false });
 };
 
     // --- 3. MONITORING & MATH LOGIC (YOUR ORIGINAL LOGIC) ---
@@ -1104,12 +1124,15 @@ window.sendManualRegistrationSMS = async function() {
 };
     
 // CONTROL F: RENDER PASSENGER LIST
-window.renderUserList = function() {
+window.renderUserList = async function() {
     const container = document.getElementById('db-items-list');
     if (!container) return;
 
+    // We must use the imported ref and onValue from the module scope
+    const { onValue, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+
     // Pull real-time data from Firebase 'users' node
-    onValue(ref(db, 'users'), (snapshot) => {
+    onValue(dbRef(db, 'users'), (snapshot) => {
         container.innerHTML = "";
         const data = snapshot.val();
         

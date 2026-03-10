@@ -689,20 +689,31 @@ window.finalizeSettlement = async function() {
     const isNeg = document.getElementById('settle-mode').value === 'negotiated';
     const finalAmount = isNeg ? document.getElementById('final-amt').value : "Original Amount";
     
-    if(confirm(`Confirm payment and archive case? (Face data will be purged for privacy)`)) {
+    if(confirm(`Confirm collection? Image evidence will be purged, but legal record will be kept.`)) {
         try {
-            const { update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+            const { get, update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
             
-            // We do NOT use remove(). We use update() to clear the image but keep the stats.
+            // 1. Get current data to find mobile number
+            const snapshot = await get(dbRef(db, 'violations/' + window.currentSettlementKey));
+            const vData = snapshot.val();
+            if (!vData) return;
+
+            // 2. Archive record & Remove Image
             const archiveData = {
-                status: "SETTLED", // Change status so it doesn't show in 'Pending'
-                img: null,         // DELETE THE IMAGE DATA (Erase face)
+                status: "SETTLED",
+                img: null, // ERASE IMAGE FOR PRIVACY
                 settledAmount: finalAmount,
-                settledAt: new Date().toLocaleString()
+                settledTime: new Date().toLocaleString()
             };
 
             await update(dbRef(db, 'violations/' + window.currentSettlementKey), archiveData);
             
+            // 3. Send Confirmation SMS
+            if (vData.linkedMobile) {
+                let msg = `KOLKATA METRO: Payment received for CHN ${vData.challanNo}. Your case is now SETTLED and DISPOSED. Thank you.`;
+                window.sendKolkataSMS(vData.linkedMobile, msg);
+            }
+
             alert(`PAYMENT COLLECTED. RECORD ARCHIVED.`);
             document.getElementById('settlement-overlay').remove();
             window.renderChallans(); 
@@ -781,25 +792,26 @@ window.lookupUser = function() {
     const prosecutedGrid = document.getElementById('grid-prosecuted');
     const searchTerm = document.getElementById('portal-search').value.trim().toLowerCase();
 
-    if (!pendingGrid || !prosecutedGrid) return;
-
     onValue(ref(db, 'violations'), (snapshot) => {
         pendingGrid.innerHTML = "";
         prosecutedGrid.innerHTML = "";
         const data = snapshot.val();
-        
         if (!data) return;
 
         Object.keys(data).reverse().forEach(key => {
             const viol = data[key];
-            const isAlreadyFined = (viol.status === "FINED");
             
-            const cNo = (viol.challanNo || "").toString();
+            // SECURITY: If the status is SETTLED, do not show it in the UI grids
+            if (viol.status === "SETTLED") return;
+
+            // SEARCH LOGIC: Only show if search matches (or if search is empty)
+            const cNo = (viol.challanNo || "").toString().toLowerCase();
             const rfid = (viol.linkedRfid || "").toLowerCase();
             if (searchTerm && !cNo.includes(searchTerm) && !rfid.includes(searchTerm)) return;
 
             const card = document.createElement('div');
             card.className = 'challan-card';
+            const isAlreadyFined = (viol.status === "FINED");
             card.style.borderTopColor = isAlreadyFined ? 'var(--success)' : 'var(--danger)';
 
             card.innerHTML = `
@@ -807,27 +819,15 @@ window.lookupUser = function() {
                 <div style="font-size:12px; margin: 10px 0;">
                     <b style="color:var(--accent)">RFID: ${viol.linkedRfid}</b><br>
                     <span>Time: ${viol.time}</span>
-                    ${isAlreadyFined ? `
-                        <div style="margin-top:8px; padding:8px; background:rgba(0,210,255,0.1); border:1px solid var(--accent); border-radius:4px;">
-                            <b style="color:var(--accent)">CHALLAN NO: ${viol.challanNo}</b><br>
-                            <span style="font-size:10px;">STN: ${viol.station || 'DUMDUM'}</span>
-                        </div>
-                    ` : ''}
                 </div>
                 ${isAlreadyFined ? 
-                    `<button class="action-btn" style="background:#ff9800; color:black;" onclick="window.openSettlementTerminal('${key}')">OPEN SETTLEMENT TERMINAL</button>` : 
+                    `<button class="action-btn" style="background:#ff9800; color:black;" onclick="window.openSettlementTerminal('${key}')">OPEN SETTLEMENT</button>` : 
                     `<button class="action-btn" onclick="window.judgeViolation('${key}')">ISSUE LEGAL NOTICE</button>`
                 }
-                <button class="delete-btn" style="background:#21262d; color:#8b949e; margin-top:8px;" onclick="window.deleteRecord('${key}')">PURGE LOG</button>
             `;
-
-            if (isAlreadyFined) {
-                prosecutedGrid.appendChild(card);
-            } else {
-                pendingGrid.appendChild(card);
-            }
+            (isAlreadyFined ? prosecutedGrid : pendingGrid).appendChild(card);
         });
-    }, { onlyOnce: false });
+    });
 };
 
     // --- 3. MONITORING & MATH LOGIC (YOUR ORIGINAL LOGIC) ---

@@ -1090,7 +1090,8 @@ window.sendManualRegistrationSMS = async function() {
     smsBtn.innerText = "SENDING...";
     smsBtn.disabled = true;
 
-    let msg = `KOLKATA METRO GUARD: Enrollment Successful for ${name}. Stay safe behind the yellow line!`;
+    // Added testing disclaimer
+    let msg = `KOLKATA METRO: Enrollment Successful for ${name}. THIS IS TESTING MESSAGE DON'T PANIC.`;
     msg = msg.replace(/(\r\n|\n|\r)/gm, " "); 
 
     const success = await window.sendKolkataSMS(mobile, msg);
@@ -1475,8 +1476,9 @@ window.finalizeUpdate = async function(shouldSendSms) {
         });
 
         if (shouldSendSms) {
-            let msg = `METRO GUARD: Your profile for RFID ${rfid} has been updated. Secure travel initiated!`;
-            msg = msg.replace(/(\r\n|\n|\r)/gm, " "); // Single line enforcement
+            // Added testing disclaimer
+            let msg = `KOLKATA METRO: Profile Updated for RFID ${rfid}. THIS IS TESTING MESSAGE DON'T PANIC.`;
+            msg = msg.replace(/(\r\n|\n|\r)/gm, " "); 
             await window.sendKolkataSMS(newMobile, msg);
             alert("Database Updated & SMS Sent.");
         } else {

@@ -432,32 +432,32 @@ window.capturedDescriptors = [];
 window.tempCapturedImages = [];
 window.commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
    window.switchUI = async (mode) => {
-    // 1. Core Visibility - Ensure these IDs exist in your HTML
     const monitorUI = document.getElementById('monitor-ui');
     const registerUI = document.getElementById('register-ui');
-    const challanPortal = document.getElementById('challan-overlay'); // Your Portal/Challan UI
+    const challanPortal = document.getElementById('challan-overlay');
+    const viewport = document.getElementById('viewport');
+    const sidebar = document.getElementById('sidebar');
 
+    // Toggle Visibility
     if (monitorUI) monitorUI.style.display = (mode === 'monitor' ? 'block' : 'none');
     if (registerUI) registerUI.style.display = (mode === 'register' ? 'block' : 'none');
     if (challanPortal) challanPortal.style.display = (mode === 'challan' ? 'block' : 'none');
     
-    // 2. Sidebar & Viewport logic
-    const viewport = document.getElementById('viewport');
-    const sidebar = document.getElementById('sidebar');
-    
     if (mode === 'challan' || mode === 'register') {
         if (viewport) viewport.style.display = 'none';
-        if (sidebar) sidebar.style.width = '100%'; // Expand to full screen
+        if (sidebar) sidebar.style.width = '100%'; 
         
-        // Load data immediately
-        if (mode === 'challan') await window.renderChallans();
-        if (mode === 'register') await window.renderUserList();
+        // FORCED RE-RENDER: Ensure data is drawn when tab opens
+        if (mode === 'challan') {
+            console.log("Loading Challan Portal...");
+            window.renderChallans(); 
+        }
     } else {
         if (viewport) viewport.style.display = 'flex';
         if (sidebar) sidebar.style.width = '380px';
     }
 
-    // 3. Tab Button Highlights
+    // Active Tab Styling
     document.getElementById('tab-mon').classList.toggle('active', mode === 'monitor');
     document.getElementById('tab-reg').classList.toggle('active', mode === 'register');
     document.getElementById('tab-cha').classList.toggle('active', mode === 'challan');
@@ -635,11 +635,6 @@ window.finalizeFine = async function() {
             alert("PAYMENT RECEIVED. RECORD DELETED.");
         }
     }
-       onValue(ref(db, 'violations'), (snapshot) => {
-        const data = snapshot.val();
-        renderChallans(data);
-    });
-
 // Optimized Gateway Function
 window.sendKolkataSMS = function(number, message) {
     const apiKey = "BFWG8AZHXJHJAvN1YU0kI6z4ayfRdCpDh8HCFu0VPvhBZDdULPeptxeSl2u1";
@@ -696,65 +691,62 @@ window.lookupUser = function() {
         if (!found) alert("No matching records in Kolkata Metro database.");
     }, { onlyOnce: true });
 };
-  window.renderChallans = async function() {
+  // Global listener to keep data synced
+onValue(ref(db, 'violations'), (snapshot) => {
+    const data = snapshot.val();
+    window.currentViolationData = data; // Store globally
+    window.renderChallans(); // Re-draw whenever DB changes
+});
+
+window.renderChallans = function() {
     const pendingGrid = document.getElementById('grid-pending');
     const prosecutedGrid = document.getElementById('grid-prosecuted');
+    const searchTerm = document.getElementById('portal-search').value.toLowerCase();
+    
     if (!pendingGrid || !prosecutedGrid) return;
 
-    const { onValue, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+    pendingGrid.innerHTML = "";
+    prosecutedGrid.innerHTML = "";
+    
+    const data = window.currentViolationData;
+    if (!data) {
+        pendingGrid.innerHTML = "<div style='color:#555; padding:20px;'>No active records.</div>";
+        return;
+    }
 
-    // Listen to the 'violations' node in Firebase
-    onValue(dbRef(db, 'violations'), (snapshot) => {
-        pendingGrid.innerHTML = "";
-        prosecutedGrid.innerHTML = "";
-        const data = snapshot.val();
-        
-        if (!data) {
-            pendingGrid.innerHTML = "<div style='color:#555; padding:20px;'>No active breaches.</div>";
-            return;
-        }
+    Object.keys(data).reverse().forEach(key => {
+        const v = data[key];
+        const rfid = (v.linkedRfid || 'UNKNOWN').toLowerCase();
+        const chn = (v.challanNo || '').toLowerCase();
 
-        Object.keys(data).reverse().forEach(key => {
-            const v = data[key];
-            const isFined = (v.status === "FINED");
-            const isPaid = (v.status === "CLOSED_PAID");
+        // Search Filter
+        if (searchTerm && !rfid.includes(searchTerm) && !chn.includes(searchTerm)) return;
 
-            const card = document.createElement('div');
-            card.className = 'challan-card';
-            
-            // Set border color based on legal state
-            card.style.borderTop = isPaid ? "5px solid var(--success)" : 
-                                  isFined ? "5px solid #ff9800" : "5px solid var(--danger)";
+        const isFined = (v.status === "FINED");
+        const isPaid = (v.status === "CLOSED_PAID");
 
-            card.innerHTML = `
-                ${v.img ? `<img src="${v.img}" style="width:100%; border-radius:8px;">` : 
-                `<div style="height:120px; background:#111; color:#444; display:flex; align-items:center; justify-content:center; font-size:10px;">DATA PURGED AFTER PAYMENT</div>`}
-                
-                <div style="font-size:12px; margin: 10px 0;">
-                    <b style="color:var(--accent)">RFID: ${v.linkedRfid || 'UNKNOWN'}</b><br>
-                    <span>Time: ${v.time}</span>
-                    ${v.challanNo ? `<div style="color:var(--success); font-weight:bold; margin-top:5px;">CHN: ${v.challanNo}</div>` : ''}
-                </div>
-                
-                <div style="display:flex; flex-direction:column; gap:5px;">
-                    ${isFined ? `
-                        <button class="action-btn" style="background:var(--success); color:black;" onclick="window.openSettlementHearing('${key}')">SETTLE CASE</button>
-                    ` : isPaid ? `
-                        <button class="action-btn" style="background:#333; color:#777;" disabled>PAID & CLOSED</button>
-                    ` : `
-                        <button class="action-btn" style="background:var(--danger); color:white;" onclick="window.openProsecutionModal('${key}')">ISSUE LEGAL NOTICE</button>
-                    `}
-                    <button class="delete-btn" onclick="window.deleteRecord('${key}')">PURGE LOG</button>
-                </div>
-            `;
+        const card = document.createElement('div');
+        card.className = 'challan-card';
+        card.style.borderTop = isPaid ? "5px solid var(--success)" : 
+                               isFined ? "5px solid #ff9800" : "5px solid var(--danger)";
 
-            // Sort into Pending vs Prosecuted (Fined/Paid)
-            if (isFined || isPaid) {
-                prosecutedGrid.appendChild(card);
-            } else {
-                pendingGrid.appendChild(card);
-            }
-        });
+        card.innerHTML = `
+            ${v.img ? `<img src="${v.img}">` : `<div style="height:120px; background:#111; color:#444; display:flex; align-items:center; justify-content:center; font-size:10px;">DATA PURGED</div>`}
+            <div style="font-size:12px; margin: 10px 0;">
+                <b style="color:var(--accent)">RFID: ${v.linkedRfid || 'UNKNOWN'}</b><br>
+                <span>${v.time}</span>
+                ${v.challanNo ? `<div style="color:var(--success); font-weight:bold; margin-top:5px;">CHN: ${v.challanNo}</div>` : ''}
+            </div>
+            <div style="display:flex; flex-direction:column; gap:5px;">
+                ${isPaid ? `<button class="action-btn" style="background:#333; color:#777;" disabled>PAID & CLOSED</button>` : 
+                  isFined ? `<button class="action-btn" style="background:var(--success); color:black;" onclick="window.openSettlementHearing('${key}')">SETTLE CASE</button>` : 
+                  `<button class="action-btn" style="background:var(--danger); color:white;" onclick="window.openProsecutionModal('${key}')">ISSUE LEGAL NOTICE</button>`}
+                <button class="delete-btn" onclick="window.deleteRecord('${key}')">PURGE LOG</button>
+            </div>
+        `;
+
+        if (isFined || isPaid) prosecutedGrid.appendChild(card);
+        else pendingGrid.appendChild(card);
     });
 };
        window.openProsecutionModal = async function(key) {

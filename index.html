@@ -466,27 +466,30 @@ window.commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT",
     console.log("System Mode Switched to: " + mode.toUpperCase());
 };
 window.judgeViolation = async function(key) {
-    window.currentActiveViolationKey = key; // Store for the finalizeFine step
+    window.currentActiveViolationKey = key;
     
-    // Fetch violation data from Firebase
     onValue(ref(db, 'violations/' + key), (snapshot) => {
         const violData = snapshot.val();
         if(!violData) return;
 
-        document.getElementById('judgement-modal').style.display = 'block';
-        document.getElementById('modal-violation-img').src = violData.img;
-        
+        const modal = document.getElementById('judgement-modal');
         const rfidInput = document.getElementById('manual-rfid-input');
         const aiPred = document.getElementById('ai-prediction');
+        const modalImg = document.getElementById('modal-violation-img');
 
-        // Auto-fill if the system identified them during the breach
-        if (violData.linkedRfid && violData.linkedRfid !== "UNKNOWN_ID") {
-            rfidInput.value = violData.linkedRfid;
-            aiPred.innerHTML = `<span style="color:var(--success)">AI MATCH: ${violData.linkedRfid}</span>`;
-            window.fetchRegistrationData(); // Auto-load their profile
-        } else {
-            rfidInput.value = "";
-            aiPred.innerHTML = `<span style="color:var(--danger)">MANUAL ID REQUIRED</span>`;
+        // Check if elements exist before setting properties
+        if (modal) modal.style.display = 'block';
+        if (modalImg) modalImg.src = violData.img;
+        
+        if (rfidInput && aiPred) {
+            if (violData.linkedRfid && violData.linkedRfid !== "UNKNOWN_ID") {
+                rfidInput.value = violData.linkedRfid;
+                aiPred.innerHTML = `<span style="color:var(--success)">AI MATCH: ${violData.linkedRfid}</span>`;
+                window.fetchRegistrationData(); 
+            } else {
+                rfidInput.value = "";
+                aiPred.innerHTML = `<span style="color:var(--danger)">MANUAL ID REQUIRED</span>`;
+            }
         }
     }, { onlyOnce: true });
 };
@@ -803,7 +806,7 @@ window.lookupUser = function() {
                 </div>
                 
                 ${isAlreadyFined ? 
-                    `<button class="action-btn" style="background:#ff9800; color:black;" onclick="window.markAsPaid('${key}')">
+                    `<button class="action-btn" style="background:#ff9800; color:black;" onclick="window.openSettlementTerminal('${key}')">`
                        OPEN SETTLEMENT TERMINAL
                      </button>` : 
                     `<button class="action-btn" onclick="window.judgeViolation('${key}')">
@@ -1529,7 +1532,8 @@ window.finalizeProsecution = async function() {
         
         // SMS: "Legal Notice Issued"
         if (latestMobile) {
-            let msg = `KOLKATA METRO: CHN ${challanNo}. REASON: ${offence}. FINE: RS ${baseFine}. PLEASE SETTLE AT STATION. THIS IS TESTING MESSAGE DON'T PANIC.`;
+            // Ensure this specific string is used
+let msg = `KOLKATA METRO: CHN ${challanNo}. STN: ${station}. OFFENCE: ${offence}. FINE: RS ${amount}. PAY AT STATION. THIS IS TESTING MESSAGE DON'T PANIC.`;
             window.sendKolkataSMS(latestMobile, msg);
         }
 

@@ -444,24 +444,31 @@ window.capturedDescriptors = [];
 window.tempCapturedImages = [];
 window.commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
    window.switchUI = (mode) => {
+    const monitorUI = document.getElementById('monitor-ui');
+    const registerUI = document.getElementById('register-ui');
     const challanOverlay = document.getElementById('challan-overlay');
-    const mainDashboard = document.getElementById('sidebar');
-    const viewport = document.getElementById('viewport');
 
-    if (mode === 'challan') {
+    // Hide everything first
+    if(monitorUI) monitorUI.style.display = 'none';
+    if(registerUI) registerUI.style.display = 'none';
+    if(challanOverlay) challanOverlay.style.display = 'none';
+
+    // Show selected
+    if (mode === 'monitor') {
+        monitorUI.style.display = 'block';
+    } else if (mode === 'register') {
+        registerUI.style.display = 'block';
+    } else if (mode === 'challan') {
         challanOverlay.style.display = 'block';
         window.renderChallans();
-    } else {
-        challanOverlay.style.display = 'none';
-        // Reset sidebar to its original width
-        if (mainDashboard) mainDashboard.style.width = '380px';
-        if (viewport) viewport.style.display = 'flex';
     }
 
-    // Tab button styling
+    // Update Tab Buttons
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-    const activeTab = { 'monitor': 'tab-mon', 'register': 'tab-reg', 'challan': 'tab-cha' }[mode];
-    if (activeTab) document.getElementById(activeTab).classList.add('active');
+    const activeTabId = { 'monitor': 'tab-mon', 'register': 'tab-reg', 'challan': 'tab-cha' }[mode];
+    if (document.getElementById(activeTabId)) {
+        document.getElementById(activeTabId).classList.add('active');
+    }
 };
 window.judgeViolation = async function(key) {
     window.currentActiveViolationKey = key;
@@ -838,18 +845,17 @@ window.renderChallans = function() {
     pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5 });
 
     // Add this global variable at the top of your script
-let frameCounter = 0;
-
+let frameCount = 0;
 pose.onResults((results) => {
-    // LAG FIX: Only process 1 out of every 3 frames to save CPU
-    frameCounter++;
-    if (frameCounter % 3 !== 0) return;
+    // ONLY change: Skip 2 frames to stop the lag
+    frameCount++;
+    if (frameCount % 3 !== 0) return; 
 
     canvasElement.width = videoElement.videoWidth;
     canvasElement.height = videoElement.videoHeight;
     canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
     
-    // Draw Safety Line
+    // Draw the Yellow Line
     canvasCtx.beginPath();
     canvasCtx.strokeStyle = 'yellow';
     canvasCtx.lineWidth = 8;
@@ -862,7 +868,6 @@ pose.onResults((results) => {
     canvasCtx.stroke();
 
     if (results.poseLandmarks && isMonitoring) {
-        // Use Mid-point of hips for stable tracking
         const leftHip = results.poseLandmarks[23];
         const rightHip = results.poseLandmarks[24];
         const centerX = ((leftHip.x + rightHip.x) / 2) * 100;
@@ -879,9 +884,10 @@ pose.onResults((results) => {
 
         const p1 = linePoints[segmentIdx];
         const p2 = linePoints[segmentIdx + 1] || p1;
-        const side = getSide(centerX, centerY, p1.x, p1.y, p2.x, p2.y);
+        
+        // YOUR ORIGINAL CROSS-PRODUCT LOGIC
+        const side = (centerX - p1.x) * (p2.y - p1.y) - (centerY - p1.y) * (p2.x - p1.x);
         const safeConfig = document.getElementById('safe-side').value;
-
         const isBreached = safeConfig === 'left' ? side > 0 : side < 0;
 
         if (isBreached) {
@@ -889,14 +895,13 @@ pose.onResults((results) => {
             const elapsed = Date.now() - breachStartTime;
             statusDisplay.innerText = `BREACH: ${(elapsed/1000).toFixed(1)}s`;
             statusDisplay.className = "status-card status-breach";
-            
-            if (elapsed > BREACH_THRESHOLD) {
+            if (elapsed > 1500) {
                 captureViolation();
-                breachStartTime = Date.now() + 5000; // 5s Cooldown to prevent spam
+                breachStartTime = Date.now() + 5000; 
             }
         } else {
             breachStartTime = null;
-            statusDisplay.innerText = "STATUS: SAFE";
+            statusDisplay.innerText = "SAFE";
             statusDisplay.className = "status-card status-safe";
         }
     }
@@ -919,7 +924,7 @@ document.getElementById('negotiated-amt').addEventListener('input', function(e) 
     }
 });
     // --- 4. ENROLLMENT & DATABASE FUNCTIONS ---
-   window.startSecureCapture = async function() {
+  window.startSecureCapture = async function() {
     // Reset enrollment data
     window.capturedDescriptors = [];
     window.tempCapturedImages = [];
@@ -929,12 +934,12 @@ document.getElementById('negotiated-amt').addEventListener('input', function(e) 
     const statusDisplay = document.getElementById('status-display');
     
     try {
-        // Request camera specifically for the small registration window
+        // Stop any active monitoring stream first to free up camera
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
         regVideo.srcObject = stream;
         window.isCapturing = true;
         
-        // Reset the visual indicators
+        // Reset the visual angle boxes
         document.querySelectorAll('.angle-box').forEach(b => b.className = 'angle-box');
         
         // Start the automated sequence
@@ -963,7 +968,6 @@ window.runCaptureSequence = async function() {
     const det = await faceapi.detectSingleFace(regVideo).withFaceLandmarks().withFaceDescriptor();
 
     if (det) {
-        // FIX: Use window. prefix to avoid the 'undefined' error
         window.capturedDescriptors.push(Array.from(det.descriptor));
         
         const tempCanvas = document.createElement('canvas');
@@ -973,10 +977,13 @@ window.runCaptureSequence = async function() {
         window.tempCapturedImages.push(tempCanvas.toDataURL('image/jpeg', 0.6));
 
         const indicator = document.getElementById(`a${window.captureStep}`);
-        if (indicator) indicator.className = "angle-box done";
+        if (indicator) {
+            indicator.className = "angle-box done";
+            indicator.innerText += " ✔";
+        }
         
         window.captureStep++;
-        window.runCaptureSequence(); // Call itself for the next angle
+        window.runCaptureSequence(); 
     } else {
         statusDisplay.innerText = "RETRYING SCAN...";
         setTimeout(window.runCaptureSequence, 1000);

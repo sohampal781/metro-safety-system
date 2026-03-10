@@ -994,10 +994,12 @@ window.lookupUser = function() {
             if (!breachStartTime) breachStartTime = Date.now();
             const elapsed = Date.now() - breachStartTime;
             statusDisplay.innerText = `BREACH: ${(elapsed/1000).toFixed(1)}s`;
-            if (elapsed > BREACH_THRESHOLD) {
-                captureViolation(minX, maxX, minY, maxY, distanceCM);
-                breachStartTime = Date.now() + 5000; 
-            }
+            // Inside pose.onResults
+if (elapsed > BREACH_THRESHOLD) {
+    // Pass 'results' so the function can check for visibility/confidence
+    captureViolation(minX, maxX, minY, maxY, distanceCM, results); 
+    breachStartTime = Date.now() + 5000; 
+}
         } else {
             breachStartTime = null;
             statusDisplay.innerText = "SYSTEM READY";
@@ -1330,45 +1332,63 @@ window.deleteUserRecord = async function(rfid) {
     }
 };
     // --- 5. VIOLATION LOGGING ---
- window.captureViolation = async function(minX, maxX, minY, maxY, distance) {
+window.captureViolation = async function(minX, maxX, minY, maxY, distance, results) {
+    // --- SAFETY GATE 1: CHECK IF HUMAN LANDMARKS ACTUALLY EXIST ---
+    if (!results || !results.poseLandmarks || results.poseLandmarks.length < 24) {
+        console.log("Discarding capture: No valid human pose detected.");
+        return;
+    }
+
+    // --- SAFETY GATE 2: VERIFY KEY LANDMARK CONFIDENCE ---
+    // Landmark 23 & 24 are Left/Right Hips. We check their visibility score.
+    const leftHipVisibility = results.poseLandmarks[23].visibility;
+    const rightHipVisibility = results.poseLandmarks[24].visibility;
+    
+    // Threshold of 0.8 means the AI must be 80% sure it's a human part
+    if (leftHipVisibility < 0.8 && rightHipVisibility < 0.8) {
+        console.log("Discarding capture: Low confidence / Non-living object detected.");
+        return;
+    }
+
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = videoElement.videoWidth;
     tempCanvas.height = videoElement.videoHeight;
     const ctx = tempCanvas.getContext('2d');
     
-    // 1. Draw Video Background (Mirrored for Selfie View)
+    // 1. DRAW MIRRORED BACKGROUND
     ctx.save();
     ctx.translate(tempCanvas.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(videoElement, 0, 0);
     ctx.restore();
 
-    // --- COORDINATE FIX FOR BOX ---
-    // Because the image is flipped, the X coordinates must be inverted:
-    // NewX = CanvasWidth - OldX
+    // 2. COORDINATE TRANSFORM
     const correctedMinX = tempCanvas.width - maxX;
     const correctedMaxX = tempCanvas.width - minX;
     const boxWidth = correctedMaxX - correctedMinX;
 
-    // 2. Draw Red Box (Now aligned with the person)
+    // 3. AUTO-POSITION LABEL
+    const labelHeight = 60;
+    let labelY = minY - labelHeight; 
+    if (labelY < 10) labelY = maxY + 10;
+
+    // 4. DRAW RED BOUNDING BOX
     ctx.strokeStyle = 'red';
     ctx.lineWidth = 10;
     ctx.strokeRect(correctedMinX, minY, boxWidth, maxY - minY);
 
-    // 3. Draw Red Header Label
+    // 5. DRAW DATA LABEL
     ctx.fillStyle = 'red';
-    ctx.fillRect(correctedMinX, minY - 60, 450, 60);
-    
+    ctx.fillRect(correctedMinX, labelY, 450, labelHeight);
     ctx.fillStyle = 'white';
-    ctx.font = 'bold 28px Arial';
-    ctx.fillText(`VIOLATION: ${distance}cm FROM LINE`, correctedMinX + 15, minY - 20);
+    ctx.font = 'bold 26px Arial';
+    ctx.fillText(`VIOLATION: ${distance}cm FROM LINE`, correctedMinX + 15, labelY + 40);
 
-    // 4. Draw Yellow Safety Line (Proof of Breach)
+    // 6. DRAW YELLOW SAFETY LINE
     ctx.beginPath();
     ctx.strokeStyle = 'yellow';
     ctx.lineWidth = 12;
     window.linePoints.forEach((p, i) => {
-        // Line points are also flipped to match the mirrored image
         const lx = tempCanvas.width - ((p.x / 100) * tempCanvas.width);
         const ly = (p.y / 100) * tempCanvas.height;
         if (i === 0) ctx.moveTo(lx, ly);
@@ -1378,8 +1398,10 @@ window.deleteUserRecord = async function(rfid) {
 
     const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.8);
     
-    // --- Biometric Logic (Keep as is) ---
+    // 7. BIOMETRIC RECOGNITION (Firebase Integration)
     let detectedRfid = "UNKNOWN_ID";
+    let passengerName = "UNKNOWN";
+
     try {
         const det = await faceapi.detectSingleFace(videoElement).withFaceLandmarks().withFaceDescriptor();
         if (det) {
@@ -1390,23 +1412,26 @@ window.deleteUserRecord = async function(rfid) {
                 for (let rfid in cloudUsers) {
                     const user = cloudUsers[rfid];
                     if (!user.descriptors) continue;
-                    Object.values(user.descriptors).forEach(rawDesc => {
-                        const serverDesc = new Float32Array(Object.values(rawDesc));
-                        const dist = faceapi.euclideanDistance(det.descriptor, serverDesc);
-                        if ((1 - dist) * 100 > 45) detectedRfid = rfid;
-                    });
+                    for (const rawDesc of Object.values(user.descriptors)) {
+                        const dist = faceapi.euclideanDistance(det.descriptor, new Float32Array(Object.values(rawDesc)));
+                        if ((1 - dist) * 100 > 45) {
+                            detectedRfid = rfid;
+                            passengerName = user.name;
+                            break;
+                        }
+                    }
                 }
             }
         }
     } catch (e) { console.error(e); }
 
-    // Save to Firebase
+    // 8. SAVE TO FIREBASE
     const violID = "VIOL-" + Date.now();
     const { set, ref: saveRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
     await set(saveRef(db, 'violations/' + violID), {
         id: violID, img: dataUrl, time: new Date().toLocaleString(),
         linkedRfid: detectedRfid, status: "PENDING",
-        violationDistance: distance + "cm"
+        violationDistance: distance + "cm", identifiedName: passengerName
     });
 };
     // --- 6. INITIALIZATION ---

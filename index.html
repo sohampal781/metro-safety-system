@@ -771,20 +771,33 @@ window.lookupUser = function() {
     window.currentActiveViolationKey = key;
     const { onValue, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
 
-    onValue(dbRef(db, 'violations/' + key), (snapshot) => {
+    // FIX: Added 'async' to the callback function below to allow 'await' inside it
+    onValue(dbRef(db, 'violations/' + key), async (snapshot) => {
         const v = snapshot.val();
         if (!v) return;
 
-        document.getElementById('judgement-modal').style.display = 'block';
-        document.getElementById('modal-title').innerText = "PROSECUTION TERMINAL: NEW BREACH";
-        document.getElementById('modal-violation-img').src = v.img;
+        const modal = document.getElementById('judgement-modal');
+        const title = document.getElementById('modal-title');
+        const img = document.getElementById('modal-violation-img');
 
-        // Force UI to Prosecution Mode
-        document.getElementById('prosecution-controls').style.display = 'block';
-        document.getElementById('settlement-controls').style.display = 'none';
+        if (modal) modal.style.display = 'block';
+        if (title) title.innerText = "PROSECUTION TERMINAL: NEW BREACH";
+        if (img) img.src = v.img;
+
+        // Toggle UI Panels
+        const prosControls = document.getElementById('prosecution-controls');
+        const settControls = document.getElementById('settlement-controls');
         
-        document.getElementById('manual-rfid-input').value = v.linkedRfid || "";
-        window.fetchDetailedProsecutionData();
+        if (prosControls) prosControls.style.display = 'block';
+        if (settControls) settControls.style.display = 'none';
+        
+        const rfidInput = document.getElementById('manual-rfid-input');
+        if (rfidInput) rfidInput.value = v.linkedRfid || "";
+
+        // Trigger biometric and history fetch
+        if (window.fetchDetailedProsecutionData) {
+            window.fetchDetailedProsecutionData();
+        }
     }, { onlyOnce: true });
 };
 

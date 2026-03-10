@@ -699,70 +699,63 @@ window.lookupUser = function() {
   window.renderChallans = async function() {
     const pendingGrid = document.getElementById('grid-pending');
     const prosecutedGrid = document.getElementById('grid-prosecuted');
-    const searchTerm = document.getElementById('portal-search').value.trim().toLowerCase();
+    if (!pendingGrid || !prosecutedGrid) return;
 
     const { onValue, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
 
+    // Listen to the 'violations' node in Firebase
     onValue(dbRef(db, 'violations'), (snapshot) => {
         pendingGrid.innerHTML = "";
         prosecutedGrid.innerHTML = "";
         const data = snapshot.val();
-        if (!data) return;
+        
+        if (!data) {
+            pendingGrid.innerHTML = "<div style='color:#555; padding:20px;'>No active breaches.</div>";
+            return;
+        }
 
         Object.keys(data).reverse().forEach(key => {
-            const viol = data[key];
-            const isFined = (viol.status === "FINED");
-            const isPaid = (viol.status === "CLOSED_PAID");
-
-            // Filter Logic
-            const rfid = (viol.linkedRfid || "").toLowerCase();
-            if (searchTerm && !rfid.includes(searchTerm)) return;
+            const v = data[key];
+            const isFined = (v.status === "FINED");
+            const isPaid = (v.status === "CLOSED_PAID");
 
             const card = document.createElement('div');
             card.className = 'challan-card';
-            card.style.borderTopColor = (isFined || isPaid) ? 'var(--success)' : 'var(--danger)';
+            
+            // Set border color based on legal state
+            card.style.borderTop = isPaid ? "5px solid var(--success)" : 
+                                  isFined ? "5px solid #ff9800" : "5px solid var(--danger)";
 
             card.innerHTML = `
-                <img src="${viol.img}" style="width:100%; border-radius:8px;">
+                ${v.img ? `<img src="${v.img}" style="width:100%; border-radius:8px;">` : 
+                `<div style="height:120px; background:#111; color:#444; display:flex; align-items:center; justify-content:center; font-size:10px;">DATA PURGED AFTER PAYMENT</div>`}
+                
                 <div style="font-size:12px; margin: 10px 0;">
-                    <b style="color:var(--accent)">RFID: ${viol.linkedRfid}</b><br>
-                    <span>Time: ${viol.time}</span>
-                    ${isFined ? `<div style="color:var(--danger); font-weight:bold;">CHALLAN: ${viol.challanNo}</div>` : ''}
+                    <b style="color:var(--accent)">RFID: ${v.linkedRfid || 'UNKNOWN'}</b><br>
+                    <span>Time: ${v.time}</span>
+                    ${v.challanNo ? `<div style="color:var(--success); font-weight:bold; margin-top:5px;">CHN: ${v.challanNo}</div>` : ''}
                 </div>
                 
                 <div style="display:flex; flex-direction:column; gap:5px;">
                     ${isFined ? `
-                        <button class="action-btn" style="background:var(--success); color:black;" 
-                                onclick="window.openSettlementHearing('${key}')">
-                            SETTLE CASE & RECEIPT
-                        </button>
-                        <button class="action-btn" style="background:var(--accent); color:black;" 
-                                onclick="window.openEvidenceFile('${key}')">
-                            PRINT CASE FILE
-                        </button>
+                        <button class="action-btn" style="background:var(--success); color:black;" onclick="window.openSettlementHearing('${key}')">SETTLE CASE</button>
                     ` : isPaid ? `
-                        <div style="text-align:center; color:var(--success); font-weight:bold; padding:10px; border:1px solid var(--success);">
-                            CASE CLOSED / PAID
-                        </div>
+                        <button class="action-btn" style="background:#333; color:#777;" disabled>PAID & CLOSED</button>
                     ` : `
-                        <button class="action-btn" style="background:var(--danger); color:white;" 
-                                onclick="window.openProsecutionModal('${key}')">
-                            ISSUE LEGAL NOTICE
-                        </button>
+                        <button class="action-btn" style="background:var(--danger); color:white;" onclick="window.openProsecutionModal('${key}')">ISSUE LEGAL NOTICE</button>
                     `}
-                    <button class="delete-btn" style="background:#21262d; color:#8b949e; margin-top:5px;" 
-                            onclick="window.deleteRecord('${key}')">PURGE LOG</button>
+                    <button class="delete-btn" onclick="window.deleteRecord('${key}')">PURGE LOG</button>
                 </div>
             `;
 
-            // Place in correct container
+            // Sort into Pending vs Prosecuted (Fined/Paid)
             if (isFined || isPaid) {
                 prosecutedGrid.appendChild(card);
             } else {
                 pendingGrid.appendChild(card);
             }
         });
-    }, { onlyOnce: false });
+    });
 };
        window.openProsecutionModal = async function(key) {
     window.currentActiveViolationKey = key;

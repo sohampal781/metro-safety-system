@@ -372,9 +372,14 @@
     <div class="challan-header">
         <h1 style="margin:0;">METRO RAILWAY | VIOLATION PORTAL</h1>
         <div style="display:flex; gap:10px; flex-grow:1; max-width:500px; margin: 0 40px;">
-            <input type="text" id="portal-search" placeholder="SEARCH BY CHALLAN NO. OR RFID..." onkeyup="window.renderChallans()">
-        </div>
+    <input type="text" 
+           id="portal-search" 
+           placeholder="SEARCH BY CHALLAN NO. OR RFID..." 
+           oninput="window.renderChallans()" 
+           style="width: 100%; box-sizing: border-box; padding: 12px; background: #161b22; border: 1px solid var(--border); color: white; border-radius: 6px; font-size: 14px;">
+</div>
         <button class="action-btn" style="width:100px; margin:0;" onclick="switchUI('monitor')">CLOSE</button>
+        
     </div>
 
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
@@ -792,44 +797,61 @@ window.lookupUser = function() {
     const prosecutedGrid = document.getElementById('grid-prosecuted');
     const searchTerm = document.getElementById('portal-search').value.trim().toLowerCase();
 
+    // Attach the listener once - it will re-run automatically when data or search changes
     onValue(ref(db, 'violations'), (snapshot) => {
         pendingGrid.innerHTML = "";
         prosecutedGrid.innerHTML = "";
         const data = snapshot.val();
-        if (!data) return;
+        
+        if (!data) {
+            pendingGrid.innerHTML = "<p style='color:#555;'>No pending violations.</p>";
+            return;
+        }
 
+        // Convert to array and reverse to see NEWEST violations first
         Object.keys(data).reverse().forEach(key => {
             const viol = data[key];
-            
-            // SECURITY: If the status is SETTLED, do not show it in the UI grids
+
+            // 1. RULE: Completely hide SETTLED cases from the dashboard
             if (viol.status === "SETTLED") return;
 
-            // SEARCH LOGIC: Only show if search matches (or if search is empty)
-            const cNo = (viol.challanNo || "").toString().toLowerCase();
+            // 2. SEARCH LOGIC: Check RFID and Challan Number
             const rfid = (viol.linkedRfid || "").toLowerCase();
-            if (searchTerm && !cNo.includes(searchTerm) && !rfid.includes(searchTerm)) return;
+            const challan = (viol.challanNo || "").toString().toLowerCase();
+            
+            // If there is a search term, only show matching cards
+            if (searchTerm && !rfid.includes(searchTerm) && !challan.includes(searchTerm)) {
+                return; 
+            }
 
+            // 3. CREATE THE CARD UI
+            const isAlreadyFined = (viol.status === "FINED");
             const card = document.createElement('div');
             card.className = 'challan-card';
-            const isAlreadyFined = (viol.status === "FINED");
-            card.style.borderTopColor = isAlreadyFined ? 'var(--success)' : 'var(--danger)';
+            card.style.borderTop = `5px solid ${isAlreadyFined ? 'var(--success)' : 'var(--danger)'}`;
 
             card.innerHTML = `
-                <img src="${viol.img}" style="width:100%; border-radius:8px;">
-                <div style="font-size:12px; margin: 10px 0;">
-                    <b style="color:var(--accent)">RFID: ${viol.linkedRfid}</b><br>
-                    <span>Time: ${viol.time}</span>
+                <img src="${viol.img}" style="width:100%; border-radius:8px; margin-bottom:10px;">
+                <div style="font-size:12px; margin-bottom:10px;">
+                    <b style="color:var(--accent)">ID: ${viol.linkedRfid}</b><br>
+                    <span style="color:#8b949e;">${viol.time}</span><br>
+                    ${isAlreadyFined ? `<b style="color:var(--success)">CHN: ${viol.challanNo}</b>` : ''}
                 </div>
                 ${isAlreadyFined ? 
-                    `<button class="action-btn" style="background:#ff9800; color:black;" onclick="window.openSettlementTerminal('${key}')">OPEN SETTLEMENT</button>` : 
-                    `<button class="action-btn" onclick="window.judgeViolation('${key}')">ISSUE LEGAL NOTICE</button>`
+                    `<button class="action-btn" style="background:#ff9800; color:black;" onclick="window.openSettlementTerminal('${key}')">SETTLE CASE</button>` : 
+                    `<button class="action-btn" onclick="window.judgeViolation('${key}')">INVESTIGATE</button>`
                 }
+                <button class="delete-btn" style="background:#21262d; color:#8b949e; margin-top:8px;" onclick="window.deleteRecord('${key}')">PURGE LOG</button>
             `;
-            (isAlreadyFined ? prosecutedGrid : pendingGrid).appendChild(card);
-        });
-    });
-};
 
+            if (isAlreadyFined) {
+                prosecutedGrid.appendChild(card);
+            } else {
+                pendingGrid.appendChild(card);
+            }
+        });
+    }, { onlyOnce: false }); // Keep false so it updates in real-time
+};
     // --- 3. MONITORING & MATH LOGIC (YOUR ORIGINAL LOGIC) ---
     function updateSliders() {
     if (isMonitoring) return;

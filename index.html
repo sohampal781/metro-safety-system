@@ -14,251 +14,65 @@
        :root {
     --bg-dark: #05070a;
     --panel-bg: rgba(22, 27, 34, 0.7);
-    --accent-blue: #00d2ff;
-    --danger-red: #ff3333;
-    --text-main: #e6edf3;
+    --accent: #00d2ff;
+    --danger: #ff3333;
+    --success: #00e676;
+    --border: rgba(255, 255, 255, 0.1);
     --glass-border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 body {
     background: radial-gradient(circle at top right, #0d1117, var(--bg-dark));
-    backdrop-filter: blur(10px);
-}
-
-        /* --- SIDEBAR --- */
-        #sidebar {
-            width: 380px;
-            background: var(--panel);
-            border-right: 1px solid var(--border);
-            display: flex;
-            flex-direction: column;
-            padding: 0;
-            z-index: 100;
-        }
-
-        .tabs {
-            display: flex;
-            background: #0d1117;
-            padding: 10px;
-            gap: 10px;
-        }
-
-        .tab-btn {
-            flex: 1;
-            padding: 12px;
-            border: none;
-            background: transparent;
-            color: #8b949e;
-            cursor: pointer;
-            font-weight: 600;
-            border-radius: 6px;
-            transition: 0.3s;
-        }
-
-        .tab-btn.active {
-            background: var(--accent);
-            color: #000;
-        }
-
-        .content-area { padding: 20px; overflow-y: auto; flex-grow: 1; }
-
-        /* --- UI COMPONENTS --- */
-        .status-card {
-    backdrop-filter: blur(8px);
-    background: var(--panel-bg);
-    border: var(--glass-border);
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
-}
-        .status-safe { background: rgba(0, 230, 118, 0.1); color: var(--success); border-color: var(--success); }
-        .status-breach { background: rgba(255, 51, 51, 0.1); color: var(--danger); border-color: var(--danger); animation: pulse 1s infinite; }
-
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
-
-        .control-group { 
-            background: #0d1117; 
-            padding: 15px; 
-            border-radius: 8px; 
-            margin-bottom: 12px; 
-            border: 1px solid var(--border);
-        }
-
-        label { font-size: 11px; color: #8b949e; text-transform: uppercase; display: block; margin-bottom: 8px; }
-
-        input, select, button {
-            width: 100%; box-sizing: border-box; padding: 12px; background: #161b22; 
-            border: 1px solid var(--border); color: white; border-radius: 6px; font-size: 14px;
-        }
-
-        .action-btn {
-            background: var(--accent); color: black; font-weight: bold; border: none; cursor: pointer; margin-top: 10px;
-        }
-
-        .delete-btn {
-            background: #ff4444; color: white; font-size: 10px; padding: 5px; margin-top: 5px; border: none; border-radius: 4px; cursor: pointer;
-        }
-
-        /* --- VIEWPORT --- */
-        #viewport {
-            flex-grow: 1;
-            position: relative;
-            background: #000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        video, canvas {
-            position: absolute;
-            width: 95%; height: 90%;
-            object-fit: contain;
-            border-radius: 12px;
-            transform: scaleX(-1);
-        }
-
-        /* --- CHALLAN TAB OVERLAY --- */
-       #challan-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
+    color: #e6edf3;
+    font-family: 'Inter', sans-serif;
+    margin: 0;
+    display: flex;
     height: 100vh;
-    background: #0a0b10;
-    z-index: 99999; /* Ensure it's above everything */
-    display: none; 
-    padding: 30px;
-    box-sizing: border-box;
-    overflow-y: auto;
+    overflow: hidden;
 }
 
-/* Add this to make cards look professional */
-.challan-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 20px;
-    padding-top: 20px;
-}
-
-        .challan-header {
-            border-bottom: 2px solid var(--police-blue);
-            padding-bottom: 15px;
-            margin-bottom: 30px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .challan-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-            gap: 25px;
-        }
-
-        .challan-card {
-            background: var(--panel);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 15px;
-            border-top: 5px solid var(--danger);
-        }
-
-        .challan-card img { width: 100%; border-radius: 8px; margin-bottom: 10px; }
-
-        .angle-status {
-            display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 10px;
-        }
-        .angle-box {
-            padding: 8px; font-size: 10px; text-align: center; background: #21262d; border-radius: 4px;
-        }
-        .angle-box.done { background: var(--success); color: black; }
-        /* Make the sidebar container flexible but restricted */
 #sidebar {
+    width: 380px;
+    background: var(--panel-bg);
+    backdrop-filter: blur(10px);
+    border-right: var(--glass-border);
     display: flex;
     flex-direction: column;
-    height: 100vh; /* Lock sidebar to screen height */
+    z-index: 100;
 }
 
-/* Create a scrollable wrapper for the sliders */
-#monitor-ui {
-    flex-grow: 1;
-    overflow-y: auto; /* Enable vertical scrolling */
-    padding-right: 10px; /* Space for the scrollbar */
+.tabs { display: flex; background: #0d1117; padding: 10px; gap: 5px; }
+.tab-btn {
+    flex: 1; padding: 12px; border: none; background: transparent;
+    color: #8b949e; cursor: pointer; font-weight: 600; border-radius: 6px;
 }
+.tab-btn.active { background: var(--accent); color: #000; }
 
-/* Custom Scrollbar Styling (Modern look) */
-#monitor-ui::-webkit-scrollbar {
-    width: 6px;
-}
+.content-area { padding: 20px; overflow-y: auto; flex-grow: 1; }
 
-#monitor-ui::-webkit-scrollbar-track {
-    background: #0d1117;
+.status-card {
+    padding: 20px; border-radius: 12px; text-align: center;
+    font-weight: bold; margin-bottom: 20px; border: var(--glass-border);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
 }
+.status-safe { background: rgba(0, 230, 118, 0.1); color: var(--success); }
+.status-breach { background: rgba(255, 51, 51, 0.2); color: var(--danger); animation: pulse 1s infinite; }
 
-#monitor-ui::-webkit-scrollbar-thumb {
-    background: var(--accent);
-    border-radius: 10px;
-}
+@keyframes pulse { 50% { opacity: 0.5; } }
 
-#monitor-ui::-webkit-scrollbar-thumb:hover {
-    background: #00b8e6;
-}
-        #register-ui {
-    padding: 20px;
-    background: #0d1117;
-    border-radius: 15px;
-    border: 1px solid var(--accent);
-}
+.control-group { background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; margin-bottom: 12px; border: var(--glass-border); }
+label { font-size: 11px; color: #8b949e; text-transform: uppercase; margin-bottom: 8px; display: block; }
+input, select, button { width: 100%; padding: 12px; background: #161b22; border: 1px solid var(--border); color: white; border-radius: 6px; }
 
-.registration-header {
-    font-size: 14px;
-    color: var(--accent);
-    margin-bottom: 20px;
-    text-align: center;
-    border-bottom: 1px solid #30363d;
-    padding-bottom: 10px;
-}
+.action-btn { background: var(--accent); color: black; font-weight: bold; border: none; cursor: pointer; }
+.angle-box { padding: 8px; font-size: 10px; text-align: center; background: #21262d; border-radius: 4px; }
+.angle-box.done { background: var(--success); color: black; }
 
-#db-items div {
-    background: #1c2128;
-    margin-top: 5px;
-    padding: 10px;
-    border-radius: 5px;
-    border-left: 3px solid var(--accent);
-}
-        /* Universal Scrollbar for "Innovative" Feel */
-* {
-    scrollbar-width: thin;
-    scrollbar-color: var(--accent) #0d1117;
-}
+#viewport { flex-grow: 1; position: relative; background: #000; display: flex; align-items: center; justify-content: center; }
+video, canvas { position: absolute; width: 95%; height: 90%; border-radius: 12px; transform: scaleX(-1); object-fit: contain; }
 
-::-webkit-scrollbar {
-    width: 8px;
-}
-
-::-webkit-scrollbar-track {
-    background: #0d1117;
-}
-
-::-webkit-scrollbar-thumb {
-    background: var(--accent);
-    border-radius: 10px;
-    border: 2px solid #0d1117;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: #00b8e6;
-}
-        #challan-grid, #db-items {
-    scrollbar-width: thin;
-    scrollbar-color: var(--accent) #0d1117;
-}
-
-#challan-grid::-webkit-scrollbar, #db-items::-webkit-scrollbar {
-    width: 6px;
-}
-
-#challan-grid::-webkit-scrollbar-thumb, #db-items::-webkit-scrollbar-thumb {
-    background: var(--accent);
-    border-radius: 10px;
+#challan-overlay {
+    position: fixed; inset: 0; background: #0a0b10; z-index: 99999; display: none; padding: 30px; overflow-y: auto;
 }
     </style>
 </head>

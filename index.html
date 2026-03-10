@@ -1356,118 +1356,89 @@ window.finalizeUpdate = async function(shouldSendSms) {
     const historyDiv = document.getElementById('offence-history');
     const gallery = document.getElementById('biometric-gallery');
 
-    if (!rfidInput) {
-        alert("CRITICAL: RFID Tag required for database retrieval.");
-        return;
-    }
+    if (!rfidInput) return alert("CRITICAL: Enter Passenger RFID to proceed.");
 
-    // 1. Fetch Passenger Profile & Biometric Records
     const { onValue, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
     
+    // 1. Load Passenger Profile
     onValue(dbRef(db, 'users/' + rfidInput), (snapshot) => {
         const user = snapshot.val();
-        if (!user) {
-            alert("RECORD NOT FOUND: Please verify RFID or perform manual enrollment.");
-            return;
-        }
+        if (!user) return alert("IDENTITY NOT FOUND. Please verify RFID.");
 
-        // Reveal the prosecution UI
         infoDisplay.style.display = 'block';
         
-        // Load All 4 Registration Angles (The 4-point evidence check)
+        // Show All 4 Enrollment Angles
         gallery.innerHTML = "";
-        if (user.tempImages && Array.isArray(user.tempImages)) {
-            user.tempImages.forEach((imgData, index) => {
-                const imgWrap = document.createElement('div');
-                imgWrap.innerHTML = `
-                    <img src="${imgData}" style="width:100%; border:1px solid var(--accent); border-radius:4px; filter: grayscale(0.5);">
-                    <div style="font-size:8px; text-align:center; color:var(--accent)">ANGLE ${index + 1}</div>
-                `;
-                gallery.appendChild(imgWrap);
+        if (user.tempImages) {
+            user.tempImages.forEach((img, i) => {
+                gallery.innerHTML += `<div style="text-align:center;"><img src="${img}" style="width:100%; border-radius:4px; border:1px solid var(--accent);"><small style="font-size:8px;">ANGLE ${i+1}</small></div>`;
             });
         }
 
-        // 2. Scan Violation History for Repeat Offender Status
+        // 2. Scan History for Repeat Offender Status
         onValue(dbRef(db, 'violations'), (vSnap) => {
-            const allViolations = vSnap.val();
+            const data = vSnap.val();
             let historyHtml = "";
-            let violationCount = 0;
-            let totalFinesPaid = 0;
+            let vCount = 0;
 
-            if (allViolations) {
-                Object.values(allViolations).forEach(v => {
+            if (data) {
+                Object.values(data).forEach(v => {
                     if (v.linkedRfid === rfidInput && v.status === "FINED") {
-                        violationCount++;
-                        totalFinesPaid += parseInt(v.fineAmount || 0);
-                        historyHtml += `
-                            <div style="padding:5px; border-bottom:1px solid #333; font-family:monospace; font-size:11px;">
-                                <span style="color:var(--danger)">[BREACH]</span> ${v.time} | CHN: ${v.challanNo} | AMT: ₹${v.fineAmount}
-                            </div>`;
+                        vCount++;
+                        historyHtml += `<div style="color:var(--danger); border-bottom:1px solid #333; padding:4px;">⚠ ${v.time} | CHN: ${v.challanNo} | AMT: ₹${v.fineAmount}</div>`;
                     }
                 });
             }
 
-            if (violationCount > 0) {
+            if (vCount > 0) {
                 historyDiv.innerHTML = historyHtml;
-                // Auto-Escalate Fine: 1000 base + 500 per previous offense
-                const escalatedFine = 1000 + (violationCount * 500);
+                const escalatedFine = 1000 + (vCount * 500); // 500 increase per offense
                 document.getElementById('fine-amount').value = escalatedFine;
-                alert(`POLICE ALERT: Repeat Offender. Previous Violations: ${violationCount}. Escalated Fine: ₹${escalatedFine}`);
+                alert(`REPEAT OFFENDER: This person has ${vCount} previous breaches. Fine escalated to ₹${escalatedFine}.`);
             } else {
-                historyDiv.innerHTML = "<div style='color:var(--success); padding:10px;'>CLEAN RECORD: First-time offender.</div>";
+                historyDiv.innerHTML = "<div style='color:var(--success);'>CLEAN HISTORY: No previous violations found.</div>";
                 document.getElementById('fine-amount').value = 1000;
             }
         }, { onlyOnce: true });
     }, { onlyOnce: true });
 };
-       window.finalizeProsecution = async function() {
+
+window.finalizeProsecution = async function() {
     const rfid = document.getElementById('manual-rfid-input').value.trim();
+    const isAdmitted = document.getElementById('passenger-admission').checked;
     const baseFine = parseInt(document.getElementById('fine-amount').value);
-    const negotiatedFine = document.getElementById('negotiated-amount').value;
+    const finalFine = parseInt(document.getElementById('negotiated-amount').value) || baseFine;
+    const basis = document.getElementById('negotiation-basis').value;
     const reason = document.getElementById('negotiation-reason').value.trim();
-    
-    // Determine final amount
-    const finalAmount = negotiatedFine ? parseInt(negotiatedFine) : baseFine;
-    
-    // Enforcement: If price is reduced, a reason is MANDATORY
-    if (finalAmount < baseFine && reason.length < 5) {
-        alert("LEGAL REQUIREMENT: You must provide a valid reason for fine reduction/negotiation (e.g., Senior Citizen, Medical Emergency).");
-        return;
+
+    if (!isAdmitted) return alert("MANDATORY: Passenger must check the Legal Admission Box to proceed with settlement.");
+    if (finalFine < baseFine && (basis === "none" || reason.length < 5)) {
+        return alert("AUDIT REQUIREMENT: Select a Legal Basis and provide notes for fine reduction.");
     }
 
-    const challanNo = "CHN-" + Math.floor(100000 + Math.random() * 900000);
-    const prosecutionTime = new Date().toLocaleString();
+    const challanNo = "METRO-" + Math.floor(100000 + Math.random() * 900000);
+    const { update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
 
     try {
-        const { update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
-        
-        const prosecutionData = {
+        await update(dbRef(db, 'violations/' + window.currentActiveViolationKey), {
             status: "FINED",
-            fineAmount: finalAmount,
-            originalBaseFine: baseFine,
-            negotiationReason: reason || "Standard penalty applied",
+            fineAmount: finalFine,
+            originalFine: baseFine,
+            negotiationBasis: basis,
+            negotiationReason: reason || "Full Penalty Applied",
             challanNo: challanNo,
-            prosecutionDate: prosecutionTime,
-            officerAction: "LEGAL_NOTICE_ISSUED"
-        };
+            prosecutionDate: new Date().toLocaleString(),
+            legalAdmission: true
+        });
 
-        // Update the specific violation record
-        await update(dbRef(db, 'violations/' + window.currentActiveViolationKey), prosecutionData);
+        const sms = `KOLKATA METRO: Challan ${challanNo} issued for RFID ${rfid}. Settlement Amount: Rs ${finalAmount}. Pay at Counter 4. Stay Safe!`;
+        window.sendKolkataSMS("6290952326", sms); // Change to dynamic mobile if needed
 
-        // Send Official Traffic Police Style SMS
-        const smsMsg = `KOLKATA METRO POLICE: Challan ${challanNo} issued to RFID ${rfid}. Offence: Yellow Line Breach. Fine: Rs ${finalAmount}. Pay at Counter within 7 days.`;
-        window.sendKolkataSMS(document.getElementById('edit-mobile')?.value || "9000000000", smsMsg);
-
-        console.log(`[PROSECUTION COMPLETE] Challan: ${challanNo} | Final Amt: ${finalAmount}`);
-        
-        // Reset and Refresh
-        alert(`CHALLAN GENERATED SUCCESSFULLY\nNo: ${challanNo}\nAmount: ₹${finalAmount}`);
+        alert(`PROSECUTION SUCCESSFUL\nChallan No: ${challanNo}\nFinal Amount: ₹${finalFine}`);
         window.closeJudgement();
-        window.renderChallans(); // Refresh the portal view
-
-    } catch (error) {
-        console.error("Prosecution Database Error:", error);
-        alert("Critical Failure: Could not save prosecution data to cloud.");
+        window.renderChallans();
+    } catch (e) {
+        alert("CRITICAL ERROR: Failed to save to Cloud Database.");
     }
 };
       window.openEvidenceFile = async function(violationKey) {
@@ -1537,60 +1508,80 @@ async function init() {
    
     init();
 </script>
-   <div id="judgement-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg); z-index:9999; padding:20px; box-sizing:border-box; overflow-y:auto; border: 4px solid var(--police-blue);">
-    <div style="display:flex; justify-content:space-between; align-items:center; background:var(--police-blue); padding:15px; margin:-20px -20px 20px -20px;">
-        <h2 style="margin:0; color:white; letter-spacing:2px;">METRO PROSECUTION UNIT - CASE FILE</h2>
-        <button onclick="window.closeJudgement()" style="background:var(--danger); border:none; color:white; padding:10px 25px; cursor:pointer; font-weight:bold;">CLOSE FILE</button>
+   <div id="judgement-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg); z-index:9999; padding:20px; box-sizing:border-box; overflow-y:auto; border: 5px solid var(--police-blue);">
+    
+    <div style="display:flex; justify-content:space-between; align-items:center; background:var(--police-blue); padding:15px; margin:-20px -20px 20px -20px; box-shadow: 0 5px 15px rgba(0,0,0,0.5);">
+        <h2 style="margin:0; color:white; letter-spacing:2px; font-weight:900;">COURT OF METRO RAILWAYS | PROSECUTION TERMINAL</h2>
+        <button onclick="window.closeJudgement()" style="background:var(--danger); border:none; color:white; padding:10px 25px; cursor:pointer; font-weight:bold; border-radius:4px;">TERMINATE SESSION</button>
     </div>
 
-    <div style="display:grid; grid-template-columns: 1.2fr 1fr; gap:20px;">
+    <div style="display:grid; grid-template-columns: 1.2fr 1fr; gap:20px; margin-top:10px;">
         
         <div style="display:flex; flex-direction:column; gap:15px;">
-            <div class="control-group" style="border-color: var(--danger);">
-                <label style="color:var(--danger); font-weight:bold;">INCIDENT EVIDENCE (CCTV SNAPSHOT)</label>
-                <img id="modal-violation-img" style="width:100%; border:2px solid var(--danger); border-radius:5px;">
+            <div class="control-group" style="border-color: var(--danger); background: #1a0000;">
+                <label style="color:var(--danger); font-weight:bold; font-size:14px;">[ EXHIBIT A: CCTV BREACH LOG ]</label>
+                <img id="modal-violation-img" style="width:100%; border:2px solid var(--danger); border-radius:5px; margin-top:10px;">
             </div>
 
-            <div class="control-group">
-                <label>PASSENGER BIOMETRIC RECODRS (ALL ANGLES)</label>
-                <div id="biometric-gallery" style="display:grid; grid-template-columns:repeat(4, 1fr); gap:5px;">
+            <div class="control-group" style="border-left: 5px solid var(--success);">
+                <label style="color:var(--success);">[ EXHIBIT B: PASSENGER BIOMETRIC IDENTIFICATION ]</label>
+                <div id="biometric-gallery" style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; margin-top:10px;">
                     </div>
+            </div>
+
+            <div style="background:rgba(255,255,255,0.05); padding:20px; border:1px solid #30363d; border-radius:8px;">
+                <label style="color:var(--accent); font-size:12px;">LEGAL DECLARATION & ADMISSION</label>
+                <p style="font-size:11px; color:#8b949e; line-height:1.4;">I, the undersigned passenger, hereby acknowledge that I have crossed the yellow safety line at the time and location captured in Exhibit A. I understand this is a safety violation under the Railway Act.</p>
+                <div style="display:flex; align-items:center; gap:10px; margin-top:10px;">
+                    <input type="checkbox" id="passenger-admission" style="width:20px; height:20px; cursor:pointer;">
+                    <span style="font-weight:bold; color:var(--success);">PASSENGER ACCEPTS VIOLATION</span>
+                </div>
             </div>
         </div>
 
         <div style="display:flex; flex-direction:column; gap:15px;">
             <div class="control-group">
-                <label>PASSENGER VERIFICATION</label>
+                <label>IDENTITY VERIFICATION</label>
                 <div style="display:flex; gap:10px;">
-                    <input type="text" id="manual-rfid-input" placeholder="SCAN RFID">
-                    <button class="action-btn" style="width:120px; margin:0;" onclick="window.fetchDetailedProsecutionData()">LOAD FILE</button>
+                    <input type="text" id="manual-rfid-input" placeholder="SCAN PASSENGER RFID">
+                    <button class="action-btn" style="width:140px; margin:0;" onclick="window.fetchDetailedProsecutionData()">LOAD CASE FILE</button>
                 </div>
             </div>
 
             <div id="prosecution-controls" style="display:none;">
-                <div style="background:rgba(255,152,0,0.1); border:1px solid #ff9800; padding:10px; border-radius:5px; margin-bottom:15px;">
-                    <label style="color:#ff9800;">PREVIOUS OFFENCES</label>
-                    <div id="offence-history" style="font-size:12px; max-height:100px; overflow-y:auto;">
-                        Searching records...
+                <div style="background:rgba(255,152,0,0.1); border:1px solid #ff9800; padding:15px; border-radius:8px;">
+                    <label style="color:#ff9800; font-weight:bold;">OFFENCE RECURRENCE HISTORY</label>
+                    <div id="offence-history" style="font-size:12px; margin-top:10px; max-height:120px; overflow-y:auto; font-family:monospace;">
+                        Searching criminal database...
                     </div>
                 </div>
 
-                <div class="control-group">
-                    <label>PENALTY CALCULATION</label>
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                <div class="control-group" style="margin-top:10px;">
+                    <label style="color:var(--accent);">SETTLEMENT & NEGOTIATION MODULE</label>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-top:10px;">
                         <div>
-                            <span style="font-size:10px;">STANDARD FINE</span>
-                            <input type="number" id="fine-amount" value="1000">
+                            <span style="font-size:10px; color:#8b949e;">PENALTY RATE (INR)</span>
+                            <input type="number" id="fine-amount" readonly style="background:#0d1117; color:#ff4444; font-weight:bold;">
                         </div>
                         <div>
-                            <span style="font-size:10px;">NEGOTIATED AMT</span>
-                            <input type="number" id="negotiated-amount" placeholder="Final Amt">
+                            <span style="font-size:10px; color:var(--success);">NEGOTIATED SETTLEMENT</span>
+                            <input type="number" id="negotiated-amount" placeholder="Final Amount">
                         </div>
                     </div>
-                    <textarea id="negotiation-reason" placeholder="REASON FOR NEGOTIATION (e.g., First time, Senior Citizen, Student...)" style="width:100%; margin-top:10px; background:#0d1117; border:1px solid var(--border); color:white; padding:5px;"></textarea>
+                    
+                    <label style="margin-top:15px;">LEGAL GROUNDS FOR NEGOTIATION</label>
+                    <select id="negotiation-basis" style="margin-bottom:10px;">
+                        <option value="none">-- Select Legal Basis --</option>
+                        <option value="first_offence">First Offence - Warning Issued</option>
+                        <option value="senior_citizen">Senior Citizen / Physical Limitation</option>
+                        <option value="medical_emergency">Emergency Movement</option>
+                        <option value="cooperative">Highly Cooperative - Reduced Penalty</option>
+                        <option value="student_discount">Valid Student ID Provided</option>
+                    </select>
+                    <textarea id="negotiation-reason" placeholder="Additional Case Notes (Mandatory for reductions)..." style="width:100%; min-height:60px; background:#0d1117; border:1px solid #30363d; color:white; padding:8px; border-radius:5px;"></textarea>
                 </div>
 
-                <button class="action-btn" style="background:var(--success); color:black; height:60px; font-size:18px;" onclick="window.finalizeProsecution()">GENERATE OFFICIAL CHALLAN</button>
+                <button class="action-btn" id="finalize-prosecution-btn" style="background:var(--success); color:black; height:70px; font-size:20px; box-shadow: 0 0 20px rgba(0,230,118,0.3);" onclick="window.finalizeProsecution()">GENERATE OFFICIAL CHALLAN & SMS</button>
             </div>
         </div>
     </div>

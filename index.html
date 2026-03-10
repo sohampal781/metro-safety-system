@@ -1417,89 +1417,68 @@ window.searchUserForUpdate = function() {
 };
 window.fetchDetailedProsecutionData = async function() {
     const rfid = document.getElementById('manual-rfid-input').value.trim();
+    
+    // UI Elements
+    const infoBox = document.getElementById('passenger-info-display');
+    const nameLabel = document.getElementById('det-name');
+    const rfidLabel = document.getElementById('det-rfid');
+    const phoneLabel = document.getElementById('det-phone');
     const gallery = document.getElementById('biometric-gallery');
     const historyDiv = document.getElementById('offence-history');
     const controls = document.getElementById('prosecution-controls');
-    
-    if (!rfid) return alert("PLEASE ENTER OR SCAN RFID");
 
-    // 1. FETCH USER PROFILE DATA
+    if (!rfid) return alert("Please enter an RFID number.");
+
+    // 1. Get User Data from Firebase
     onValue(ref(db, 'users/' + rfid), (snapshot) => {
         const user = snapshot.val();
         
         if (!user) {
-            alert("RFID NOT FOUND IN CLOUD DATABASE");
+            alert("NO PASSENGER FOUND WITH RFID: " + rfid);
+            infoBox.style.display = 'none';
             controls.style.display = 'none';
             return;
         }
 
-        // Display the identity UI (Phone and RFID)
+        // 2. Show the Data in the Box
+        infoBox.style.display = 'block';
         controls.style.display = 'block';
         
-        // Update the display with passenger info
-        // Note: Ensure you have these IDs in your HTML or add them dynamically
-        const infoHtml = `
-            <div style="background:rgba(0,210,255,0.1); padding:10px; border-radius:5px; margin-bottom:10px; border:1px solid var(--accent);">
-                <b style="color:var(--accent); font-size:16px;">${user.name.toUpperCase()}</b><br>
-                <span style="color:white; font-family:monospace;">RFID: ${rfid}</span><br>
-                <span style="color:var(--success); font-weight:bold;">PH: ${user.mobile}</span>
-            </div>
-        `;
-        
-        // Prepend the info to the controls section
-        const existingInfo = document.getElementById('active-passenger-card');
-        if(existingInfo) existingInfo.remove();
-        const infoCard = document.createElement('div');
-        infoCard.id = 'active-passenger-card';
-        infoCard.innerHTML = infoHtml;
-        controls.prepend(infoCard);
+        nameLabel.innerText = user.name.toUpperCase();
+        rfidLabel.innerText = rfid;
+        phoneLabel.innerText = user.mobile;
 
-        // Load Biometric Evidence
+        // 3. Load Gallery
         gallery.innerHTML = "";
-        if(user.tempImages) {
+        if (user.tempImages) {
             user.tempImages.forEach(img => {
-                gallery.innerHTML += `<img src="${img}" style="width:100%; border:1px solid var(--accent); border-radius:4px; aspect-ratio:1/1; object-fit:cover;">`;
+                gallery.innerHTML += `<img src="${img}" style="width:100%; border:1px solid var(--accent); border-radius:4px;">`;
             });
         }
 
-        // 2. FETCH VIOLATION HISTORY (SEARCH FOR REPEAT OFFENCES)
+        // 4. Check for previous fines
         onValue(ref(db, 'violations'), (vSnap) => {
             const allViolations = vSnap.val();
+            let count = 0;
             let historyHtml = "";
-            let offenceCount = 0;
 
             if (allViolations) {
-                // Convert to array and reverse to see latest first
-                Object.keys(allViolations).reverse().forEach(key => {
+                Object.keys(allViolations).forEach(key => {
                     const v = allViolations[key];
-                    
-                    // CRITICAL: Compare as strings to avoid type-mismatch errors
-                    // Also check that the status is FINED (already prosecuted)
+                    // Match RFID and check if they were already fined before
                     if (String(v.linkedRfid) === String(rfid) && v.status === "FINED") {
-                        offenceCount++;
-                        historyHtml += `
-                            <div style="border-bottom:1px solid #333; padding:5px; font-size:11px;">
-                                <span style="color:var(--danger)">[!]</span> ${v.time}<br>
-                                <small>Challan: ${v.challanNo} | Fine: ₹${v.fineAmount}</small>
-                            </div>`;
+                        count++;
+                        historyHtml += `<div>⚠ ${v.time} - ₹${v.fineAmount}</div>`;
                     }
                 });
             }
 
-            if (offenceCount > 0) {
+            if (count > 0) {
                 historyDiv.innerHTML = historyHtml;
-                historyDiv.parentElement.style.borderColor = "var(--danger)";
-                historyDiv.parentElement.style.background = "rgba(255, 51, 51, 0.1)";
-                
-                // REPEAT OFFENDER PENALTY: Base 1000 + 500 per previous offence
-                const newFine = 1000 + (offenceCount * 500);
-                document.getElementById('fine-amount').value = newFine;
-                
-                alert(`REPEAT OFFENDER: ${offenceCount} Previous Violations Found. Fine updated to ₹${newFine}`);
+                document.getElementById('fine-amount').value = 1000 + (count * 500);
+                alert(`REPEAT OFFENDER: Found ${count} previous cases.`);
             } else {
-                historyDiv.innerHTML = "<span style='color:var(--success)'>NO PREVIOUS FINES RECORDED</span>";
-                historyDiv.parentElement.style.borderColor = "var(--border)";
-                historyDiv.parentElement.style.background = "transparent";
+                historyDiv.innerHTML = "CLEAN RECORD - FIRST OFFENCE";
                 document.getElementById('fine-amount').value = 1000;
             }
         }, { onlyOnce: true });
@@ -1654,64 +1633,43 @@ async function init() {
     init();
 </script>
    <div id="judgement-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg); z-index:9999; padding:20px; box-sizing:border-box; overflow-y:auto; border: 4px solid var(--police-blue);">
-    <div style="display:flex; justify-content:space-between; align-items:center; background:var(--police-blue); padding:15px; margin:-20px -20px 20px -20px;">
-        <h2 style="margin:0; color:white; letter-spacing:2px;">METRO PROSECUTION UNIT - CASE FILE</h2>
-        <button onclick="window.closeJudgement()" style="background:var(--danger); border:none; color:white; padding:10px 25px; cursor:pointer; font-weight:bold;">CLOSE FILE</button>
-    </div>
-
     <div style="display:grid; grid-template-columns: 1.2fr 1fr; gap:20px;">
-        
         <div style="display:flex; flex-direction:column; gap:15px;">
             <div class="control-group" style="border-color: var(--danger);">
-                <label style="color:var(--danger); font-weight:bold;">INCIDENT EVIDENCE (CCTV SNAPSHOT)</label>
+                <label style="color:var(--danger); font-weight:bold;">INCIDENT EVIDENCE</label>
                 <img id="modal-violation-img" style="width:100%; border:2px solid var(--danger); border-radius:5px;">
             </div>
-
             <div class="control-group">
-                <label>PASSENGER BIOMETRIC RECODRS (ALL ANGLES)</label>
-                <div id="biometric-gallery" style="display:grid; grid-template-columns:repeat(4, 1fr); gap:5px;">
-                    </div>
+                <label>REGISTERED BIOMETRIC PHOTOS</label>
+                <div id="biometric-gallery" style="display:grid; grid-template-columns:repeat(4, 1fr); gap:5px;"></div>
             </div>
         </div>
 
         <div style="display:flex; flex-direction:column; gap:15px;">
             <div class="control-group">
-                <label>PASSENGER VERIFICATION</label>
-                <div style="display:flex; gap:10px;">
-                    <input type="text" id="manual-rfid-input" placeholder="SCAN RFID">
-                    <button class="action-btn" style="width:120px; margin:0;" onclick="window.fetchDetailedProsecutionData()">LOAD FILE</button>
+                <label>PASSENGER IDENTITY VERIFICATION</label>
+                <div style="display:flex; gap:10px; margin-bottom:10px;">
+                    <input type="text" id="manual-rfid-input" placeholder="ENTER RFID (e.g. METRO-123456)">
+                    <button class="action-btn" style="width:120px; margin:0;" onclick="window.fetchDetailedProsecutionData()">LOAD DATA</button>
+                </div>
+                
+                <div id="passenger-info-display" style="display:none; background:rgba(0,210,255,0.1); padding:15px; border-radius:8px; border:1px solid var(--accent);">
+                    <h3 id="det-name" style="margin:0; color:var(--accent);"></h3>
+                    <p style="margin:5px 0;">RFID: <span id="det-rfid" style="color:white; font-family:monospace;"></span></p>
+                    <p style="margin:0;">MOBILE: <span id="det-phone" style="color:var(--success); font-weight:bold;"></span></p>
                 </div>
             </div>
 
             <div id="prosecution-controls" style="display:none;">
-                <div style="background:rgba(255,152,0,0.1); border:1px solid #ff9800; padding:10px; border-radius:5px; margin-bottom:15px;">
-                    <label style="color:#ff9800;">PREVIOUS OFFENCES</label>
-                    <div id="offence-history" style="font-size:12px; max-height:100px; overflow-y:auto;">
-                        Searching records...
-                    </div>
+                <div class="control-group" style="border-color:#ff9800;">
+                    <label style="color:#ff9800;">OFFENCE HISTORY</label>
+                    <div id="offence-history" style="font-size:12px; max-height:100px; overflow-y:auto; color:#8b949e;"></div>
                 </div>
-                <div id="passenger-details-card" style="background:rgba(0,210,255,0.1); padding:15px; border-radius:8px; border:1px solid var(--accent); margin-bottom:15px; display:none;">
-    <h3 id="display-name" style="margin:0; color:var(--accent);">---</h3>
-    <p style="margin:5px 0; font-family:monospace;">RFID: <span id="display-rfid">---</span></p>
-    <p style="margin:0; color:var(--success);">PHONE: <span id="display-phone">---</span></p>
-</div>
-
                 <div class="control-group">
-                    <label>PENALTY CALCULATION</label>
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-                        <div>
-                            <span style="font-size:10px;">STANDARD FINE</span>
-                            <input type="number" id="fine-amount" value="1000">
-                        </div>
-                        <div>
-                            <span style="font-size:10px;">NEGOTIATED AMT</span>
-                            <input type="number" id="negotiated-amount" placeholder="Final Amt">
-                        </div>
-                    </div>
-                    <textarea id="negotiation-reason" placeholder="REASON FOR NEGOTIATION (e.g., First time, Senior Citizen, Student...)" style="width:100%; margin-top:10px; background:#0d1117; border:1px solid var(--border); color:white; padding:5px;"></textarea>
+                    <label>PENALTY (INR)</label>
+                    <input type="number" id="fine-amount" value="1000">
+                    <button class="action-btn" style="background:var(--success); color:black; height:50px; margin-top:15px;" onclick="window.finalizeProsecution()">ISSUE LEGAL NOTICE & SMS</button>
                 </div>
-
-                <button class="action-btn" style="background:var(--success); color:black; height:60px; font-size:18px;" onclick="window.finalizeProsecution()">GENERATE OFFICIAL CHALLAN</button>
             </div>
         </div>
     </div>

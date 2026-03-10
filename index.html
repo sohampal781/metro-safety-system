@@ -1428,7 +1428,8 @@ window.fetchDetailedProsecutionData = async function() {
     const nameLabel = document.getElementById('det-name');
     const rfidLabel = document.getElementById('det-rfid');
     const phoneLabel = document.getElementById('det-phone');
-    const controls = document.getElementById('prosecution-controls'); // Ensure this matches your HTML ID
+    const controls = document.getElementById('prosecution-controls');
+    const gallery = document.getElementById('biometric-gallery'); // The photo container
     const historyDiv = document.getElementById('offence-history');
 
     if (!rfid) return;
@@ -1441,16 +1442,30 @@ window.fetchDetailedProsecutionData = async function() {
             return;
         }
 
-        // SHOW THE BOXES
+        // 1. SHOW UI SECTIONS
         infoBox.style.display = 'block';
-        if (controls) controls.style.display = 'block'; // THIS UNHIDES THE AMOUNT SECTION
+        if (controls) controls.style.display = 'block';
 
-        // FILL DATA
+        // 2. FILL TEXT DATA
         nameLabel.innerText = user.name.toUpperCase();
         rfidLabel.innerText = rfid;
         phoneLabel.innerText = user.mobile;
 
-        // CHECK HISTORY
+        // 3. ADD REGISTRATION PICTURES
+        gallery.innerHTML = ""; // Clear old photos
+        if (user.tempImages && Array.isArray(user.tempImages)) {
+            user.tempImages.forEach((imgData, index) => {
+                const img = document.createElement('img');
+                img.src = imgData;
+                img.style = "width:100%; border-radius:4px; border:1px solid var(--accent); margin-bottom:5px; aspect-ratio:1/1; object-fit:cover;";
+                img.title = "Registration Angle " + (index + 1);
+                gallery.appendChild(img);
+            });
+        } else {
+            gallery.innerHTML = "<p style='color:#555; font-size:10px;'>NO BIOMETRIC PHOTOS ON FILE</p>";
+        }
+
+        // 4. CHECK VIOLATION HISTORY
         onValue(ref(db, 'violations'), (vSnap) => {
             const allViolations = vSnap.val();
             let count = 0;
@@ -1459,15 +1474,9 @@ window.fetchDetailedProsecutionData = async function() {
                     if (String(v.linkedRfid) === String(rfid) && v.status === "FINED") count++;
                 });
             }
-
-            // SET THE FINE AMOUNT
             const fineInput = document.getElementById('fine-amount');
-            if (fineInput) {
-                fineInput.value = 1000 + (count * 500);
-            }
-            if (historyDiv) {
-                historyDiv.innerHTML = count > 0 ? `Found ${count} previous violations.` : "No previous offences.";
-            }
+            if (fineInput) fineInput.value = 1000 + (count * 500);
+            if (historyDiv) historyDiv.innerHTML = count > 0 ? `Repeat Offender: ${count} cases` : "First-time Offender";
         }, { onlyOnce: true });
 
     }, { onlyOnce: true });
@@ -1634,7 +1643,7 @@ async function init() {
             </div>
             <div class="control-group">
                 <label>BIOMETRIC RECORD MATCHES</label>
-                <div id="biometric-gallery" style="display:grid; grid-template-columns:repeat(4, 1fr); gap:5px;"></div>
+                <div id="biometric-gallery" style="display:grid; grid-template-columns: repeat(2, 1fr); gap:10px; margin-top:10px;"></div>
             </div>
         </div>
 

@@ -682,13 +682,26 @@ window.finalizeSettlement = async function() {
     
     if(confirm(`Confirm collection and permanent closure of Case?`)) {
         try {
-            // Delete from Cloud (Case Closed)
-            await remove(ref(db, 'violations/' + window.currentSettlementKey));
+            const { get, remove, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
             
-            alert(`PAYMENT RECEIVED. CASE ${window.currentSettlementKey} CLOSED.`);
+            // Fetch mobile before purging the record
+            const snapshot = await get(dbRef(db, 'violations/' + window.currentSettlementKey));
+            const vData = snapshot.val();
+            const mobile = vData.linkedMobile;
+            const challan = vData.challanNo;
+
+            await remove(dbRef(db, 'violations/' + window.currentSettlementKey));
+            
+            if (mobile) {
+                // Updated with required testing disclaimer
+                let msg = `KOLKATA METRO: Payment received for CHN ${challan}. Settled Amount: RS ${finalAmount}. Case closed. THIS IS TESTING MESSAGE DON'T PANIC.`;
+                window.sendKolkataSMS(mobile, msg);
+            }
+
+            alert(`PAYMENT RECEIVED. CASE CLOSED.`);
             document.getElementById('settlement-overlay').remove();
-            window.renderChallans(); // Refresh list
-        } catch (e) { alert("Error closing case: " + e.message); }
+            window.renderChallans(); 
+        } catch (e) { alert("Error: " + e.message); }
     }
 };
        onValue(ref(db, 'violations'), (snapshot) => {
@@ -1501,16 +1514,11 @@ window.openEvidenceFile = async function(violationKey) {
 };
 // STAGE 1: ISSUE LEGAL NOTICE (Move from Pending to Prosecuted)
 window.finalizeProsecution = async function() {
-    const rfidInput = document.getElementById('manual-rfid-input');
-    const fineInput = document.getElementById('fine-amount');
+    const rfid = document.getElementById('manual-rfid-input').value.trim();
     const display = document.getElementById('registration-display');
-    
-    const rfid = rfidInput ? rfidInput.value.trim() : "UNKNOWN";
-    const baseFine = fineInput ? fineInput.value : "1000";
     const latestMobile = (display && display.dataset.latestMobile) ? display.dataset.latestMobile : null;
-    
+    const baseFine = document.getElementById('fine-amount').value;
     const challanNo = "METRO-" + Math.floor(100000 + Math.random() * 900000);
-    const station = "DUMDUM";
 
     const updates = {
         status: "FINED",
@@ -1519,8 +1527,7 @@ window.finalizeProsecution = async function() {
         challanNo: challanNo,
         linkedMobile: latestMobile,
         prosecutionTime: new Date().toLocaleString(),
-        station: station,
-        isSettled: false
+        station: "DUMDUM"
     };
 
     try {
@@ -1528,17 +1535,15 @@ window.finalizeProsecution = async function() {
         await update(dbRef(db, 'violations/' + window.currentActiveViolationKey), updates);
         
         if (latestMobile) {
-            let msg = `KOLKATA METRO: CHN ${challanNo}. STN: ${station}. OFFENCE: YELLOW LINE BREACH. FINE: RS ${baseFine}. PAY AT STATION. THIS IS TESTING MESSAGE DON'T PANIC.`;
+            // Updated with required testing disclaimer
+            let msg = `KOLKATA METRO: LEGAL NOTICE issued. CHN: ${challanNo}. FINE: RS ${baseFine}. Please settle at station master office. THIS IS TESTING MESSAGE DON'T PANIC.`;
             window.sendKolkataSMS(latestMobile, msg);
         }
 
-        alert("LEGAL NOTICE ISSUED. CASE MOVED TO PROSECUTION LOG.");
+        alert("LEGAL NOTICE ISSUED & SMS DISPATCHED.");
         window.closeJudgement();
-        window.renderChallans(); // Refresh UI
-    } catch (e) { 
-        console.error(e);
-        alert("Failed to issue notice: " + e.message);
-    }
+        window.renderChallans();
+    } catch (e) { console.error(e); }
 };
 // CONTROL F: FINALIZE UPDATE (SMS OPTIONAL)
 window.finalizeUpdate = async function(shouldSendSms) {

@@ -22,28 +22,26 @@
 }
 
 body {
-    background: radial-gradient(circle at top right, #0d1117, var(--bg-dark));
-    color: #e6edf3;
-    font-family: 'Inter', sans-serif;
-    margin: 0;
-    display: flex;
+    display: flex; /* Sidebar on left, Viewport on right */
     height: 100vh;
+    background: #05070a;
     overflow: hidden;
 }
 
 #sidebar {
-    width: 380px;
-    background: var(--panel-bg);
-    backdrop-filter: blur(10px);
-    border-right: var(--glass-border);
+    width: 350px;
+    height: 100%;
+    background: rgba(22, 27, 34, 0.95);
+    backdrop-filter: blur(15px);
+    border-right: 1px solid var(--accent);
     display: flex;
     flex-direction: column;
-    z-index: 100;
 }
-#sidebar {
-    overflow: hidden; 
-    display: flex;
-    flex-direction: column;
+
+#viewport {
+    flex-grow: 1; /* Automatically takes up remaining space */
+    position: relative;
+    padding: 20px;
 }
 .tabs { display: flex; background: #0d1117; padding: 10px; gap: 5px; }
 .tab-btn {
@@ -273,33 +271,20 @@ window.capturedDescriptors = [];
 window.tempCapturedImages = [];
 window.commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
    window.switchUI = (mode) => {
-    const monitor = document.getElementById('monitor-ui');
-    const register = document.getElementById('register-ui');
-    const challan = document.getElementById('challan-overlay');
-    const modal = document.getElementById('judgement-modal');
+    // 1. Hide all main sections
+    const sections = ['monitor-ui', 'register-ui', 'challan-overlay'];
+    sections.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
 
-    // 1. Force hide all main views
-    if (monitor) monitor.style.setProperty('display', 'none', 'important');
-    if (register) register.style.setProperty('display', 'none', 'important');
-    if (challan) challan.style.setProperty('display', 'none', 'important');
-    
-    // 2. Hide modal if switching tabs to prevent "tab bleeding"
-    if (modal) modal.style.display = 'none';
+    // 2. Show selected section
+    const activeSection = (mode === 'challan') ? 'challan-overlay' : `${mode}-ui`;
+    document.getElementById(activeSection).style.display = 'block';
 
-    // 3. Show the correct view
-    if (mode === 'monitor') {
-        if (monitor) monitor.style.setProperty('display', 'block', 'important');
-    } else if (mode === 'register') {
-        if (register) register.style.setProperty('display', 'block', 'important');
-    } else if (mode === 'challan') {
-        if (challan) challan.style.setProperty('display', 'block', 'important');
-        window.renderChallans();
-    }
-
-    // 4. Update Tab button CSS
+    // 3. Highlight Tab Button
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-    const activeTab = document.getElementById('tab-' + mode.substring(0, 3));
-    if (activeTab) activeTab.classList.add('active');
+    document.getElementById(`tab-${mode.substring(0, 3)}`).classList.add('active');
 };
 window.judgeViolation = async function(key) {
     window.currentActiveViolationKey = key;
@@ -590,36 +575,15 @@ window.renderChallans = function() {
 };
        window.openProsecutionModal = async function(key) {
     window.currentActiveViolationKey = key;
-    const { onValue, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+    const v = window.currentViolationData[key];
+    
+    document.getElementById('judgement-modal').style.display = 'block';
+    document.getElementById('modal-violation-img').src = v.img;
+    document.getElementById('manual-rfid-input').value = v.linkedRfid || "";
 
-    // FIX: Added 'async' to the callback function below to allow 'await' inside it
-    onValue(dbRef(db, 'violations/' + key), async (snapshot) => {
-        const v = snapshot.val();
-        if (!v) return;
-
-        const modal = document.getElementById('judgement-modal');
-        const title = document.getElementById('modal-title');
-        const img = document.getElementById('modal-violation-img');
-
-        if (modal) modal.style.display = 'block';
-        if (title) title.innerText = "PROSECUTION TERMINAL: NEW BREACH";
-        if (img) img.src = v.img;
-
-        // Toggle UI Panels
-        const prosControls = document.getElementById('prosecution-controls');
-        const settControls = document.getElementById('settlement-controls');
-        
-        if (prosControls) prosControls.style.display = 'block';
-        if (settControls) settControls.style.display = 'none';
-        
-        const rfidInput = document.getElementById('manual-rfid-input');
-        if (rfidInput) rfidInput.value = v.linkedRfid || "";
-
-        // Trigger biometric and history fetch
-        if (window.fetchDetailedProsecutionData) {
-            window.fetchDetailedProsecutionData();
-        }
-    }, { onlyOnce: true });
+    // Auto-calculate fine based on confidence or history
+    let baseFine = (v.linkedRfid === "UNKNOWN_ID") ? 500 : 1000;
+    document.getElementById('prosecution-fine-input').value = baseFine;
 };
 
     // --- 3. MONITORING & MATH LOGIC (YOUR ORIGINAL LOGIC) ---
@@ -781,43 +745,28 @@ document.getElementById('negotiated-amt').addEventListener('input', function(e) 
 };
 
 window.runCaptureSequence = async function() {
-    const regVideo = document.getElementById('reg-video');
-    const statusDisplay = document.getElementById('status-display');
-    const commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
-
     if (window.captureStep >= 4) {
         window.isCapturing = false;
-        statusDisplay.innerText = "SCANS COMPLETE - READY TO SAVE";
+        document.getElementById('status-display').innerText = "BIOMETRICS CAPTURED";
         document.getElementById('save-reg-btn').style.display = 'block';
         return;
     }
 
-    statusDisplay.innerText = commands[window.captureStep];
-    await new Promise(r => setTimeout(r, 2000));
+    // Update command on screen
+    const commands = ["LOOK CENTER", "TURN LEFT", "TURN RIGHT", "LOOK UP/DOWN"];
+    document.getElementById('status-display').innerText = commands[window.captureStep];
 
-    // Detect face from the registration video element
-    const det = await faceapi.detectSingleFace(regVideo).withFaceLandmarks().withFaceDescriptor();
+    const det = await faceapi.detectSingleFace(document.getElementById('reg-video'))
+                             .withFaceLandmarks().withFaceDescriptor();
 
     if (det) {
         window.capturedDescriptors.push(Array.from(det.descriptor));
-        
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = 400;
-        tempCanvas.height = 300;
-        tempCanvas.getContext('2d').drawImage(regVideo, 0, 0, 400, 300);
-        window.tempCapturedImages.push(tempCanvas.toDataURL('image/jpeg', 0.6));
-
-        const indicator = document.getElementById(`a${window.captureStep}`);
-        if (indicator) {
-            indicator.className = "angle-box done";
-            indicator.innerText += " ✔";
-        }
-        
+        // Mark the angle box as green
+        document.getElementById(`a${window.captureStep}`).classList.add('done');
         window.captureStep++;
-        window.runCaptureSequence(); 
+        setTimeout(window.runCaptureSequence, 1500); // 1.5s delay between angles
     } else {
-        statusDisplay.innerText = "RETRYING SCAN...";
-        setTimeout(window.runCaptureSequence, 1000);
+        setTimeout(window.runCaptureSequence, 500); // Retry faster if face not found
     }
 };
   // 1. Function to find a user and load their current number
@@ -1164,26 +1113,19 @@ window.deleteUserRecord = async function(rfid) {
         startBtn.classList.toggle('active');
     };
         async function loadFaceModels() {
-    // High-speed CDN for faster loading in India
-    const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
-    const statusDisplay = document.getElementById('status-display');
-    
-    try {
-        statusDisplay.innerText = "INITIALIZING AI...";
-        statusDisplay.className = "status-card status-loading"; // Yellow status
+    const status = document.getElementById('status-display');
+    status.innerHTML = "LOADING AI MODELS...";
+    status.className = "status-card status-breach"; // Use red/yellow while loading
 
-        await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
-        await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
-        await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-        
-        console.log("✅ AI Models Loaded Successfully");
-        statusDisplay.innerText = "SYSTEM READY";
-        statusDisplay.className = "status-card status-safe";
-    } catch (e) {
-        console.error("❌ Model Loading Failed: ", e);
-        statusDisplay.innerText = "AI OFFLINE - CHECK CONNECTION";
-        statusDisplay.className = "status-card status-breach";
-    }
+    const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
+    await Promise.all([
+        faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
+        faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+        faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+    ]);
+
+    status.innerHTML = "SYSTEM READY";
+    status.className = "status-card status-safe";
 }
 // CONTROL F: SEARCH BY RFID OR PHONE
 window.searchUserForUpdate = function() {

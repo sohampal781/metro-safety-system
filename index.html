@@ -473,25 +473,45 @@ window.judgeViolation = async function(key) {
         const violData = snapshot.val();
         if (!violData) return;
 
-        // 1. Open Modal & Setup Evidence
+        // Reset UI for Prosecution Mode
         document.getElementById('judgement-modal').style.display = 'block';
         document.getElementById('modal-violation-img').src = violData.img;
         
-        // --- HIDE NEGOTIATION UI FOR THIS MODE ---
-        // Ensure negotiation specific elements are hidden during initial prosecution
-        if(document.getElementById('neg-section')) document.getElementById('neg-section').style.display = 'none';
-        if(document.getElementById('sig-section')) document.getElementById('sig-section').style.display = 'none';
+        // Hide Settlement-only features
+        document.getElementById('settlement-controls').style.display = 'none'; 
+        document.getElementById('prosecution-controls').style.display = 'block';
+        document.getElementById('settle-btn').style.display = 'none';
+        document.getElementById('issue-fine-btn').style.display = 'block';
 
         const rfidInput = document.getElementById('manual-rfid-input');
+        rfidInput.value = (violData.linkedRfid && violData.linkedRfid !== "UNKNOWN_ID") ? violData.linkedRfid : "";
         
-        // 2. Auto-load data if AI found a match
-        if (violData.linkedRfid && violData.linkedRfid !== "UNKNOWN_ID") {
-            rfidInput.value = violData.linkedRfid;
-            window.fetchDetailedProsecutionData(); // Full function provided below
-        } else {
-            rfidInput.value = "";
-            document.getElementById('prosecution-controls').style.display = 'none';
-        }
+        // Load the 4-angle images and history automatically
+        window.fetchDetailedProsecutionData();
+    }, { onlyOnce: true });
+};
+       window.markAsPaid = async function(key) {
+    window.currentActiveViolationKey = key;
+    const { onValue, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+
+    onValue(dbRef(db, 'violations/' + key), (snapshot) => {
+        const v = snapshot.val();
+        if (!v) return;
+
+        document.getElementById('judgement-modal').style.display = 'block';
+        document.getElementById('modal-violation-img').src = v.img;
+
+        // Show Settlement-only features (Negotiation/Signature)
+        document.getElementById('prosecution-controls').style.display = 'none';
+        document.getElementById('settlement-controls').style.display = 'block';
+        document.getElementById('settle-btn').style.display = 'block';
+        document.getElementById('issue-fine-btn').style.display = 'none';
+
+        // Set values for negotiation
+        document.getElementById('issued-fine-box').innerText = "₹" + v.fineAmount;
+        document.getElementById('negotiated-amt').value = v.fineAmount;
+        
+        if (window.initSignaturePad) window.initSignaturePad();
     }, { onlyOnce: true });
 };
 
@@ -1594,6 +1614,25 @@ window.processFinalSettlement = async function() {
     } catch (e) {
         alert("Cloud Sync Error: " + e.message);
     }
+};
+       window.finalizeInitialFine = async function() {
+    const rfid = document.getElementById('manual-rfid-input').value.trim();
+    const fine = document.getElementById('prosecution-fine-input').value;
+    
+    if(!rfid) return alert("Verify RFID first.");
+
+    const { update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+    
+    await update(dbRef(db, 'violations/' + window.currentActiveViolationKey), {
+        status: "FINED",
+        fineAmount: fine,
+        linkedRfid: rfid,
+        challanNo: "METRO-" + Math.floor(100000 + Math.random() * 900000),
+        time: new Date().toLocaleString()
+    });
+
+    alert("Challan Issued. Passenger moved to Prosecution List.");
+    window.closeJudgement();
 };
 // Update your init function
 async function init() {

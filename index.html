@@ -20,14 +20,6 @@
     --border: rgba(255, 255, 255, 0.1);
     --glass-border: 1px solid rgba(255, 255, 255, 0.1);
 }
-body {
-    display: flex; /* Sidebar and Main Viewport side-by-side */
-    height: 100vh;
-    background: #05070a;
-    margin: 0;
-    overflow: hidden;
-}
-
 #main-viewport {
     flex-grow: 1; /* Occupies all remaining space */
     position: relative;
@@ -59,37 +51,48 @@ body {
 }
 
 /* RESET OVERLAPPING */
+/* --- UI ARCHITECTURE --- */
+body {
+    display: flex;
+    margin: 0;
+    height: 100vh;
+    background: #05070a;
+    overflow: hidden;
+}
+
 #sidebar {
     width: 380px;
-    height: 100vh;
-    position: fixed;
-    left: 0;
-    top: 0;
     background: #0d1117;
-    z-index: 100;
     border-right: 1px solid #30363d;
+    z-index: 10; /* Keeps controls above the camera */
 }
 
 #viewport {
-    margin-left: 380px; /* Forces camera to stay right of sidebar */
-    width: calc(100vw - 380px);
-    height: 100vh;
+    flex-grow: 1;
+    position: relative;
+    background: #000;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #000;
 }
 
-/* CHALLAN PORTAL (Full Screen) */
+/* --- THE OVERLAP FIX --- */
 #challan-overlay {
     display: none; 
     position: fixed;
-    inset: 0; /* Covers everything including sidebar */
-    background: #05070a;
-    z-index: 99999; /* Highest priority */
+    top: 0; left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: #0a0b10;
+    z-index: 99999; /* Higher than everything else */
     padding: 40px;
+    box-sizing: border-box;
     overflow-y: auto;
 }
+
+/* Tab Switching Classes */
+.tab-pane { display: none; padding: 20px; }
+.active-pane { display: block !important; }
 
 /* Tab Content Visibility */
 #monitor-ui, #register-ui { display: none; }
@@ -316,8 +319,8 @@ window.captureStep = 0;
 window.capturedDescriptors = [];
 window.tempCapturedImages = [];
 window.commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
-  window.switchUI = (mode) => {
-    // 1. Reset Sidebar UI
+ window.switchUI = (mode) => {
+    // 1. Reset Sidebar Tabs
     document.getElementById('monitor-ui').style.display = 'none';
     document.getElementById('register-ui').style.display = 'none';
     
@@ -327,21 +330,21 @@ window.commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT",
     
     if (mode === 'monitor') {
         document.getElementById('monitor-ui').style.display = 'block';
-        viewport.style.display = 'flex';
-        challanPortal.style.display = 'none';
+        viewport.style.display = 'flex'; // Show Live Feed
+        challanPortal.style.display = 'none'; // Hide Portal
     } 
     else if (mode === 'register') {
         document.getElementById('register-ui').style.display = 'block';
-        viewport.style.display = 'flex'; // Keep camera for biometrics
+        viewport.style.display = 'flex'; // Keep feed for alignment
         challanPortal.style.display = 'none';
     } 
     else if (mode === 'challan') {
-        viewport.style.display = 'none'; // Stop overlapping
-        challanPortal.style.display = 'block';
-        window.renderChallans(); // Load data
+        viewport.style.display = 'none'; // REMOVE CAMERA TO PREVENT OVERLAP
+        challanPortal.style.display = 'block'; // SHOW PORTAL FULLSCREEN
+        window.renderChallans(); // Load evidence cards
     }
 
-    // 3. Update Tab Button Styles
+    // Update Tab UI Styles
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
     document.getElementById('tab-' + mode.substring(0, 3)).classList.add('active');
 };

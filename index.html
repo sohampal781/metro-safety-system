@@ -11,146 +11,264 @@
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 
     <style>
-       :root {
-    --bg-dark: #05070a;
-    --panel-bg: rgba(22, 27, 34, 0.7);
-    --accent: #00d2ff;
-    --danger: #ff3333;
-    --success: #00e676;
-    --border: rgba(255, 255, 255, 0.1);
-    --glass-border: 1px solid rgba(255, 255, 255, 0.1);
-}
-#main-viewport {
-    flex-grow: 1; /* Occupies all remaining space */
-    position: relative;
-    background: #000;
+        :root {
+            --accent: #00d2ff;
+            --danger: #ff3333;
+            --success: #00e676;
+            --bg: #0a0b10;
+            --panel: #161b22;
+            --border: #30363d;
+            --police-blue: #1a237e;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg);
+            color: #e6edf3;
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* --- SIDEBAR --- */
+        #sidebar {
+            width: 380px;
+            background: var(--panel);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            padding: 0;
+            z-index: 100;
+        }
+
+        .tabs {
+            display: flex;
+            background: #0d1117;
+            padding: 10px;
+            gap: 10px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            background: transparent;
+            color: #8b949e;
+            cursor: pointer;
+            font-weight: 600;
+            border-radius: 6px;
+            transition: 0.3s;
+        }
+
+        .tab-btn.active {
+            background: var(--accent);
+            color: #000;
+        }
+
+        .content-area { padding: 20px; overflow-y: auto; flex-grow: 1; }
+
+        /* --- UI COMPONENTS --- */
+        .status-card {
+            padding: 25px;
+            border-radius: 12px;
+            text-align: center;
+            font-size: 20px;
+            letter-spacing: 1px;
+            margin-bottom: 20px;
+            border: 1px solid var(--border);
+            text-transform: uppercase;
+        }
+
+        .status-safe { background: rgba(0, 230, 118, 0.1); color: var(--success); border-color: var(--success); }
+        .status-breach { background: rgba(255, 51, 51, 0.1); color: var(--danger); border-color: var(--danger); animation: pulse 1s infinite; }
+
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+
+        .control-group { 
+            background: #0d1117; 
+            padding: 15px; 
+            border-radius: 8px; 
+            margin-bottom: 12px; 
+            border: 1px solid var(--border);
+        }
+
+        label { font-size: 11px; color: #8b949e; text-transform: uppercase; display: block; margin-bottom: 8px; }
+
+        input, select, button {
+            width: 100%; box-sizing: border-box; padding: 12px; background: #161b22; 
+            border: 1px solid var(--border); color: white; border-radius: 6px; font-size: 14px;
+        }
+
+        .action-btn {
+            background: var(--accent); color: black; font-weight: bold; border: none; cursor: pointer; margin-top: 10px;
+        }
+
+        .delete-btn {
+            background: #ff4444; color: white; font-size: 10px; padding: 5px; margin-top: 5px; border: none; border-radius: 4px; cursor: pointer;
+        }
+
+        /* --- VIEWPORT --- */
+        #viewport {
+            flex-grow: 1;
+            position: relative;
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        video, canvas {
+            position: absolute;
+            width: 95%; height: 90%;
+            object-fit: contain;
+            border-radius: 12px;
+            transform: scaleX(-1);
+        }
+
+        /* --- CHALLAN TAB OVERLAY --- */
+        #challan-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--bg);
+            z-index: 500;
+            display: none;
+            padding: 40px;
+            box-sizing: border-box;
+            overflow-y: auto;
+        }
+
+        .challan-header {
+            border-bottom: 2px solid var(--police-blue);
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .challan-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 25px;
+        }
+
+        .challan-card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 15px;
+            border-top: 5px solid var(--danger);
+        }
+
+        .challan-card img { width: 100%; border-radius: 8px; margin-bottom: 10px; }
+
+        .angle-status {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 10px;
+        }
+        .angle-box {
+            padding: 8px; font-size: 10px; text-align: center; background: #21262d; border-radius: 4px;
+        }
+        .angle-box.done { background: var(--success); color: black; }
+        /* Make the sidebar container flexible but restricted */
+#sidebar {
     display: flex;
     flex-direction: column;
-}
-.tabs { display: flex; background: #0d1117; padding: 10px; gap: 5px; }
-.tab-btn {
-    flex: 1; padding: 12px; border: none; background: transparent;
-    color: #8b949e; cursor: pointer; font-weight: 600; border-radius: 6px;
-}
-.tab-btn.active { background: var(--accent); color: #000; }
-
-.content-area { padding: 20px; overflow-y: auto; flex-grow: 1; }
-
-.status-card {
-    padding: 20px; border-radius: 12px; text-align: center;
-    font-weight: bold; margin-bottom: 20px; border: var(--glass-border);
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
-}
-.status-safe { background: rgba(0, 230, 118, 0.1); color: var(--success); }
-.status-breach { background: rgba(255, 51, 51, 0.2); color: var(--danger); animation: pulse 1s infinite; }
-.tab-content {
-    display: none; /* Hidden by default */
-    padding: 20px;
-    height: 100%;
-    overflow-y: auto;
+    height: 100vh; /* Lock sidebar to screen height */
 }
 
-/* RESET OVERLAPPING */
-/* --- UI ARCHITECTURE --- */
-body {
-    display: flex;
-    margin: 0;
-    height: 100vh;
-    background: #05070a;
-    overflow: hidden;
-}
-
-#sidebar {
-    width: 380px;
-    background: #0d1117;
-    border-right: 1px solid #30363d;
-    z-index: 10; /* Keeps controls above the camera */
-}
-
-#viewport {
+/* Create a scrollable wrapper for the sliders */
+#monitor-ui {
     flex-grow: 1;
-    position: relative;
-    background: #000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    overflow-y: auto; /* Enable vertical scrolling */
+    padding-right: 10px; /* Space for the scrollbar */
 }
 
-/* --- THE OVERLAP FIX --- */
-#challan-overlay {
-    display: none; 
-    position: fixed;
-    top: 0; left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: #05070a; /* Pure dark background */
-    z-index: 9999; 
-    overflow-y: auto;
+/* Custom Scrollbar Styling (Modern look) */
+#monitor-ui::-webkit-scrollbar {
+    width: 6px;
+}
+
+#monitor-ui::-webkit-scrollbar-track {
+    background: #0d1117;
+}
+
+#monitor-ui::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    border-radius: 10px;
+}
+
+#monitor-ui::-webkit-scrollbar-thumb:hover {
+    background: #00b8e6;
+}
+        #register-ui {
     padding: 20px;
+    background: #0d1117;
+    border-radius: 15px;
+    border: 1px solid var(--accent);
 }
 
-/* Tab Switching Classes */
-.tab-pane { display: none; padding: 20px; }
-.active-pane { display: block !important; }
-
-/* Tab Content Visibility */
-#monitor-ui, #register-ui { display: none; }
-.active-view { display: block !important; }
-@keyframes pulse { 50% { opacity: 0.5; } }
-
-.control-group { background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; margin-bottom: 12px; border: var(--glass-border); }
-label { font-size: 11px; color: #8b949e; text-transform: uppercase; margin-bottom: 8px; display: block; }
-input, select, button { width: 100%; padding: 12px; background: #161b22; border: 1px solid var(--border); color: white; border-radius: 6px; }
-
-.action-btn { background: var(--accent); color: black; font-weight: bold; border: none; cursor: pointer; }
-.angle-box { padding: 8px; font-size: 10px; text-align: center; background: #21262d; border-radius: 4px; }
-.angle-box.done { background: var(--success); color: black; }
-
-
-video, canvas { position: absolute; width: 95%; height: 90%; border-radius: 12px; transform: scaleX(-1); object-fit: contain; }
-
-
-    #judgement-modal {
-    display: none; 
-    position: fixed; 
-    top: 0; 
-    left: 0; 
-    width: 100vw; 
-    height: 100vh; 
-    background: #05070a !important; /* Force black background */
-    z-index: 100000; /* Higher than sidebar and overlay */
-    padding: 20px; 
-    box-sizing: border-box; 
-    overflow-y: auto; 
-    border: 6px solid #1a237e;
-}
-/* Violation Grid Styling */
-.challan-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); /* Responsive columns */
-    gap: 20px;
-    padding: 20px;
+.registration-header {
+    font-size: 14px;
+    color: var(--accent);
+    margin-bottom: 20px;
+    text-align: center;
+    border-bottom: 1px solid #30363d;
+    padding-bottom: 10px;
 }
 
-.challan-card {
-    background: #161b22;
-    border: 1px solid #30363d;
-    border-radius: 12px;
-    padding: 15px;
-    transition: transform 0.2s;
+#db-items div {
+    background: #1c2128;
+    margin-top: 5px;
+    padding: 10px;
+    border-radius: 5px;
+    border-left: 3px solid var(--accent);
+}
+        /* Universal Scrollbar for "Innovative" Feel */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent) #0d1117;
 }
 
-.challan-card:hover {
-    transform: translateY(-5px);
-    border-color: var(--accent);
+::-webkit-scrollbar {
+    width: 8px;
 }
-</style>
+
+::-webkit-scrollbar-track {
+    background: #0d1117;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    border-radius: 10px;
+    border: 2px solid #0d1117;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #00b8e6;
+}
+        #challan-grid, #db-items {
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent) #0d1117;
+}
+
+#challan-grid::-webkit-scrollbar, #db-items::-webkit-scrollbar {
+    width: 6px;
+}
+
+#challan-grid::-webkit-scrollbar-thumb, #db-items::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    border-radius: 10px;
+}
+    </style>
 </head>
 <body>
+
+    <div id="sidebar">
     <div class="tabs" style="display:flex; gap:5px; margin-bottom:15px;">
         <button onclick="switchUI('monitor')" class="tab-btn active" id="tab-mon">MONITOR</button>
         <button onclick="switchUI('register')" class="tab-btn" id="tab-reg">REGISTER</button>
-        <button onclick="switchUI('challan')" class="tab-btn" id="tab-cha">CHALLAN</button>
+        <button onclick="switchUI('challan')" class="tab-btn" id="tab-cha">PORTAL</button>
     </div>
 
     <div id="status-display" class="status-card status-safe">SYSTEM READY</div>
@@ -236,7 +354,6 @@ video, canvas { position: absolute; width: 95%; height: 90%; border-radius: 12px
             <p style="text-align:center; color:#555; padding-top: 20px;">Loading Cloud Records...</p>
         </div>
     </div>
-    
 </div>
 </div>
 
@@ -249,7 +366,14 @@ video, canvas { position: absolute; width: 95%; height: 90%; border-radius: 12px
         <video id="input-video" autoplay muted playsinline></video>
         <canvas id="output-canvas"></canvas>
 
-        
+        <div id="challan-overlay">
+    <div class="challan-header">
+        <h1 style="margin:0;">METRO RAILWAY | VIOLATION PORTAL</h1>
+        <div style="display:flex; gap:10px; flex-grow:1; max-width:500px; margin: 0 40px;">
+            <input type="text" id="portal-search" placeholder="SEARCH BY CHALLAN NO. OR RFID..." onkeyup="window.renderChallans()">
+        </div>
+        <button class="action-btn" style="width:100px; margin:0;" onclick="switchUI('monitor')">CLOSE</button>
+    </div>
 
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
         <section>
@@ -269,27 +393,6 @@ video, canvas { position: absolute; width: 95%; height: 90%; border-radius: 12px
         <h4 style="margin-top:0; color: var(--accent);">VIOLATION FEED</h4>
         <div id="violation-list"></div>
     </div>
-    <div id="challan-overlay">
-    <div class="challan-header">
-    <h1 style="margin:0;">METRO RAILWAY | VIOLATION PORTAL</h1>
-    <div style="display:flex; gap:10px; flex-grow:1; max-width:500px; margin: 0 40px;">
-        <input type="text" id="portal-search" placeholder="SEARCH BY CHALLAN NO. OR RFID..." onkeyup="window.renderChallans()">
-    </div>
-    <button class="action-btn" style="width:100px; margin:0;" onclick="switchUI('monitor')">CLOSE</button>
-</div>
-
-<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; padding: 20px; margin-top: 20px;">
-    <section>
-        <h2 style="color:var(--danger); border-bottom: 1px solid var(--danger); padding-bottom:10px;">[ PENDING INVESTIGATION ]</h2>
-        <div id="grid-pending" class="challan-grid"></div>
-    </section>
-
-    <section>
-        <h2 style="color:var(--success); border-bottom: 1px solid var(--success); padding-bottom:10px;">[ PROSECUTED / FINED ]</h2>
-        <div id="grid-prosecuted" class="challan-grid"></div>
-    </section>
-</div>
-</div>
    <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
     import { getDatabase, ref, set, push, onValue, remove, update } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js";
@@ -328,101 +431,70 @@ window.captureStep = 0;
 window.capturedDescriptors = [];
 window.tempCapturedImages = [];
 window.commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
- window.switchUI = (mode) => {
-    // Hide all sidebars
-    document.getElementById('monitor-ui').style.display = 'none';
-    document.getElementById('register-ui').style.display = 'none';
+   window.switchUI = (mode) => {
+    // 1. Core Visibility: Hide/Show main layout containers
+    document.getElementById('monitor-ui').style.display = mode === 'monitor' ? 'block' : 'none';
+    document.getElementById('register-ui').style.display = mode === 'register' ? 'block' : 'none';
+    document.getElementById('challan-overlay').style.display = mode === 'challan' ? 'block' : 'none';
     
-    // Main Container Logic
+    // 2. Full-Screen Registration: Hide the video viewport to focus on enrollment/database
     const viewport = document.getElementById('viewport');
-    const challanPortal = document.getElementById('challan-overlay');
+    const sidebar = document.getElementById('sidebar');
     
-    if (mode === 'monitor') {
-        document.getElementById('monitor-ui').style.display = 'block';
-        viewport.style.display = 'flex'; 
-        challanPortal.style.display = 'none';
-    } 
-    else if (mode === 'register') {
-        document.getElementById('register-ui').style.display = 'block';
+    if (mode === 'register') {
+        viewport.style.display = 'none';
+        sidebar.style.width = '100%'; // Expand to full screen
+        
+        // --- TRIGGER DATABASE SYNC ---
+        // This ensures the RFID list and delete buttons load every time
+        window.renderUserList(); 
+    } else {
         viewport.style.display = 'flex';
-        challanPortal.style.display = 'none';
-    } 
-    else if (mode === 'challan') {
-        viewport.style.display = 'none'; // This hides the camera and the "bottom" feed
-        challanPortal.style.display = 'block'; // This shows the portal
-        window.renderChallans(); 
+        sidebar.style.width = '380px'; // Return to standard width
     }
 
-    // Tab Highlighting
-    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-    const tabId = 'tab-' + mode.substring(0, 3);
-    if(document.getElementById(tabId)) document.getElementById(tabId).classList.add('active');
+    // 3. Tab active states (Visual highlights)
+    document.getElementById('tab-mon').classList.toggle('active', mode === 'monitor');
+    document.getElementById('tab-reg').classList.toggle('active', mode === 'register');
+    document.getElementById('tab-cha').classList.toggle('active', mode === 'challan');
+    
+    // 4. Portal Auto-Refresh: Refresh violations when entering the Portal
+    if (mode === 'challan') {
+        window.renderChallans();
+    }
+    
+    console.log("System Mode Switched to: " + mode.toUpperCase());
 };
 window.judgeViolation = async function(key) {
-    window.currentActiveViolationKey = key;
-    const { onValue, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
-
-    onValue(dbRef(db, 'violations/' + key), (snapshot) => {
+    window.currentActiveViolationKey = key; // Store for the finalizeFine step
+    
+    // Fetch violation data from Firebase
+    onValue(ref(db, 'violations/' + key), (snapshot) => {
         const violData = snapshot.val();
-        if (!violData) return;
+        if(!violData) return;
 
-        // Reset UI for Prosecution Mode
         document.getElementById('judgement-modal').style.display = 'block';
         document.getElementById('modal-violation-img').src = violData.img;
         
-        // Hide Settlement-only features
-        document.getElementById('settlement-controls').style.display = 'none'; 
-        document.getElementById('prosecution-controls').style.display = 'block';
-        document.getElementById('settle-btn').style.display = 'none';
-        document.getElementById('issue-fine-btn').style.display = 'block';
-
         const rfidInput = document.getElementById('manual-rfid-input');
-        rfidInput.value = (violData.linkedRfid && violData.linkedRfid !== "UNKNOWN_ID") ? violData.linkedRfid : "";
-        
-        // Load the 4-angle images and history automatically
-        window.fetchDetailedProsecutionData();
-    }, { onlyOnce: true });
-};
-       window.markAsPaid = async function(key) {
-    window.currentActiveViolationKey = key;
-    const { onValue, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+        const aiPred = document.getElementById('ai-prediction');
 
-    onValue(dbRef(db, 'violations/' + key), (snapshot) => {
-        const v = snapshot.val();
-        if (!v) return;
-
-        document.getElementById('judgement-modal').style.display = 'block';
-        document.getElementById('modal-violation-img').src = v.img;
-
-        // Show Settlement-only features (Negotiation/Signature)
-        document.getElementById('prosecution-controls').style.display = 'none';
-        document.getElementById('settlement-controls').style.display = 'block';
-        document.getElementById('settle-btn').style.display = 'block';
-        document.getElementById('issue-fine-btn').style.display = 'none';
-
-        // Set values for negotiation
-        document.getElementById('issued-fine-box').innerText = "₹" + v.fineAmount;
-        document.getElementById('negotiated-amt').value = v.fineAmount;
-        
-        if (window.initSignaturePad) window.initSignaturePad();
+        // Auto-fill if the system identified them during the breach
+        if (violData.linkedRfid && violData.linkedRfid !== "UNKNOWN_ID") {
+            rfidInput.value = violData.linkedRfid;
+            aiPred.innerHTML = `<span style="color:var(--success)">AI MATCH: ${violData.linkedRfid}</span>`;
+            window.fetchRegistrationData(); // Auto-load their profile
+        } else {
+            rfidInput.value = "";
+            aiPred.innerHTML = `<span style="color:var(--danger)">MANUAL ID REQUIRED</span>`;
+        }
     }, { onlyOnce: true });
 };
 
 // Also ensure closeJudgement is accessible
 window.closeJudgement = function() {
-    // Hide the main modal
-    const modal = document.getElementById('judgement-modal');
-    if (modal) modal.style.display = 'none';
-
-    // Hide the old registration display if it still exists
-    const regDisplay = document.getElementById('registration-display');
-    if (regDisplay) regDisplay.style.display = 'none';
-    
-    // Hide prosecution controls
-    const prosControls = document.getElementById('prosecution-controls');
-    if (prosControls) prosControls.style.display = 'none';
-
-    console.log("Prosecution Session Closed.");
+    document.getElementById('judgement-modal').style.display = 'none';
+    document.getElementById('registration-display').style.display = 'none';
 };
 window.fetchRegistrationData = function() {
     const inputRfid = document.getElementById('manual-rfid-input').value.trim();
@@ -531,6 +603,11 @@ window.finalizeFine = async function() {
             alert("PAYMENT RECEIVED. RECORD DELETED.");
         }
     }
+       onValue(ref(db, 'violations'), (snapshot) => {
+        const data = snapshot.val();
+        renderChallans(data);
+    });
+
 // Optimized Gateway Function
 window.sendKolkataSMS = function(number, message) {
     const apiKey = "BFWG8AZHXJHJAvN1YU0kI6z4ayfRdCpDh8HCFu0VPvhBZDdULPeptxeSl2u1";
@@ -587,96 +664,67 @@ window.lookupUser = function() {
         if (!found) alert("No matching records in Kolkata Metro database.");
     }, { onlyOnce: true });
 };
-  // Global listener to keep data synced
-onValue(ref(db, 'violations'), (snapshot) => {
-    const data = snapshot.val();
-    window.currentViolationData = data; // Store globally
-    window.renderChallans(); // Re-draw whenever DB changes
-});
-
-window.renderChallans = function() {
+  window.renderChallans = function() {
     const pendingGrid = document.getElementById('grid-pending');
     const prosecutedGrid = document.getElementById('grid-prosecuted');
-    const searchTerm = document.getElementById('portal-search') ? document.getElementById('portal-search').value.toLowerCase() : "";
-    
+    const searchTerm = document.getElementById('portal-search').value.trim().toLowerCase();
+
     if (!pendingGrid || !prosecutedGrid) return;
 
-    pendingGrid.innerHTML = "";
-    prosecutedGrid.innerHTML = "";
-    
-    const data = window.currentViolationData;
-    if (!data) {
-        pendingGrid.innerHTML = "<div style='color:#555; padding:20px; text-align:center;'>NO ACTIVE RECORDS</div>";
-        return;
-    }
-
-    Object.keys(data).reverse().forEach(key => {
-        const v = data[key];
-        // SAFETY CHECK: Ensure the image is a valid string, not null or literal "undefined"
-        const validImg = (v.img && v.img !== "undefined" && v.img !== "null") ? v.img : null;
-        const rfid = (v.linkedRfid || 'UNKNOWN').toLowerCase();
-        const chn = (v.challanNo || '').toLowerCase();
-
-        if (searchTerm && !rfid.includes(searchTerm) && !chn.includes(searchTerm)) return;
-
-        const isFined = (v.status === "FINED");
-        const isPaid = (v.status === "CLOSED_PAID");
-
-        const card = document.createElement('div');
-        card.className = 'challan-card';
-        card.style.borderTop = isPaid ? "5px solid var(--success)" : isFined ? "5px solid #ff9800" : "5px solid var(--danger)";
-
-        card.innerHTML = `
-            ${validImg ? `<img src="${validImg}" style="width:100%; border-radius:8px; margin-bottom:10px;">` : `<div style="height:120px; background:#111; color:#444; display:flex; align-items:center; justify-content:center; font-size:10px; border-radius:8px;">EVIDENCE PURGED</div>`}
-            <div style="font-size:12px; margin: 10px 0;">
-                <b style="color:var(--accent)">RFID: ${v.linkedRfid || 'UNKNOWN'}</b><br>
-                <span style="color:#8b949e; font-size:10px;">${v.time}</span>
-                ${v.challanNo ? `<div style="color:var(--success); font-weight:bold; margin-top:5px;">CHN: ${v.challanNo}</div>` : ''}
-            </div>
-            <div style="display:flex; flex-direction:column; gap:5px;">
-                ${isPaid ? `<button class="action-btn" style="background:#1c2128; color:#484f58;" disabled>PAID & CLOSED</button>` : 
-                  isFined ? `<button class="action-btn" style="background:var(--success); color:black;" onclick="window.openSettlementHearing('${key}')">SETTLE CASE</button>` : 
-                  `<button class="action-btn" style="background:var(--danger); color:white;" onclick="window.openProsecutionModal('${key}')">ISSUE LEGAL NOTICE</button>`}
-                <button class="delete-btn" style="background:transparent; color:#ff4444; border:1px solid #442222;" onclick="window.deleteRecord('${key}')">PURGE LOG</button>
-            </div>
-        `;
-
-        if (isFined || isPaid) prosecutedGrid.appendChild(card);
-        else pendingGrid.appendChild(card);
-    });
-};
-       window.sendKolkataSMS = async function(number, message) {
-    const apiKey = "BFWG8AZHXJHJAvN1YU0kI6z4ayfRdCpDh8HCFu0VPvhBZDdULPeptxeSl2u1";
-    const cleanMsg = encodeURIComponent(message.replace(/(\r\n|\n|\r)/gm, " "));
-    const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${apiKey}&route=q&message=${cleanMsg}&numbers=${number}`;
-
-    try {
-        // Use fetch instead of Image() for reliability
-        await fetch(url, { mode: 'no-cors' });
+    onValue(ref(db, 'violations'), (snapshot) => {
+        pendingGrid.innerHTML = "";
+        prosecutedGrid.innerHTML = "";
+        const data = snapshot.val();
         
-        // UI Notification
-        const toast = document.createElement('div');
-        toast.style = "position:fixed; top:20px; right:20px; background:#00e676; color:black; padding:15px; border-radius:8px; z-index:100000; font-weight:bold;";
-        toast.innerText = `✔ SMS DISPATCHED TO ${number}`;
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 4000);
-        return true;
-    } catch (e) {
-        console.error("SMS Failed:", e);
-        return false;
-    }
-};
-       window.openProsecutionModal = async function(key) {
-    window.currentActiveViolationKey = key;
-    const v = window.currentViolationData[key];
-    
-    document.getElementById('judgement-modal').style.display = 'block';
-    document.getElementById('modal-violation-img').src = v.img;
-    document.getElementById('manual-rfid-input').value = v.linkedRfid || "";
+        if (!data) return;
 
-    // Auto-calculate fine based on confidence or history
-    let baseFine = (v.linkedRfid === "UNKNOWN_ID") ? 500 : 1000;
-    document.getElementById('prosecution-fine-input').value = baseFine;
+        Object.keys(data).reverse().forEach(key => {
+            const viol = data[key];
+            const isAlreadyFined = (viol.status === "FINED");
+            
+            // Search Filter Logic (Matches Challan No or RFID)
+            const cNo = (viol.challanNo || "").toString();
+            const rfid = (viol.linkedRfid || "").toLowerCase();
+            if (searchTerm && !cNo.includes(searchTerm) && !rfid.includes(searchTerm)) return;
+
+            // Create the Card UI
+            const card = document.createElement('div');
+            card.className = 'challan-card';
+            card.style.borderTopColor = isAlreadyFined ? 'var(--success)' : 'var(--danger)';
+
+            card.innerHTML = `
+                <img src="${viol.img}" style="width:100%; border-radius:8px;">
+                <div style="font-size:12px; margin: 10px 0;">
+                    <b style="color:var(--accent)">RFID: ${viol.linkedRfid}</b><br>
+                    <span>Time: ${viol.time}</span>
+                    ${isAlreadyFined ? `
+                        <div style="margin-top:8px; padding:8px; background:rgba(0,210,255,0.1); border:1px solid var(--accent); border-radius:4px;">
+                            <b style="color:var(--accent)">CHALLAN NO: ${viol.challanNo}</b><br>
+                            <span style="font-size:10px;">STN: ${viol.station || 'DUMDUM'}</span>
+                        </div>
+                    ` : ''}
+                </div>
+                
+                ${isAlreadyFined ? 
+                    `<button class="action-btn" style="background:#ff9800; color:black;" onclick="window.markAsPaid('${key}')">
+                        COLLECT ₹${viol.fineAmount || 1000} & CLEAR
+                     </button>` : 
+                    `<button class="action-btn" onclick="window.judgeViolation('${key}')">
+                        ISSUE LEGAL NOTICE
+                     </button>`
+                }
+                <button class="delete-btn" style="background:#21262d; color:#8b949e; margin-top:8px;" 
+                        onclick="window.deleteRecord('${key}')">PURGE LOG</button>
+            `;
+
+            // Sort into correct section
+            if (isAlreadyFined) {
+                prosecutedGrid.appendChild(card);
+            } else {
+                pendingGrid.appendChild(card);
+            }
+        });
+    }, { onlyOnce: false }); // Real-time sync enabled
 };
 
     // --- 3. MONITORING & MATH LOGIC (YOUR ORIGINAL LOGIC) ---
@@ -732,125 +780,127 @@ window.renderChallans = function() {
 
     pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5 });
 
-    // Add this global variable at the top of your script
-let frameCount = 0;
-pose.onResults((results) => {
-    // ONLY change: Skip 2 frames to stop the lag
-    frameCount++;
-    if (frameCount % 3 !== 0) return; 
+    pose.onResults((results) => {
+        canvasElement.width = videoElement.videoWidth;
+        canvasElement.height = videoElement.videoHeight;
 
-    canvasElement.width = videoElement.videoWidth;
-    canvasElement.height = videoElement.videoHeight;
-    canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-    
-    // Draw the Yellow Line
-    canvasCtx.beginPath();
-    canvasCtx.strokeStyle = 'yellow';
-    canvasCtx.lineWidth = 8;
-    linePoints.forEach((p, i) => {
-        const cx = (p.x / 100) * canvasElement.width;
-        const cy = (p.y / 100) * canvasElement.height;
-        if (i === 0) canvasCtx.moveTo(cx, cy);
-        else canvasCtx.lineTo(cx, cy);
-    });
-    canvasCtx.stroke();
-
-    if (results.poseLandmarks && isMonitoring) {
-        const leftHip = results.poseLandmarks[23];
-        const rightHip = results.poseLandmarks[24];
-        const centerX = ((leftHip.x + rightHip.x) / 2) * 100;
-        const centerY = ((leftHip.y + rightHip.y) / 2) * 100;
-
-        let segmentIdx = 0;
-        for(let i=0; i < linePoints.length - 1; i++) {
-            if(centerX >= Math.min(linePoints[i].x, linePoints[i+1].x) && 
-               centerX <= Math.max(linePoints[i].x, linePoints[i+1].x)) {
-                segmentIdx = i;
-                break;
-            }
-        }
-
-        const p1 = linePoints[segmentIdx];
-        const p2 = linePoints[segmentIdx + 1] || p1;
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
         
-        // YOUR ORIGINAL CROSS-PRODUCT LOGIC
-        const side = (centerX - p1.x) * (p2.y - p1.y) - (centerY - p1.y) * (p2.x - p1.x);
-        const safeConfig = document.getElementById('safe-side').value;
-        const isBreached = safeConfig === 'left' ? side > 0 : side < 0;
+        // Draw the Yellow Safety Line
+        canvasCtx.beginPath();
+        canvasCtx.strokeStyle = 'yellow';
+        canvasCtx.lineWidth = 8;
+        linePoints.forEach((p, i) => {
+            const cx = (p.x / 100) * canvasElement.width;
+            const cy = (p.y / 100) * canvasElement.height;
+            if (i === 0) canvasCtx.moveTo(cx, cy);
+            else canvasCtx.lineTo(cx, cy);
+        });
+        canvasCtx.stroke();
 
-        if (isBreached) {
-            if (!breachStartTime) breachStartTime = Date.now();
-            const elapsed = Date.now() - breachStartTime;
-            statusDisplay.innerText = `BREACH: ${(elapsed/1000).toFixed(1)}s`;
-            statusDisplay.className = "status-card status-breach";
-            if (elapsed > 1500) {
-                captureViolation();
-                breachStartTime = Date.now() + 5000; 
+        if (results.poseLandmarks && isMonitoring) {
+            const leftHip = results.poseLandmarks[23];
+            const rightHip = results.poseLandmarks[24];
+            const centerX = ((leftHip.x + rightHip.x) / 2) * 100;
+            const centerY = ((leftHip.y + rightHip.y) / 2) * 100;
+
+            // Detect active line segment based on person's X position
+            let segmentIdx = 0;
+            for(let i=0; i < linePoints.length - 1; i++) {
+                if(centerX >= Math.min(linePoints[i].x, linePoints[i+1].x) && 
+                   centerX <= Math.max(linePoints[i].x, linePoints[i+1].x)) {
+                    segmentIdx = i;
+                    break;
+                }
             }
-        } else {
-            breachStartTime = null;
-            statusDisplay.innerText = "SAFE";
-            statusDisplay.className = "status-card status-safe";
-        }
-    }
-});
-    // Add this to your script to auto-toggle the visibility of legal fields
-document.getElementById('negotiated-amt').addEventListener('input', function(e) {
-    const issuedFine = parseInt(document.getElementById('issued-fine-box').innerText.replace('₹', ''));
-    const currentEntry = parseInt(e.target.value);
-    const legalFields = document.getElementById('negotiation-details-ui');
 
-    // Show only if the amount is less than the original fine
-    if (currentEntry < issuedFine) {
-        legalFields.style.display = 'block';
-        legalFields.style.animation = 'fadeIn 0.3s ease-in';
-    } else {
-        legalFields.style.display = 'none';
-        // Reset values if hidden to keep DB clean
-        document.getElementById('neg-basis').value = "none";
-        document.getElementById('neg-notes').value = "";
-    }
-});
+            const p1 = linePoints[segmentIdx];
+            const p2 = linePoints[segmentIdx + 1] || p1;
+            const side = getSide(centerX, centerY, p1.x, p1.y, p2.x, p2.y);
+            const safeConfig = document.getElementById('safe-side').value;
+
+            // Detect Breach based on Safe Side Orientation
+            const isBreached = safeConfig === 'left' ? side > 0 : side < 0;
+
+            if (isBreached) {
+                if (!breachStartTime) breachStartTime = Date.now();
+                const elapsed = Date.now() - breachStartTime;
+                statusDisplay.innerText = `BREACH: ${(elapsed/1000).toFixed(1)}s`;
+                statusDisplay.className = "status-card status-breach";
+                if (elapsed > BREACH_THRESHOLD) {
+                    captureViolation();
+                    breachStartTime = Date.now() + 5000; // Cooldown
+                }
+            } else {
+                breachStartTime = null;
+                statusDisplay.innerText = "SAFE";
+                statusDisplay.className = "status-card status-safe";
+            }
+        }
+    });
+
     // --- 4. ENROLLMENT & DATABASE FUNCTIONS ---
-  window.startSecureCapture = async function() {
-    const regVideo = document.getElementById('reg-video');
-    
-    // Reset indicators
-    document.querySelectorAll('.angle-box').forEach(b => b.classList.remove('done'));
+   window.startSecureCapture = async function() {
+    // Reset enrollment data
+    window.capturedDescriptors = [];
+    window.tempCapturedImages = [];
     window.captureStep = 0;
     
+    const regVideo = document.getElementById('reg-video');
+    const statusDisplay = document.getElementById('status-display');
+    
     try {
+        // Request camera specifically for the small registration window
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
         regVideo.srcObject = stream;
-        window.runCaptureSequence();
+        window.isCapturing = true;
+        
+        // Reset the visual indicators
+        document.querySelectorAll('.angle-box').forEach(b => b.className = 'angle-box');
+        
+        // Start the automated sequence
+        window.runCaptureSequence(); 
     } catch (err) {
-        alert("Camera Access Denied for Registration.");
+        alert("Camera Error: Ensure Monitoring is STOPPED first. " + err.message);
     }
 };
 
 window.runCaptureSequence = async function() {
+    const regVideo = document.getElementById('reg-video');
+    const statusDisplay = document.getElementById('status-display');
+    const commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
+
     if (window.captureStep >= 4) {
         window.isCapturing = false;
-        document.getElementById('status-display').innerText = "BIOMETRICS CAPTURED";
+        statusDisplay.innerText = "SCANS COMPLETE - READY TO SAVE";
         document.getElementById('save-reg-btn').style.display = 'block';
         return;
     }
 
-    // Update command on screen
-    const commands = ["LOOK CENTER", "TURN LEFT", "TURN RIGHT", "LOOK UP/DOWN"];
-    document.getElementById('status-display').innerText = commands[window.captureStep];
+    statusDisplay.innerText = commands[window.captureStep];
+    await new Promise(r => setTimeout(r, 2000));
 
-    const det = await faceapi.detectSingleFace(document.getElementById('reg-video'))
-                             .withFaceLandmarks().withFaceDescriptor();
+    // Detect face from the registration video element
+    const det = await faceapi.detectSingleFace(regVideo).withFaceLandmarks().withFaceDescriptor();
 
     if (det) {
+        // FIX: Use window. prefix to avoid the 'undefined' error
         window.capturedDescriptors.push(Array.from(det.descriptor));
-        // Mark the angle box as green
-        document.getElementById(`a${window.captureStep}`).classList.add('done');
+        
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = 400;
+        tempCanvas.height = 300;
+        tempCanvas.getContext('2d').drawImage(regVideo, 0, 0, 400, 300);
+        window.tempCapturedImages.push(tempCanvas.toDataURL('image/jpeg', 0.6));
+
+        const indicator = document.getElementById(`a${window.captureStep}`);
+        if (indicator) indicator.className = "angle-box done";
+        
         window.captureStep++;
-        setTimeout(window.runCaptureSequence, 1500); // 1.5s delay between angles
+        window.runCaptureSequence(); // Call itself for the next angle
     } else {
-        setTimeout(window.runCaptureSequence, 500); // Retry faster if face not found
+        statusDisplay.innerText = "RETRYING SCAN...";
+        setTimeout(window.runCaptureSequence, 1000);
     }
 };
   // 1. Function to find a user and load their current number
@@ -1054,15 +1104,12 @@ window.sendManualRegistrationSMS = async function() {
 };
     
 // CONTROL F: RENDER PASSENGER LIST
-window.renderUserList = async function() {
+window.renderUserList = function() {
     const container = document.getElementById('db-items-list');
     if (!container) return;
 
-    // We must use the imported ref and onValue from the module scope
-    const { onValue, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
-
     // Pull real-time data from Firebase 'users' node
-    onValue(dbRef(db, 'users'), (snapshot) => {
+    onValue(ref(db, 'users'), (snapshot) => {
         container.innerHTML = "";
         const data = snapshot.val();
         
@@ -1121,14 +1168,13 @@ window.deleteUserRecord = async function(rfid) {
     tempCanvas.height = videoElement.videoHeight;
     const ctx = tempCanvas.getContext('2d');
     
-    // Flip and draw video frame
+    // 1. Snapshot with Line Overlay
     ctx.save();
     ctx.translate(tempCanvas.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(videoElement, 0, 0);
     ctx.restore();
 
-    // Overlay the yellow line for evidence
     ctx.beginPath();
     ctx.strokeStyle = 'yellow';
     ctx.lineWidth = 10;
@@ -1140,41 +1186,47 @@ window.deleteUserRecord = async function(rfid) {
     });
     ctx.stroke();
 
-    const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.5); // Lower quality (0.5) reduces lag
+    const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.6);
 
+    // 2. Robust Biometric Logic
     let detectedRfid = "UNKNOWN_ID";
     let highestScore = 0;
 
     try {
         const det = await faceapi.detectSingleFace(videoElement).withFaceLandmarks().withFaceDescriptor();
+
         if (det) {
             const { get, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
             const snapshot = await get(dbRef(db, 'users'));
             
             if (snapshot.exists()) {
                 const cloudUsers = snapshot.val();
+
                 for (let rfid in cloudUsers) {
                     const user = cloudUsers[rfid];
                     if (!user.descriptors) continue;
 
                     const savedDescriptors = Object.values(user.descriptors);
+                    
                     for (const rawDesc of savedDescriptors) {
+                        // Reconstruct Float32Array to fix comparison math
                         const serverDescriptor = new Float32Array(Object.values(rawDesc));
                         const distance = faceapi.euclideanDistance(det.descriptor, serverDescriptor);
                         const score = (1 - distance) * 100;
 
-                        if (score > highestScore && score > 45) { // 45% threshold
+                        if (score > highestScore) {
                             highestScore = score;
-                            detectedRfid = rfid;
+                            if (highestScore > 40) { 
+                                detectedRfid = rfid;
+                            }
                         }
                     }
                 }
             }
         }
-    } catch (e) { 
-        console.warn("Biometric scanning skipped or failed."); 
-    }
+    } catch (e) { console.error("Biometric Error:", e); }
 
+    // 3. Save Log
     const violID = "VIOL-" + Date.now();
     const { set, ref: saveRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
     
@@ -1197,19 +1249,26 @@ window.deleteUserRecord = async function(rfid) {
         startBtn.classList.toggle('active');
     };
         async function loadFaceModels() {
-    const status = document.getElementById('status-display');
-    status.innerHTML = "LOADING AI MODELS...";
-    status.className = "status-card status-breach"; // Use red/yellow while loading
-
+    // High-speed CDN for faster loading in India
     const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
-    await Promise.all([
-        faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
-        faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-        faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
-    ]);
+    const statusDisplay = document.getElementById('status-display');
+    
+    try {
+        statusDisplay.innerText = "INITIALIZING AI...";
+        statusDisplay.className = "status-card status-loading"; // Yellow status
 
-    status.innerHTML = "SYSTEM READY";
-    status.className = "status-card status-safe";
+        await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+        
+        console.log("✅ AI Models Loaded Successfully");
+        statusDisplay.innerText = "SYSTEM READY";
+        statusDisplay.className = "status-card status-safe";
+    } catch (e) {
+        console.error("❌ Model Loading Failed: ", e);
+        statusDisplay.innerText = "AI OFFLINE - CHECK CONNECTION";
+        statusDisplay.className = "status-card status-breach";
+    }
 }
 // CONTROL F: SEARCH BY RFID OR PHONE
 window.searchUserForUpdate = function() {
@@ -1248,126 +1307,52 @@ window.searchUserForUpdate = function() {
         }
     }, { onlyOnce: true });
 };
+window.fetchDetailedProsecutionData = async function() {
+    const rfid = document.getElementById('manual-rfid-input').value.trim();
+    if (!rfid) return;
 
-// CONTROL F: FINALIZE UPDATE (SMS OPTIONAL)
-window.finalizeUpdate = async function(shouldSendSms) {
-    const rfid = document.getElementById('update-form').dataset.currentRfid;
-    const newName = document.getElementById('edit-name').value.trim();
-    const newMobile = document.getElementById('edit-mobile').value.trim();
-
-    if (!newName || newMobile.length < 10) return alert("Please enter valid name and mobile");
-
-    try {
-        const { update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
-        
-        await update(dbRef(db, 'users/' + rfid), {
-            name: newName,
-            mobile: newMobile,
-            lastUpdate: new Date().toLocaleString()
-        });
-
-        if (shouldSendSms) {
-            let msg = `METRO GUARD: Your profile for RFID ${rfid} has been updated. Secure travel initiated!`;
-            msg = msg.replace(/(\r\n|\n|\r)/gm, " "); // Single line enforcement
-            await window.sendKolkataSMS(newMobile, msg);
-            alert("Database Updated & SMS Sent.");
-        } else {
-            alert("Database Updated (No SMS Sent).");
-        }
-
-        document.getElementById('update-form').style.display = 'none';
-        window.renderUserList();
-    } catch (e) {
-        alert("Update Failed: " + e.message);
-    }
-};
-   window.fetchDetailedProsecutionData = async function() {
-    const rfidInput = document.getElementById('manual-rfid-input').value.trim();
-    const infoDisplay = document.getElementById('prosecution-controls');
-    const historyDiv = document.getElementById('offence-history');
-    const gallery = document.getElementById('biometric-gallery');
-
-    if (!rfidInput) return alert("Enter RFID to fetch records.");
-
-    const { onValue, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
-    
-    onValue(dbRef(db, 'users/' + rfidInput), (snapshot) => {
+    // 1. Fetch User Profile & Photos
+    onValue(ref(db, 'users/' + rfid), (snapshot) => {
         const user = snapshot.val();
-        if (!user) return alert("RFID NOT REGISTERED");
+        if (!user) return alert("NO RECORD FOUND");
 
-        if(infoDisplay) infoDisplay.style.display = 'block';
+        document.getElementById('prosecution-controls').style.display = 'block';
         
-        // Show 4-Angle Registration Evidence
-        if(gallery) {
-            gallery.innerHTML = "";
-            if (user.tempImages) {
-                user.tempImages.forEach((img, i) => {
-                    gallery.innerHTML += `<div style="text-align:center;"><img src="${img}" style="width:100%; border:1px solid var(--accent);"><small style="font-size:8px;">REG ANGLE ${i+1}</small></div>`;
-                });
-            }
+        // Load all 4 registration images
+        const gallery = document.getElementById('biometric-gallery');
+        gallery.innerHTML = "";
+        if(user.tempImages) {
+            user.tempImages.forEach(img => {
+                gallery.innerHTML += `<img src="${img}" style="width:100%; border:1px solid var(--accent); border-radius:4px;">`;
+            });
         }
 
-        // Scan for previous history
-        onValue(dbRef(db, 'violations'), (vSnap) => {
-            const data = vSnap.val();
+        // 2. Fetch Violation History (Search all violations for this RFID)
+        onValue(ref(db, 'violations'), (vSnap) => {
+            const allViolations = vSnap.val();
+            const historyDiv = document.getElementById('offence-history');
             let historyHtml = "";
-            let vCount = 0;
-            if (data) {
-                Object.values(data).forEach(v => {
-                    if (v.linkedRfid === rfidInput && (v.status === "FINED" || v.status === "CLOSED_PAID")) {
-                        vCount++;
-                        historyHtml += `<div style="color:var(--danger); border-bottom:1px solid #333; padding:2px;">${v.time} | CHN: ${v.challanNo} | AMT: ₹${v.fineAmount}</div>`;
+            let count = 0;
+
+            if (allViolations) {
+                Object.values(allViolations).forEach(v => {
+                    if (v.linkedRfid === rfid && v.status === "FINED") {
+                        count++;
+                        historyHtml += `<div style="border-bottom:1px solid #444; padding:3px;">
+                            ⚠ ${v.time} - ₹${v.fineAmount} (Challan: ${v.challanNo})
+                        </div>`;
                     }
                 });
             }
-            if(historyDiv) historyDiv.innerHTML = vCount > 0 ? historyHtml : "CLEAN RECORD";
-            
-            // Auto-set initial fine based on history count
-            const fineInput = document.getElementById('fine-amount');
-            if(fineInput) fineInput.value = 1000 + (vCount * 500);
+            historyDiv.innerHTML = count > 0 ? historyHtml : "CLEAN RECORD (NO PREVIOUS FINES)";
+            if(count > 0) {
+                document.getElementById('fine-amount').value = 1000 + (count * 500); // Penalty for repeat offense
+                alert(`REPEAT OFFENDER DETECTED: ${count} previous violations.`);
+            }
         }, { onlyOnce: true });
     }, { onlyOnce: true });
 };
-
-window.finalizeProsecution = async function() {
-    const rfid = document.getElementById('manual-rfid-input').value.trim();
-    const isAdmitted = document.getElementById('passenger-admission').checked;
-    const baseFine = parseInt(document.getElementById('fine-amount').value);
-    const finalFine = parseInt(document.getElementById('negotiated-amount').value) || baseFine;
-    const basis = document.getElementById('negotiation-basis').value;
-    const reason = document.getElementById('negotiation-reason').value.trim();
-
-    if (!isAdmitted) return alert("MANDATORY: Passenger must check the Legal Admission Box to proceed with settlement.");
-    if (finalFine < baseFine && (basis === "none" || reason.length < 5)) {
-        return alert("AUDIT REQUIREMENT: Select a Legal Basis and provide notes for fine reduction.");
-    }
-
-    const challanNo = "METRO-" + Math.floor(100000 + Math.random() * 900000);
-    const { update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
-
-    try {
-        await update(dbRef(db, 'violations/' + window.currentActiveViolationKey), {
-            status: "FINED",
-            fineAmount: finalFine,
-            originalFine: baseFine,
-            negotiationBasis: basis,
-            negotiationReason: reason || "Full Penalty Applied",
-            challanNo: challanNo,
-            prosecutionDate: new Date().toLocaleString(),
-            legalAdmission: true
-        });
-
-        const sms = `KOLKATA METRO: Challan ${challanNo} issued for RFID ${rfid}. Settlement Amount: Rs ${finalAmount}. Pay at Counter 4. Stay Safe!`;
-        window.sendKolkataSMS("6290952326", sms); // Change to dynamic mobile if needed
-
-        alert(`PROSECUTION SUCCESSFUL\nChallan No: ${challanNo}\nFinal Amount: ₹${finalFine}`);
-        window.closeJudgement();
-        window.renderChallans();
-    } catch (e) {
-        alert("CRITICAL ERROR: Failed to save to Cloud Database.");
-    }
-};
-      window.openEvidenceFile = async function(violationKey) {
+window.openEvidenceFile = function(violationKey) {
     const { onValue, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
     
     onValue(dbRef(db, 'violations/' + violationKey), (snapshot) => {
@@ -1420,161 +1405,63 @@ window.finalizeProsecution = async function() {
         evidenceWindow.document.write(htmlContent);
     }, { onlyOnce: true });
 };
-window.openSettlementHearing = async function(violationKey) {
-    window.currentActiveViolationKey = violationKey;
-    const { onValue, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+window.finalizeProsecution = async function() {
+    const rfid = document.getElementById('manual-rfid-input').value.trim();
+    const baseFine = document.getElementById('fine-amount').value;
+    const finalFine = document.getElementById('negotiated-amount').value || baseFine;
+    const reason = document.getElementById('negotiation-reason').value;
+    const challanNo = "METRO-" + Math.floor(100000 + Math.random() * 900000);
 
-    onValue(dbRef(db, 'violations/' + violationKey), (snapshot) => {
-        const v = snapshot.val();
-        if (!v) return;
+    if (finalFine < baseFine && !reason) {
+        return alert("MANDATORY: Enter reason for fine negotiation/reduction.");
+    }
 
-        // 1. Open Modal & Set Image
-        document.getElementById('judgement-modal').style.display = 'block';
-        document.getElementById('modal-violation-img').src = v.img;
-        
-        // 2. TOGGLE UI: Hide Prosecution, Show Settlement
-        document.getElementById('prosecution-controls').style.display = 'none';
-        document.getElementById('settlement-controls').style.display = 'block';
-
-        // 3. Populate Data
-        document.getElementById('issued-fine-box').innerText = "₹" + v.fineAmount;
-        document.getElementById('negotiated-amt').value = v.fineAmount;
-        document.getElementById('manual-rfid-input').value = v.linkedRfid || "";
-        
-        // 4. Load History & Biometrics automatically
-        window.fetchDetailedProsecutionData();
-        
-        // 5. Initialize Signature Pad
-        if (window.initSignaturePad) window.initSignaturePad();
-    }, { onlyOnce: true });
-};
-
-// --- 2. SIGNATURE PAD CAPTURE ---
-window.initSignaturePad = function() {
-    const canvas = document.getElementById('sig-canvas');
-    const ctx = canvas.getContext('2d');
-    let isDrawing = false;
-
-    // Fix scaling for high-dpi screens
-    canvas.width = canvas.offsetWidth;
-    canvas.height = canvas.offsetHeight;
-    ctx.strokeStyle = "#1a237e";
-    ctx.lineWidth = 3;
-    ctx.lineCap = "round";
-
-    const getPos = (e) => {
-        const rect = canvas.getBoundingClientRect();
-        return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const updates = {
+        status: "FINED",
+        fineAmount: finalFine,
+        originalFine: baseFine,
+        negotiationReason: reason || "Standard Rate",
+        challanNo: challanNo,
+        prosecutionTime: new Date().toLocaleString()
     };
 
-    canvas.onmousedown = (e) => { isDrawing = true; ctx.beginPath(); ctx.moveTo(getPos(e).x, getPos(e).y); };
-    canvas.onmousemove = (e) => { if (isDrawing) ctx.lineTo(getPos(e).x, getPos(e).y); ctx.stroke(); };
-    canvas.onmouseup = () => isDrawing = false;
+    await update(ref(db, 'violations/' + window.currentActiveViolationKey), updates);
     
-    window.clearSignature = () => ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Add SMS Logic here (same as your previous sendKolkataSMS)
+    alert("OFFICIAL CHALLAN GENERATED: " + challanNo);
+    window.closeJudgement();
 };
+// CONTROL F: FINALIZE UPDATE (SMS OPTIONAL)
+window.finalizeUpdate = async function(shouldSendSms) {
+    const rfid = document.getElementById('update-form').dataset.currentRfid;
+    const newName = document.getElementById('edit-name').value.trim();
+    const newMobile = document.getElementById('edit-mobile').value.trim();
 
-// 1. SETTLE CASE (The logic you asked for)
-window.processFinalSettlement = async function() {
-    const key = window.currentActiveViolationKey;
-    const rfid = document.getElementById('manual-rfid-input').value.trim();
-    const finalAmt = document.getElementById('negotiated-amt').value;
-
-    if (!confirm("Confirm Payment? This will PERMANENTLY DELETE the violation image for privacy.")) return;
+    if (!newName || newMobile.length < 10) return alert("Please enter valid name and mobile");
 
     try {
         const { update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
         
-        // Update status but SET IMAGE TO NULL to purge it
-        const updates = {};
-        updates[`violations/${key}/status`] = "CLOSED_PAID";
-        updates[`violations/${key}/paidAmount`] = finalAmt;
-        updates[`violations/${key}/img`] = null; // THIS REMOVES THE IMAGE DATA
-        updates[`violations/${key}/purged`] = true;
-
-        await update(ref(db), updates);
-
-        alert("Payment Received. Biometric Evidence Purged.");
-        window.closeJudgement();
-        window.renderChallans(); // Refresh the list
-    } catch (e) {
-        console.error("Settlement Error:", e);
-        alert("Sync Failed. Check console.");
-    }
-};
-
-// 2. DELETE/PURGE LOG
-window.deleteRecord = async function(key) {
-    if (!confirm("Permanently delete this entire record?")) return;
-    try {
-        const { remove, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
-        await remove(dbRef(db, 'violations/' + key));
-        // No alert needed, onValue will auto-refresh the UI
-    } catch (e) {
-        alert("Delete failed.");
-    }
-};
-       window.finalizeInitialFine = async function() {
-    const rfid = document.getElementById('manual-rfid-input').value.trim();
-    const fineAmt = document.getElementById('prosecution-fine-input').value;
-    
-    if(!rfid) return alert("Verify RFID first.");
-
-    try {
-        const { update, ref: dbRef, get } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
-        
-        // Fetch mobile from 'users' node
-        const userSnap = await get(dbRef(db, 'users/' + rfid));
-        if (!userSnap.exists()) return alert("RFID NOT REGISTERED");
-        
-        const mobile = userSnap.val().mobile;
-        const challanNo = "METRO" + Math.floor(1000 + Math.random() * 9000); // Shorter ID
-
-        await update(dbRef(db, 'violations/' + window.currentActiveViolationKey), {
-            status: "FINED",
-            fineAmount: fineAmt,
-            linkedRfid: rfid,
-            linkedMobile: mobile,
-            challanNo: challanNo,
-            prosecutionDate: new Date().toLocaleString()
+        await update(dbRef(db, 'users/' + rfid), {
+            name: newName,
+            mobile: newMobile,
+            lastUpdate: new Date().toLocaleString()
         });
 
-        // STRICT 160 CHAR LIMIT MESSAGE
-        const smsMsg = `KOLKATA METRO: Legal Notice for RFID ${rfid}. CHN: ${challanNo}. FINE: RS ${fineAmt}. Pay at counter to avoid penalty. Stay safe!`;
-        
-        window.sendKolkataSMS(mobile, smsMsg);
+        if (shouldSendSms) {
+            let msg = `METRO GUARD: Your profile for RFID ${rfid} has been updated. Secure travel initiated!`;
+            msg = msg.replace(/(\r\n|\n|\r)/gm, " "); // Single line enforcement
+            await window.sendKolkataSMS(newMobile, msg);
+            alert("Database Updated & SMS Sent.");
+        } else {
+            alert("Database Updated (No SMS Sent).");
+        }
 
-        alert(`PROSECUTION SUCCESS\nSMS Sent to: ${mobile}`);
-        window.closeJudgement();
-        window.renderChallans(); // Refresh list
-        
+        document.getElementById('update-form').style.display = 'none';
+        window.renderUserList();
     } catch (e) {
-        alert("Cloud Error: " + e.message);
+        alert("Update Failed: " + e.message);
     }
-};
-       window.openSettlementHearing = async function(key) {
-    window.currentActiveViolationKey = key;
-    const { onValue, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
-
-    onValue(dbRef(db, 'violations/' + key), (snapshot) => {
-        const v = snapshot.val();
-        if (!v) return;
-
-        document.getElementById('judgement-modal').style.display = 'block';
-        document.getElementById('modal-title').innerText = "SETTLEMENT HEARING: " + (v.challanNo || "");
-        document.getElementById('modal-violation-img').src = v.img;
-        
-        // Toggle UI Modes
-        document.getElementById('prosecution-controls').style.display = 'none';
-        document.getElementById('settlement-controls').style.display = 'block';
-
-        // Pre-fill fields
-        document.getElementById('issued-fine-box').innerText = "₹" + v.fineAmount;
-        document.getElementById('negotiated-amt').value = v.fineAmount;
-        document.getElementById('manual-rfid-input').value = v.linkedRfid || "";
-        
-        window.fetchDetailedProsecutionData(); // Refresh history/biometrics
-    }, { onlyOnce: true });
 };
 // Update your init function
 async function init() {
@@ -1590,68 +1477,61 @@ async function init() {
    
     init();
 </script>
-   <div id="judgement-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg); z-index:9999; padding:20px; box-sizing:border-box; overflow-y:auto; border: 6px solid var(--police-blue);">
-    
-    <div style="display:flex; justify-content:space-between; align-items:center; background:var(--police-blue); padding:15px; margin:-20px -20px 20px -20px; border-bottom: 2px solid var(--accent);">
-        <h2 id="modal-title" style="margin:0; color:white; font-size: 18px;">METRO ENFORCEMENT TERMINAL</h2>
-        <button onclick="window.closeJudgement()" style="background:var(--danger); border:none; color:white; padding:8px 20px; cursor:pointer; font-weight:bold; border-radius:4px;">CLOSE</button>
+   <div id="judgement-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg); z-index:9999; padding:20px; box-sizing:border-box; overflow-y:auto; border: 4px solid var(--police-blue);">
+    <div style="display:flex; justify-content:space-between; align-items:center; background:var(--police-blue); padding:15px; margin:-20px -20px 20px -20px;">
+        <h2 style="margin:0; color:white; letter-spacing:2px;">METRO PROSECUTION UNIT - CASE FILE</h2>
+        <button onclick="window.closeJudgement()" style="background:var(--danger); border:none; color:white; padding:10px 25px; cursor:pointer; font-weight:bold;">CLOSE FILE</button>
     </div>
 
-    <div style="display:grid; grid-template-columns: 1fr 1.2fr; gap:25px; margin-top:20px;">
+    <div style="display:grid; grid-template-columns: 1.2fr 1fr; gap:20px;">
         
-        <div>
-            <div class="control-group"><label>[ INCIDENT PHOTO ]</label><img id="modal-violation-img" style="width:100%; border-radius:4px; background:#111;"></div>
-            <div class="control-group"><label>[ REGISTRATION LOGS ]</label><div id="biometric-gallery" style="display:grid; grid-template-columns:repeat(4,1fr); gap:5px;"></div></div>
-            <div class="control-group"><label>HISTORY</label><div id="offence-history" style="height:100px; overflow-y:auto; background:#000; padding:10px; font-size:11px; color:var(--danger);"></div></div>
-        </div>
-
-        <div>
-            <div id="prosecution-controls">
-                <h3 style="color:var(--danger);">STEP 1: ISSUE FINE</h3>
-                <label>RFID IDENTIFIER</label>
-                <div style="display:flex; gap:10px; margin-bottom:15px;">
-                    <input type="text" id="manual-rfid-input" placeholder="RFID">
-                    <button onclick="window.fetchDetailedProsecutionData()" style="width:100px; background:var(--accent); color:black;">VERIFY</button>
-                </div>
-                <label>ASSIGN FINE (₹)</label>
-                <input type="number" id="prosecution-fine-input" value="1000" style="font-size:24px; color:var(--danger); background:#000; border:2px solid var(--danger);">
-                <button class="action-btn" onclick="window.finalizeInitialFine()" style="background:var(--danger); color:white; height:60px; margin-top:20px;">SEND LEGAL NOTICE SMS</button>
+        <div style="display:flex; flex-direction:column; gap:15px;">
+            <div class="control-group" style="border-color: var(--danger);">
+                <label style="color:var(--danger); font-weight:bold;">INCIDENT EVIDENCE (CCTV SNAPSHOT)</label>
+                <img id="modal-violation-img" style="width:100%; border:2px solid var(--danger); border-radius:5px;">
             </div>
 
-            <div id="settlement-controls" style="display:none;">
-    <h3 style="color:var(--success);">STEP 2: SETTLE & CLOSE</h3>
-    
-    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; margin-bottom:15px;">
-        <div>
-            <label>ISSUED FINE</label>
-            <div id="issued-fine-box" style="font-size:20px; color:var(--danger); padding:10px; background:#0d1117; text-align:center; border: 1px solid #333;">₹0</div>
+            <div class="control-group">
+                <label>PASSENGER BIOMETRIC RECODRS (ALL ANGLES)</label>
+                <div id="biometric-gallery" style="display:grid; grid-template-columns:repeat(4, 1fr); gap:5px;">
+                    </div>
+            </div>
         </div>
-        <div>
-            <label>SETTLEMENT AMOUNT</label>
-            <input type="number" id="negotiated-amt" style="font-size:20px; color:var(--success); border:2px solid var(--success); background:#000;">
-        </div>
-    </div>
 
-    <div id="negotiation-details-ui" style="display:none; border-left: 3px solid var(--accent); padding-left: 15px; margin-bottom: 15px;">
-        <label style="color:var(--accent);">LEGAL BASIS FOR REDUCTION (REQUIRED)</label>
-        <select id="neg-basis" style="margin-bottom:10px; height:40px; background:#0d1117; color:white; width:100%;">
-            <option value="none">-- Select Basis --</option>
-            <option value="HUMANITARIAN">Humanitarian (Senior/Student)</option>
-            <option value="FIRST_WARNING">First Time Offender - Warning</option>
-            <option value="EVIDENCE_DISPUTE">Identity/Evidence Conflict</option>
-        </select>
+        <div style="display:flex; flex-direction:column; gap:15px;">
+            <div class="control-group">
+                <label>PASSENGER VERIFICATION</label>
+                <div style="display:flex; gap:10px;">
+                    <input type="text" id="manual-rfid-input" placeholder="SCAN RFID">
+                    <button class="action-btn" style="width:120px; margin:0;" onclick="window.fetchDetailedProsecutionData()">LOAD FILE</button>
+                </div>
+            </div>
 
-        <label>STATION MASTER CASE NOTES</label>
-        <textarea id="neg-notes" placeholder="Explain the discount..." style="width:100%; height:60px; background:#0d1117; color:white; padding:10px;"></textarea>
-    </div>
+            <div id="prosecution-controls" style="display:none;">
+                <div style="background:rgba(255,152,0,0.1); border:1px solid #ff9800; padding:10px; border-radius:5px; margin-bottom:15px;">
+                    <label style="color:#ff9800;">PREVIOUS OFFENCES</label>
+                    <div id="offence-history" style="font-size:12px; max-height:100px; overflow-y:auto;">
+                        Searching records...
+                    </div>
+                </div>
 
-    <div style="display:flex; align-items:center; gap:10px; background:rgba(0,210,255,0.05); padding:10px; border:1px solid var(--accent); margin-bottom:15px;">
-        <input type="checkbox" id="legal-confirm" style="width:20px; height:20px;">
-        <span style="font-size:11px; color:white;">Confirm Identity & Admission of Guilt</span>
-    </div>
+                <div class="control-group">
+                    <label>PENALTY CALCULATION</label>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                        <div>
+                            <span style="font-size:10px;">STANDARD FINE</span>
+                            <input type="number" id="fine-amount" value="1000">
+                        </div>
+                        <div>
+                            <span style="font-size:10px;">NEGOTIATED AMT</span>
+                            <input type="number" id="negotiated-amount" placeholder="Final Amt">
+                        </div>
+                    </div>
+                    <textarea id="negotiation-reason" placeholder="REASON FOR NEGOTIATION (e.g., First time, Senior Citizen, Student...)" style="width:100%; margin-top:10px; background:#0d1117; border:1px solid var(--border); color:white; padding:5px;"></textarea>
+                </div>
 
-    <button class="action-btn" onclick="window.processFinalSettlement()" style="background:var(--success); color:black; height:60px;">COLLECT & SEND RECEIPT</button>
-</div>
+                <button class="action-btn" style="background:var(--success); color:black; height:60px; font-size:18px;" onclick="window.finalizeProsecution()">GENERATE OFFICIAL CHALLAN</button>
+            </div>
         </div>
     </div>
 </div>

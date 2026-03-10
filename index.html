@@ -1417,47 +1417,93 @@ window.searchUserForUpdate = function() {
 };
 window.fetchDetailedProsecutionData = async function() {
     const rfid = document.getElementById('manual-rfid-input').value.trim();
-    if (!rfid) return;
+    const gallery = document.getElementById('biometric-gallery');
+    const historyDiv = document.getElementById('offence-history');
+    const controls = document.getElementById('prosecution-controls');
+    
+    if (!rfid) return alert("PLEASE ENTER OR SCAN RFID");
 
-    // 1. Fetch User Profile & Photos
+    // 1. FETCH USER PROFILE DATA
     onValue(ref(db, 'users/' + rfid), (snapshot) => {
         const user = snapshot.val();
-        if (!user) return alert("NO RECORD FOUND");
-
-        document.getElementById('prosecution-controls').style.display = 'block';
         
-        // Load all 4 registration images
-        const gallery = document.getElementById('biometric-gallery');
+        if (!user) {
+            alert("RFID NOT FOUND IN CLOUD DATABASE");
+            controls.style.display = 'none';
+            return;
+        }
+
+        // Display the identity UI (Phone and RFID)
+        controls.style.display = 'block';
+        
+        // Update the display with passenger info
+        // Note: Ensure you have these IDs in your HTML or add them dynamically
+        const infoHtml = `
+            <div style="background:rgba(0,210,255,0.1); padding:10px; border-radius:5px; margin-bottom:10px; border:1px solid var(--accent);">
+                <b style="color:var(--accent); font-size:16px;">${user.name.toUpperCase()}</b><br>
+                <span style="color:white; font-family:monospace;">RFID: ${rfid}</span><br>
+                <span style="color:var(--success); font-weight:bold;">PH: ${user.mobile}</span>
+            </div>
+        `;
+        
+        // Prepend the info to the controls section
+        const existingInfo = document.getElementById('active-passenger-card');
+        if(existingInfo) existingInfo.remove();
+        const infoCard = document.createElement('div');
+        infoCard.id = 'active-passenger-card';
+        infoCard.innerHTML = infoHtml;
+        controls.prepend(infoCard);
+
+        // Load Biometric Evidence
         gallery.innerHTML = "";
         if(user.tempImages) {
             user.tempImages.forEach(img => {
-                gallery.innerHTML += `<img src="${img}" style="width:100%; border:1px solid var(--accent); border-radius:4px;">`;
+                gallery.innerHTML += `<img src="${img}" style="width:100%; border:1px solid var(--accent); border-radius:4px; aspect-ratio:1/1; object-fit:cover;">`;
             });
         }
 
-        // 2. Fetch Violation History (Search all violations for this RFID)
+        // 2. FETCH VIOLATION HISTORY (SEARCH FOR REPEAT OFFENCES)
         onValue(ref(db, 'violations'), (vSnap) => {
             const allViolations = vSnap.val();
-            const historyDiv = document.getElementById('offence-history');
             let historyHtml = "";
-            let count = 0;
+            let offenceCount = 0;
 
             if (allViolations) {
-                Object.values(allViolations).forEach(v => {
-                    if (v.linkedRfid === rfid && v.status === "FINED") {
-                        count++;
-                        historyHtml += `<div style="border-bottom:1px solid #444; padding:3px;">
-                            ⚠ ${v.time} - ₹${v.fineAmount} (Challan: ${v.challanNo})
-                        </div>`;
+                // Convert to array and reverse to see latest first
+                Object.keys(allViolations).reverse().forEach(key => {
+                    const v = allViolations[key];
+                    
+                    // CRITICAL: Compare as strings to avoid type-mismatch errors
+                    // Also check that the status is FINED (already prosecuted)
+                    if (String(v.linkedRfid) === String(rfid) && v.status === "FINED") {
+                        offenceCount++;
+                        historyHtml += `
+                            <div style="border-bottom:1px solid #333; padding:5px; font-size:11px;">
+                                <span style="color:var(--danger)">[!]</span> ${v.time}<br>
+                                <small>Challan: ${v.challanNo} | Fine: ₹${v.fineAmount}</small>
+                            </div>`;
                     }
                 });
             }
-            historyDiv.innerHTML = count > 0 ? historyHtml : "CLEAN RECORD (NO PREVIOUS FINES)";
-            if(count > 0) {
-                document.getElementById('fine-amount').value = 1000 + (count * 500); // Penalty for repeat offense
-                alert(`REPEAT OFFENDER DETECTED: ${count} previous violations.`);
+
+            if (offenceCount > 0) {
+                historyDiv.innerHTML = historyHtml;
+                historyDiv.parentElement.style.borderColor = "var(--danger)";
+                historyDiv.parentElement.style.background = "rgba(255, 51, 51, 0.1)";
+                
+                // REPEAT OFFENDER PENALTY: Base 1000 + 500 per previous offence
+                const newFine = 1000 + (offenceCount * 500);
+                document.getElementById('fine-amount').value = newFine;
+                
+                alert(`REPEAT OFFENDER: ${offenceCount} Previous Violations Found. Fine updated to ₹${newFine}`);
+            } else {
+                historyDiv.innerHTML = "<span style='color:var(--success)'>NO PREVIOUS FINES RECORDED</span>";
+                historyDiv.parentElement.style.borderColor = "var(--border)";
+                historyDiv.parentElement.style.background = "transparent";
+                document.getElementById('fine-amount').value = 1000;
             }
         }, { onlyOnce: true });
+
     }, { onlyOnce: true });
 };
 window.openEvidenceFile = async function(violationKey) {
@@ -1644,6 +1690,11 @@ async function init() {
                         Searching records...
                     </div>
                 </div>
+                <div id="passenger-details-card" style="background:rgba(0,210,255,0.1); padding:15px; border-radius:8px; border:1px solid var(--accent); margin-bottom:15px; display:none;">
+    <h3 id="display-name" style="margin:0; color:var(--accent);">---</h3>
+    <p style="margin:5px 0; font-family:monospace;">RFID: <span id="display-rfid">---</span></p>
+    <p style="margin:0; color:var(--success);">PHONE: <span id="display-phone">---</span></p>
+</div>
 
                 <div class="control-group">
                     <label>PENALTY CALCULATION</label>

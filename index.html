@@ -127,18 +127,26 @@
         }
 
         /* --- CHALLAN TAB OVERLAY --- */
-        #challan-overlay {
-    position: fixed; /* Ensures it stays on top of everything */
+       #challan-overlay {
+    position: fixed;
     top: 0;
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: #0a0b10; /* Dark background so it's not transparent */
-    z-index: 10000; /* Higher than sidebar and viewport */
-    display: none; /* Hidden by default */
-    padding: 40px;
+    background: #0a0b10;
+    z-index: 99999; /* Ensure it's above everything */
+    display: none; 
+    padding: 30px;
     box-sizing: border-box;
     overflow-y: auto;
+}
+
+/* Add this to make cards look professional */
+.challan-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+    padding-top: 20px;
 }
 
         .challan-header {
@@ -449,26 +457,23 @@ window.tempCapturedImages = [];
 window.commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
    window.switchUI = (mode) => {
     const challanOverlay = document.getElementById('challan-overlay');
-    const monitorUI = document.getElementById('monitor-ui');
-    const registerUI = document.getElementById('register-ui');
+    const mainDashboard = document.getElementById('sidebar');
     const viewport = document.getElementById('viewport');
 
-    // Toggle Overlay
     if (mode === 'challan') {
         challanOverlay.style.display = 'block';
-        if (window.renderChallans) window.renderChallans(); // Force a draw
+        window.renderChallans();
     } else {
         challanOverlay.style.display = 'none';
+        // Reset sidebar to its original width
+        if (mainDashboard) mainDashboard.style.width = '380px';
+        if (viewport) viewport.style.display = 'flex';
     }
 
-    // Toggle Sidebar Panels
-    if (monitorUI) monitorUI.style.display = (mode === 'monitor' ? 'block' : 'none');
-    if (registerUI) registerUI.style.display = (mode === 'register' ? 'block' : 'none');
-
-    // Tab Highlights
-    document.getElementById('tab-mon').classList.toggle('active', mode === 'monitor');
-    document.getElementById('tab-reg').classList.toggle('active', mode === 'register');
-    document.getElementById('tab-cha').classList.toggle('active', mode === 'challan');
+    // Tab button styling
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    const activeTab = { 'monitor': 'tab-mon', 'register': 'tab-reg', 'challan': 'tab-cha' }[mode];
+    if (activeTab) document.getElementById(activeTab).classList.add('active');
 };
 window.judgeViolation = async function(key) {
     window.currentActiveViolationKey = key;
@@ -1616,56 +1621,46 @@ window.initSignaturePad = function() {
     window.clearSignature = () => ctx.clearRect(0, 0, canvas.width, canvas.height);
 };
 
+// 1. SETTLE CASE (The logic you asked for)
 window.processFinalSettlement = async function() {
     const key = window.currentActiveViolationKey;
     const rfid = document.getElementById('manual-rfid-input').value.trim();
     const finalAmt = document.getElementById('negotiated-amt').value;
-    const isVerified = document.getElementById('legal-confirm').checked;
 
-    if (!isVerified) return alert("SECURITY: Verify identity first.");
+    if (!confirm("Confirm Payment? This will PERMANENTLY DELETE the violation image for privacy.")) return;
 
     try {
-        const { update, ref: dbRef, get } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+        const { update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
         
-        // 1. Fetch User Mobile for the Receipt
-        const userSnap = await get(dbRef(db, 'users/' + rfid));
-        if (!userSnap.exists()) return alert("User Mobile not found.");
-        const mobile = userSnap.val().mobile;
+        // Update status but SET IMAGE TO NULL to purge it
+        const updates = {};
+        updates[`violations/${key}/status`] = "CLOSED_PAID";
+        updates[`violations/${key}/paidAmount`] = finalAmt;
+        updates[`violations/${key}/img`] = null; // THIS REMOVES THE IMAGE DATA
+        updates[`violations/${key}/purged`] = true;
 
-        // 2. PRIVACY PURGE & FINALIZATION
-        // We update the record to CLOSED_PAID and simultaneously REMOVE the image data
-        const purgePayload = {
-            status: "CLOSED_PAID",
-            paidAmount: finalAmt,
-            settlementTime: new Date().toLocaleString(),
-            
-            // --- DATA PURGE: Setting these to null deletes them from Firebase ---
-            img: null,            
-            confidence: null,     
-            descriptors: null,    
-            tempImages: null,     
-            // -----------------------------------------------------------------
-            
-            legalAdmission: true,
-            purgedForPrivacy: true
-        };
+        await update(ref(db), updates);
 
-        await update(dbRef(db, 'violations/' + key), purgePayload);
-
-        // 3. SMS RECEIPT (< 160 Chars)
-        const receiptMsg = `KOLKATA METRO: Payment Received for RFID ${rfid}. AMT: RS ${finalAmt}. Case CLOSED. Privacy Purge Complete. Safe journey!`;
-        window.sendKolkataSMS(mobile, receiptMsg);
-
-        alert("PAYMENT COLLECTED. BIOMETRIC DATA PURGED FROM CLOUD.");
+        alert("Payment Received. Biometric Evidence Purged.");
         window.closeJudgement();
-        
-        if (window.renderChallans) window.renderChallans(); 
-
+        window.renderChallans(); // Refresh the list
     } catch (e) {
-        console.error("Purge Error:", e);
-        alert("Sync Failed: " + e.message);
+        console.error("Settlement Error:", e);
+        alert("Sync Failed. Check console.");
     }
 };
+
+// 2. DELETE/PURGE LOG
+window.deleteRecord = async function(key) {
+    if (!confirm("Permanently delete this entire record?")) return;
+    try {
+        const { remove, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+        await remove(dbRef(db, 'violations/' + key));
+        // No alert needed, onValue will auto-refresh the UI
+    } catch (e) {
+        alert("Delete failed.");
+    }
+};indow.processFinalSettlement = async function() {
        window.finalizeInitialFine = async function() {
     const rfid = document.getElementById('manual-rfid-input').value.trim();
     const fineAmt = document.getElementById('prosecution-fine-input').value;

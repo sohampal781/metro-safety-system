@@ -704,74 +704,88 @@ window.lookupUser = function() {
     const prosecutedGrid = document.getElementById('grid-prosecuted');
     const searchTerm = document.getElementById('portal-search').value.trim().toLowerCase();
 
-    if (!pendingGrid || !prosecutedGrid) return;
-
     const { onValue, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
 
     onValue(dbRef(db, 'violations'), (snapshot) => {
         pendingGrid.innerHTML = "";
         prosecutedGrid.innerHTML = "";
         const data = snapshot.val();
-        
         if (!data) return;
 
         Object.keys(data).reverse().forEach(key => {
             const viol = data[key];
-            const isAlreadyFined = (viol.status === "FINED");
-            
-            // Search Filter Logic (Matches Challan No or RFID)
-            const cNo = (viol.challanNo || "").toString();
-            const rfid = (viol.linkedRfid || "").toLowerCase();
-            if (searchTerm && !cNo.includes(searchTerm) && !rfid.includes(searchTerm)) return;
+            const isFined = (viol.status === "FINED");
+            const isPaid = (viol.status === "CLOSED_PAID");
 
-            // Create the Card UI
+            // Filter Logic
+            const rfid = (viol.linkedRfid || "").toLowerCase();
+            if (searchTerm && !rfid.includes(searchTerm)) return;
+
             const card = document.createElement('div');
             card.className = 'challan-card';
-            card.style.borderTopColor = isAlreadyFined ? 'var(--success)' : 'var(--danger)';
+            card.style.borderTopColor = (isFined || isPaid) ? 'var(--success)' : 'var(--danger)';
 
             card.innerHTML = `
                 <img src="${viol.img}" style="width:100%; border-radius:8px;">
                 <div style="font-size:12px; margin: 10px 0;">
                     <b style="color:var(--accent)">RFID: ${viol.linkedRfid}</b><br>
                     <span>Time: ${viol.time}</span>
-                    ${isAlreadyFined ? `
-                        <div style="margin-top:8px; padding:8px; background:rgba(0,210,255,0.1); border:1px solid var(--accent); border-radius:4px;">
-                            <b style="color:var(--accent)">CHALLAN NO: ${viol.challanNo}</b><br>
-                            <span style="font-size:10px;">STN: ${viol.station || 'DUMDUM'}</span>
-                        </div>
-                    ` : ''}
+                    ${isFined ? `<div style="color:var(--danger); font-weight:bold;">CHALLAN: ${viol.challanNo}</div>` : ''}
                 </div>
                 
-                // Inside window.renderChallans...
-${isAlreadyFined ? 
-    `<div style="display:flex; gap:5px;">
-        <button class="action-btn" style="background:var(--success); color:black; flex:1;" 
-                onclick="window.openSettlementHearing('${key}')">
-            SETTLE CASE
-        </button>
-        <button class="action-btn" style="background:var(--accent); color:black; flex:1;" 
-                onclick="window.openEvidenceFile('${key}')">
-            PRINT FILE
-        </button>
-    </div>` : 
-    `<button class="action-btn" style="background:var(--danger); color:white;" 
-             onclick="window.judgeViolation('${key}')">
-        ISSUE LEGAL NOTICE
-     </button>`
-
-                }
-                <button class="delete-btn" style="background:#21262d; color:#8b949e; margin-top:8px;" 
-                        onclick="window.deleteRecord('${key}')">PURGE LOG</button>
+                <div style="display:flex; flex-direction:column; gap:5px;">
+                    ${isFined ? `
+                        <button class="action-btn" style="background:var(--success); color:black;" 
+                                onclick="window.openSettlementHearing('${key}')">
+                            SETTLE CASE & RECEIPT
+                        </button>
+                        <button class="action-btn" style="background:var(--accent); color:black;" 
+                                onclick="window.openEvidenceFile('${key}')">
+                            PRINT CASE FILE
+                        </button>
+                    ` : isPaid ? `
+                        <div style="text-align:center; color:var(--success); font-weight:bold; padding:10px; border:1px solid var(--success);">
+                            CASE CLOSED / PAID
+                        </div>
+                    ` : `
+                        <button class="action-btn" style="background:var(--danger); color:white;" 
+                                onclick="window.openProsecutionModal('${key}')">
+                            ISSUE LEGAL NOTICE
+                        </button>
+                    `}
+                    <button class="delete-btn" style="background:#21262d; color:#8b949e; margin-top:5px;" 
+                            onclick="window.deleteRecord('${key}')">PURGE LOG</button>
+                </div>
             `;
 
-            // Sort into correct section
-            if (isAlreadyFined) {
+            // Place in correct container
+            if (isFined || isPaid) {
                 prosecutedGrid.appendChild(card);
             } else {
                 pendingGrid.appendChild(card);
             }
         });
     }, { onlyOnce: false });
+};
+       window.openProsecutionModal = function(key) {
+    window.currentActiveViolationKey = key;
+    const { onValue, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+
+    onValue(dbRef(db, 'violations/' + key), (snapshot) => {
+        const v = snapshot.val();
+        if (!v) return;
+
+        document.getElementById('judgement-modal').style.display = 'block';
+        document.getElementById('modal-title').innerText = "PROSECUTION TERMINAL: NEW BREACH";
+        document.getElementById('modal-violation-img').src = v.img;
+
+        // Force UI to Prosecution Mode
+        document.getElementById('prosecution-controls').style.display = 'block';
+        document.getElementById('settlement-controls').style.display = 'none';
+        
+        document.getElementById('manual-rfid-input').value = v.linkedRfid || "";
+        window.fetchDetailedProsecutionData();
+    }, { onlyOnce: true });
 };
 
     // --- 3. MONITORING & MATH LOGIC (YOUR ORIGINAL LOGIC) ---
@@ -885,7 +899,23 @@ ${isAlreadyFined ?
             }
         }
     });
+    // Add this to your script to auto-toggle the visibility of legal fields
+document.getElementById('negotiated-amt').addEventListener('input', function(e) {
+    const issuedFine = parseInt(document.getElementById('issued-fine-box').innerText.replace('₹', ''));
+    const currentEntry = parseInt(e.target.value);
+    const legalFields = document.getElementById('negotiation-details-ui');
 
+    // Show only if the amount is less than the original fine
+    if (currentEntry < issuedFine) {
+        legalFields.style.display = 'block';
+        legalFields.style.animation = 'fadeIn 0.3s ease-in';
+    } else {
+        legalFields.style.display = 'none';
+        // Reset values if hidden to keep DB clean
+        document.getElementById('neg-basis').value = "none";
+        document.getElementById('neg-notes').value = "";
+    }
+});
     // --- 4. ENROLLMENT & DATABASE FUNCTIONS ---
    window.startSecureCapture = async function() {
     // Reset enrollment data
@@ -1584,42 +1614,83 @@ window.initSignaturePad = function() {
 };
 
 window.processFinalSettlement = async function() {
+    // 1. Core Data Retrieval
     const key = window.currentActiveViolationKey;
-    const finalAmt = document.getElementById('negotiated-amt').value;
+    const rfid = document.getElementById('manual-rfid-input').value.trim();
+    const issuedFine = parseInt(document.getElementById('issued-fine-box').innerText.replace('₹', ''));
+    const finalAmtInput = document.getElementById('negotiated-amt').value;
+    const finalAmt = parseInt(finalAmtInput);
+    
+    // 2. Negotiation Data Retrieval
     const basis = document.getElementById('neg-basis').value;
     const notes = document.getElementById('neg-notes').value.trim();
     const isVerified = document.getElementById('legal-confirm').checked;
-    const rfid = document.getElementById('manual-rfid-input').value;
 
-    if (!isVerified) return alert("SECURITY: Confirm identity verification first.");
-    if (basis === "none" || notes.length < 5) return alert("LEGAL: Basis and Notes required for audit.");
+    // --- VALIDATION LAYER ---
+    if (!isVerified) {
+        return alert("SECURITY: Identity verification checkbox is mandatory.");
+    }
+
+    if (!finalAmtInput || finalAmt < 0) {
+        return alert("ERROR: Please enter a valid settlement amount.");
+    }
+
+    // MANDATORY: If amount is reduced, Basis and Notes are strictly required for Audit
+    if (finalAmt < issuedFine) {
+        if (basis === "none") {
+            return alert("LEGAL REQUIREMENT: You must select an Authority Basis for fine reduction.");
+        }
+        if (notes.length < 5) {
+            return alert("AUDIT REQUIREMENT: Provide detailed Station Master notes for the discount.");
+        }
+    }
 
     try {
         const { update, ref: dbRef, get } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
         
-        // Fetch mobile for receipt
+        // 3. Fetch Mobile Number from User Database
         const userSnap = await get(dbRef(db, 'users/' + rfid));
-        if (!userSnap.exists()) return alert("User Mobile not found.");
+        if (!userSnap.exists()) {
+            return alert("CRITICAL ERROR: Passenger mobile record not found for RFID: " + rfid);
+        }
         const mobile = userSnap.val().mobile;
 
-        // Update Database
-        await update(dbRef(db, 'violations/' + key), {
+        // 4. Update Firebase Record
+        const updatePayload = {
             status: "CLOSED_PAID",
             paidAmount: finalAmt,
-            settlementBasis: basis,
-            stationMasterNotes: notes,
-            settlementTime: new Date().toLocaleString()
-        });
+            originalFine: issuedFine,
+            settlementTime: new Date().toLocaleString(),
+            legalAdmission: true
+        };
 
-        // SMS RECEIPT (Strictly < 160 Characters)
-        const receiptMsg = `KOLKATA METRO: Payment Received for RFID ${rfid}. AMT: RS ${finalAmt}. Case CLOSED. Thank you for cooperating with Metro Safety.`;
-        window.sendKolkataSMS(mobile, receiptMsg);
+        // Only add negotiation data if it was used
+        if (finalAmt < issuedFine) {
+            updatePayload.negotiationBasis = basis;
+            updatePayload.stationMasterNotes = notes;
+        }
 
-        alert("SETTLEMENT COMPLETE. SMS RECEIPT SENT.");
-        window.closeJudgement();
-        if (window.renderChallans) window.renderChallans(); 
+        await update(dbRef(db, 'violations/' + key), updatePayload);
+
+        // 5. SEND FINAL RECEIPT SMS (STRICTLY < 160 CHARACTERS)
+        // Format: [Brand]: [Status] [RFID]. [Amount]. [State]. [Closing]
+        const receiptMsg = `KOLKATA METRO: Payment Received for RFID ${rfid}. AMT: RS ${finalAmt}. Case CLOSED. Keep this msg as digital receipt. Safe journey!`;
+        
+        const smsSuccess = window.sendKolkataSMS(mobile, receiptMsg);
+
+        // 6. UI RESET & FEEDBACK
+        if (smsSuccess) {
+            alert(`SETTLEMENT SUCCESS\nAmount: ₹${finalAmt}\nReceipt sent to: ${mobile}`);
+        } else {
+            alert(`SETTLEMENT SUCCESS\nAmount: ₹${finalAmt}\nNote: SMS Gateway Busy.`);
+        }
+
+        window.closeJudgement(); // Close Modal
+        if (window.renderChallans) window.renderChallans(); // Refresh Violation Portal
+
     } catch (e) {
-        alert("Cloud Error: " + e.message);
+        console.error("Settlement Sync Error:", e);
+        alert("DATABASE ERROR: Failed to close case. check internet connection.");
     }
 };
        window.finalizeInitialFine = async function() {
@@ -1727,26 +1798,39 @@ async function init() {
             </div>
 
             <div id="settlement-controls" style="display:none;">
-                <h3 style="color:var(--success);">STEP 2: SETTLE & CLOSE</h3>
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; margin-bottom:15px;">
-                    <div><label>ISSUED FINE</label><div id="issued-fine-box" style="font-size:20px; color:var(--danger); padding:10px; background:#0d1117; text-align:center;">₹0</div></div>
-                    <div><label>FINAL AMOUNT</label><input type="number" id="negotiated-amt" style="font-size:20px; color:var(--success); border:2px solid var(--success); background:#000;"></div>
-                </div>
-                <label>AUTHORITY BASIS</label>
-                <select id="neg-basis" style="margin-bottom:15px; height:40px; background:#0d1117; color:white;">
-                    <option value="none">-- Select Basis --</option>
-                    <option value="FIRST_WARNING">First Warning</option>
-                    <option value="HUMANITARIAN">Humanitarian</option>
-                    <option value="MEDICAL">Medical Emergency</option>
-                </select>
-                <label>STATION MASTER NOTES</label>
-                <textarea id="neg-notes" style="width:100%; height:80px; background:#0d1117; color:white; padding:10px; border-radius:4px; margin-bottom:15px;"></textarea>
-                <div style="display:flex; align-items:center; gap:10px; background:rgba(0,210,255,0.05); padding:10px; border:1px solid var(--accent); margin-bottom:15px;">
-                    <input type="checkbox" id="legal-confirm" style="width:20px; height:20px;">
-                    <span style="font-size:11px; color:white;">I confirm passenger identity and admission of guilt.</span>
-                </div>
-                <button class="action-btn" onclick="window.processFinalSettlement()" style="background:var(--success); color:black; height:60px;">COLLECT PAYMENT & SEND RECEIPT SMS</button>
-            </div>
+    <h3 style="color:var(--success);">STEP 2: SETTLE & CLOSE</h3>
+    
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; margin-bottom:15px;">
+        <div>
+            <label>ISSUED FINE</label>
+            <div id="issued-fine-box" style="font-size:20px; color:var(--danger); padding:10px; background:#0d1117; text-align:center; border: 1px solid #333;">₹0</div>
+        </div>
+        <div>
+            <label>SETTLEMENT AMOUNT</label>
+            <input type="number" id="negotiated-amt" style="font-size:20px; color:var(--success); border:2px solid var(--success); background:#000;">
+        </div>
+    </div>
+
+    <div id="negotiation-details-ui" style="display:none; border-left: 3px solid var(--accent); padding-left: 15px; margin-bottom: 15px;">
+        <label style="color:var(--accent);">LEGAL BASIS FOR REDUCTION (REQUIRED)</label>
+        <select id="neg-basis" style="margin-bottom:10px; height:40px; background:#0d1117; color:white; width:100%;">
+            <option value="none">-- Select Basis --</option>
+            <option value="HUMANITARIAN">Humanitarian (Senior/Student)</option>
+            <option value="FIRST_WARNING">First Time Offender - Warning</option>
+            <option value="EVIDENCE_DISPUTE">Identity/Evidence Conflict</option>
+        </select>
+
+        <label>STATION MASTER CASE NOTES</label>
+        <textarea id="neg-notes" placeholder="Explain the discount..." style="width:100%; height:60px; background:#0d1117; color:white; padding:10px;"></textarea>
+    </div>
+
+    <div style="display:flex; align-items:center; gap:10px; background:rgba(0,210,255,0.05); padding:10px; border:1px solid var(--accent); margin-bottom:15px;">
+        <input type="checkbox" id="legal-confirm" style="width:20px; height:20px;">
+        <span style="font-size:11px; color:white;">Confirm Identity & Admission of Guilt</span>
+    </div>
+
+    <button class="action-btn" onclick="window.processFinalSettlement()" style="background:var(--success); color:black; height:60px;">COLLECT & SEND RECEIPT</button>
+</div>
         </div>
     </div>
 </div>

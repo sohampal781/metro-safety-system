@@ -287,10 +287,6 @@
         </div>
         <div id="slider-container"></div>
         <button id="start-btn">LOCK & START MONITORING</button>
-        <button onclick="window.sendKolkataSMS('6290952326', 'KOLKATA METRO: MANUAL TEST. THIS IS TESTING MESSAGE DON\'T PANIC.')" 
-        style="background: #e1b12c; margin-top: 10px; color: black;">
-    RUN DIRECT CODE TEST
-</button>
     </div>
         <div id="register-ui" style="display:none; padding: 20px; background: #0a0b10; height: 100vh; overflow-y: scroll; box-sizing: border-box; padding-bottom: 100px;">
     
@@ -360,7 +356,9 @@
     </div>
 </div>
 </div>
-
+<div id="registration-display" style="display:none;" data-latest-mobile="" data-passenger-name="">
+    <div id="reg-user-info"></div>
+</div>
 <style>
 @keyframes scan { 0% { top: 0%; } 100% { top: 100%; } }
 </style>
@@ -513,34 +511,36 @@ window.fetchRegistrationData = function() {
     
     if (!inputRfid) return alert("ENTER RFID");
 
-    // Fetch from 'users' node to get the MOST RECENT mobile number
     onValue(ref(db, 'users/' + inputRfid), (snapshot) => {
         const user = snapshot.val();
         if (!user) {
             alert("RFID NOT FOUND IN DATABASE");
-            display.style.display = 'none';
+            if (display) display.style.display = 'none';
             return;
         }
 
-        display.style.display = 'block';
-        
-        // Store the LATEST mobile number on the UI for the finalizeFine function to use
-        display.dataset.latestMobile = user.mobile;
-        display.dataset.passengerName = user.name;
+        if (display) {
+            display.style.display = 'block';
+            // CRITICAL: This is what the SMS function looks for
+            display.dataset.latestMobile = user.mobile; 
+            display.dataset.passengerName = user.name;
+        }
 
         const regPhotoHtml = user.tempImages ? 
             `<img src="${user.tempImages[0]}" style="width:100%; border-radius:10px; border:2px solid var(--accent); margin-bottom:10px;">` : 
             `<div style="padding:20px; background:#111; color:#555; text-align:center;">NO PHOTO</div>`;
 
-        infoDisplay.innerHTML = `
-            <label style="color:var(--accent); font-size:11px; display:block; margin-bottom:5px;">LATEST ENROLLMENT DATA</label>
-            ${regPhotoHtml}
-            <div style="background:rgba(255,255,255,0.05); padding:12px; border-radius:8px;">
-                <h3 style="color:white; margin:0;">${user.name.toUpperCase()}</h3>
-                <p style="color:var(--accent); margin:5px 0; font-family:monospace;">RFID: ${user.rfid}</p>
-                <p style="color:var(--success); margin:0; font-weight:bold;">CURRENT MOBILE: ${user.mobile}</p>
-            </div>
-        `;
+        if (infoDisplay) {
+            infoDisplay.innerHTML = `
+                <label style="color:var(--accent); font-size:11px; display:block; margin-bottom:5px;">LATEST ENROLLMENT DATA</label>
+                ${regPhotoHtml}
+                <div style="background:rgba(255,255,255,0.05); padding:12px; border-radius:8px;">
+                    <h3 style="color:white; margin:0;">${user.name.toUpperCase()}</h3>
+                    <p style="color:var(--accent); margin:5px 0; font-family:monospace;">RFID: ${user.rfid}</p>
+                    <p style="color:var(--success); margin:0; font-weight:bold;">CURRENT MOBILE: ${user.mobile}</p>
+                </div>
+            `;
+        }
     }, { onlyOnce: true });
 };
         function loadDashboardData() {
@@ -1512,38 +1512,52 @@ window.openEvidenceFile = async function(violationKey) {
 };
 // STAGE 1: ISSUE LEGAL NOTICE (Move from Pending to Prosecuted)
 window.finalizeProsecution = async function() {
-    // Check if the dataset actually has the mobile number
-    const display = document.getElementById('registration-display');
-    const mobile = display ? display.dataset.latestMobile : null;
+    const rfidInput = document.getElementById('manual-rfid-input');
+    const rfid = rfidInput ? rfidInput.value.trim() : "";
     
-    if (!mobile) {
-        alert("ERROR: No mobile number found for this RFID.");
-        return;
-    }
-
-    const challanNo = "METRO-" + Math.floor(100000 + Math.random() * 900000);
-    const baseFine = document.getElementById('fine-amount').value;
-
-    const updates = {
-        status: "FINED",
-        fineAmount: baseFine,
-        offence: "YELLOW LINE BREACH",
-        challanNo: challanNo,
-        linkedMobile: mobile, // Storing it here for settlement later
-        prosecutionTime: new Date().toLocaleString()
-    };
+    if (!rfid) return alert("Please Enter/Scan RFID first.");
 
     try {
-        const { update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+        const { get, update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+        
+        // 1. Fetch user data directly to get the mobile number
+        const userSnapshot = await get(dbRef(db, 'users/' + rfid));
+        const userData = userSnapshot.val();
+
+        if (!userData || !userData.mobile) {
+            alert("ERROR: No mobile number found for this RFID in the database.");
+            return;
+        }
+
+        const mobile = userData.mobile;
+        const challanNo = "METRO-" + Math.floor(100000 + Math.random() * 900000);
+        const baseFine = document.getElementById('fine-amount').value;
+
+        const updates = {
+            status: "FINED",
+            fineAmount: baseFine,
+            offence: "YELLOW LINE BREACH",
+            challanNo: challanNo,
+            linkedMobile: mobile, 
+            linkedRfid: rfid,
+            prosecutionTime: new Date().toLocaleString(),
+            station: "DUMDUM"
+        };
+
+        // 2. Save to Violations
         await update(dbRef(db, 'violations/' + window.currentActiveViolationKey), updates);
         
+        // 3. Send SMS
         let msg = `KOLKATA METRO: LEGAL NOTICE issued. CHN: ${challanNo}. FINE: RS ${baseFine}. THIS IS TESTING MESSAGE DON'T PANIC.`;
-        
         await window.sendKolkataSMS(mobile, msg);
-        alert("LEGAL NOTICE ISSUED & SMS DISPATCHED.");
+
+        alert("LEGAL NOTICE ISSUED & SMS DISPATCHED TO " + mobile);
         window.closeJudgement();
         window.renderChallans();
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+        console.error(e); 
+        alert("System Error: " + e.message);
+    }
 };
 // CONTROL F: FINALIZE UPDATE (SMS OPTIONAL)
 window.finalizeUpdate = async function(shouldSendSms) {

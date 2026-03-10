@@ -1651,72 +1651,88 @@ async function init() {
    <div id="judgement-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg); z-index:9999; padding:20px; box-sizing:border-box; overflow-y:auto; border: 6px solid var(--police-blue);">
     
     <div style="display:flex; justify-content:space-between; align-items:center; background:var(--police-blue); padding:15px; margin:-20px -20px 20px -20px; border-bottom: 2px solid var(--accent);">
-        <h2 style="margin:0; color:white; letter-spacing:3px; font-weight:900;">KOLKATA METRO | SETTLEMENT & APPEALS TRIBUNAL</h2>
-        <div style="text-align:right;">
-            <button onclick="window.closeJudgement()" style="background:var(--danger); border:none; color:white; padding:8px 20px; cursor:pointer; font-weight:bold; border-radius:4px;">CANCEL HEARING</button>
-        </div>
+        <h2 style="margin:0; color:white; letter-spacing:2px; font-weight:900; font-size: 18px;">KOLKATA METRO | LAW ENFORCEMENT TERMINAL</h2>
+        <button onclick="window.closeJudgement()" style="background:var(--danger); border:none; color:white; padding:8px 20px; cursor:pointer; font-weight:bold; border-radius:4px;">EXIT TERMINAL</button>
     </div>
 
-    <div style="display:grid; grid-template-columns: 1fr 1.2fr; gap:25px; margin-top:20px;">
+    <div style="display:grid; grid-template-columns: 1fr 1.2fr; gap:25px;">
         
         <div style="display:flex; flex-direction:column; gap:15px;">
             <div class="control-group" style="background:#000; border-color:var(--danger);">
-                <label style="color:var(--danger); font-weight:bold;">[ STAGE 1: INCIDENT EVIDENCE ]</label>
-                <img id="modal-violation-img" style="width:100%; border:1px solid #444; margin-top:10px; border-radius:4px;">
-                <div id="incident-meta" style="font-size:10px; color:#8b949e; margin-top:5px; font-family:monospace;"></div>
+                <label style="color:var(--danger); font-weight:bold;">[ INCIDENT EVIDENCE ]</label>
+                <img id="modal-violation-img" style="width:100%; border:1px solid #444; margin-top:10px; border-radius:4px; min-height: 200px; background: #111;">
             </div>
             
             <div class="control-group" style="border-color:var(--accent);">
-                <label style="color:var(--accent); font-weight:bold;">[ STAGE 2: REGISTERED BIOMETRICS ]</label>
+                <label style="color:var(--accent); font-weight:bold;">[ REGISTRATION BIOMETRICS ]</label>
                 <div id="biometric-gallery" style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:10px;">
                     </div>
+            </div>
+
+            <div class="control-group">
+                <label style="color:#8b949e;">OFFENCE HISTORY (CLOUDSYNC)</label>
+                <div id="offence-history" style="height:120px; overflow-y:auto; background:#0d1117; padding:10px; font-family:monospace; font-size:11px; color:var(--danger); border:1px solid #30363d;">
+                    CLEAN RECORD
+                </div>
             </div>
         </div>
 
         <div style="display:flex; flex-direction:column; gap:15px;">
-            <div class="control-group" style="background:#161b22; border: 1px solid var(--success);">
-                <h3 style="color:var(--success); margin-top:0; border-bottom:1px solid #30363d; padding-bottom:10px;">SETTLEMENT HEARING</h3>
+            
+            <div id="prosecution-controls" style="background:#161b22; padding:20px; border-radius:8px; border:1px solid var(--danger);">
+                <h3 style="color:var(--danger); margin-top:0;">STEP 1: IDENTITY VERIFICATION</h3>
+                
+                <label>RFID IDENTIFIER</label>
+                <div style="display:flex; gap:10px; margin-bottom:20px;">
+                    <input type="text" id="manual-rfid-input" placeholder="SCAN OR ENTER RFID" style="font-size:18px; font-family:monospace; color:var(--accent);">
+                    <button onclick="window.fetchDetailedProsecutionData()" style="width:120px; background:var(--accent); color:black; font-weight:bold;">VERIFY</button>
+                </div>
+
+                <label>ISSUE FINE AMOUNT (₹)</label>
+                <input type="number" id="prosecution-fine-input" value="1000" style="font-size:28px; color:var(--danger); font-weight:bold; text-align:center; background:#000; border:2px solid var(--danger); margin-bottom:20px;">
+                
+                <button class="action-btn" id="issue-fine-btn" onclick="window.finalizeInitialFine()" style="height:60px; background:var(--danger); color:white; font-size:18px;">ISSUE LEGAL NOTICE</button>
+            </div>
+
+            <div id="settlement-controls" style="display:none; background:#161b22; padding:20px; border-radius:8px; border:1px solid var(--success);">
+                <h3 style="color:var(--success); margin-top:0;">STEP 2: SETTLEMENT & APPEALS</h3>
                 
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; margin-bottom:15px;">
                     <div>
-                        <label>OFFICER-ISSUED FINE</label>
-                        <div id="issued-fine-box" style="font-size:24px; color:var(--danger); font-weight:bold; padding:10px; background:#0d1117; border-radius:4px; text-align:center;">₹0</div>
+                        <label>ISSUED PENALTY</label>
+                        <div id="issued-fine-box" style="font-size:24px; color:var(--danger); font-weight:bold; padding:10px; background:#0d1117; border-radius:4px; text-align:center; border:1px solid #333;">₹0</div>
                     </div>
                     <div>
-                        <label>STATION MASTER SETTLEMENT</label>
-                        <input type="number" id="negotiated-amt" style="font-size:24px; color:var(--success); font-weight:bold; text-align:center; border:2px solid var(--success);">
+                        <label>FINAL SETTLEMENT</label>
+                        <input type="number" id="negotiated-amt" style="font-size:24px; color:var(--success); font-weight:bold; text-align:center; border:2px solid var(--success); background:#000;">
                     </div>
                 </div>
 
-                <label>LEGAL GROUNDS FOR ADJUSTMENT</label>
-                <select id="neg-basis" style="margin-bottom:12px; height:45px;">
-                    <option value="none">-- Select Authority Basis --</option>
-                    <option value="HUMANITARIAN">Humanitarian / Senior Citizen</option>
-                    <option value="FIRST_WARNING">First Time Offender - Nominal Fine</option>
-                    <option value="EVIDENCE_DISPUTE">Identity/Evidence Conflict</option>
-                    <option value="MEDICAL">Medical Emergency Admission</option>
+                <label>LEGAL BASIS FOR REDUCTION</label>
+                <select id="neg-basis" style="margin-bottom:15px; height:45px; background:#0d1117; color:white;">
+                    <option value="none">-- Select Basis --</option>
+                    <option value="HUMANITARIAN">Senior Citizen / Humanitarian</option>
+                    <option value="FIRST_WARNING">First Time Offender</option>
+                    <option value="MEDICAL">Medical Emergency</option>
                 </select>
 
-                <label>STATION MASTER CASE NOTES (MANDATORY)</label>
-                <textarea id="neg-notes" placeholder="Explain why the penalty was modified..." style="width:100%; height:80px; background:#0d1117; color:white; border:1px solid #30363d; padding:10px; border-radius:4px;"></textarea>
-            </div>
+                <label>STATION MASTER CASE NOTES</label>
+                <textarea id="neg-notes" placeholder="Notes for audit..." style="width:100%; height:60px; background:#0d1117; color:white; border:1px solid #30363d; padding:10px; border-radius:4px; margin-bottom:15px;"></textarea>
 
-            <div class="control-group" style="background:#0d1117;">
-                <label style="color:var(--accent); font-weight:bold;">PASSENGER DECLARATION & SIGNATURE</label>
-                <p style="font-size:10px; color:#8b949e; margin-bottom:10px;">"I hereby admit to the safety breach and accept the negotiated penalty as a final settlement of this case."</p>
-                
-                <div style="background:#fff; border-radius:4px; height:130px; border:3px solid var(--accent);">
+                <label style="color:var(--accent);">PASSENGER ADMISSION (SIGNATURE)</label>
+                <div style="background:#fff; border-radius:4px; height:120px; border:3px solid var(--accent); margin-top:5px;">
                     <canvas id="sig-canvas" style="width:100%; height:100%; cursor:crosshair;"></canvas>
                 </div>
-                <button onclick="window.clearSignature()" style="width:auto; padding:5px 15px; background:#333; margin-top:5px; font-size:10px; border:none; color:#ccc; border-radius:3px;">RESET SIGNATURE</button>
+                <button onclick="window.clearSignature()" style="width:auto; padding:4px 10px; background:#333; margin-top:5px; font-size:10px; border:none; color:#ccc; cursor:pointer;">CLEAR SIGN</button>
 
-                <div style="display:flex; align-items:center; gap:12px; margin-top:20px; background:rgba(0,210,255,0.05); padding:10px; border:1px solid var(--accent);">
-                    <input type="checkbox" id="legal-confirm" style="width:22px; height:22px;">
-                    <span style="font-size:11px; color:white; font-weight:bold;">IDENTITY VERIFIED & SETTLEMENT ACCEPTED</span>
+                <div style="display:flex; align-items:center; gap:10px; margin-top:15px; background:rgba(0,210,255,0.05); padding:10px; border:1px solid var(--accent);">
+                    <input type="checkbox" id="legal-confirm" style="width:20px; height:20px;">
+                    <span style="font-size:11px; color:white;">I accept the penalty as a final settlement.</span>
                 </div>
+
+                <button class="action-btn" id="settle-btn" style="height:60px; background:var(--success); color:black; font-size:18px; margin-top:15px;" onclick="window.processFinalSettlement()">COLLECT PAYMENT & CLOSE</button>
             </div>
 
-            <button class="action-btn" id="settle-btn" style="height:70px; background:var(--success); color:black; font-size:22px; font-weight:900;" onclick="window.processFinalSettlement()">COLLECT PAYMENT & CLOSE CASE</button>
         </div>
     </div>
 </div>

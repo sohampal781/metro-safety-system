@@ -1501,38 +1501,44 @@ window.openEvidenceFile = async function(violationKey) {
 };
 // STAGE 1: ISSUE LEGAL NOTICE (Move from Pending to Prosecuted)
 window.finalizeProsecution = async function() {
-    const rfid = document.getElementById('manual-rfid-input').value.trim();
+    const rfidInput = document.getElementById('manual-rfid-input');
+    const fineInput = document.getElementById('fine-amount');
     const display = document.getElementById('registration-display');
+    
+    const rfid = rfidInput ? rfidInput.value.trim() : "UNKNOWN";
+    const baseFine = fineInput ? fineInput.value : "1000";
     const latestMobile = (display && display.dataset.latestMobile) ? display.dataset.latestMobile : null;
     
-    const baseFine = document.getElementById('fine-amount').value;
-    const offence = "YELLOW LINE BREACH"; 
     const challanNo = "METRO-" + Math.floor(100000 + Math.random() * 900000);
+    const station = "DUMDUM";
 
     const updates = {
-        status: "FINED", // This moves it to the "Prosecuted" grid
-        fineAmount: baseFine, // Initial standard fine
-        offence: offence,
+        status: "FINED",
+        fineAmount: baseFine,
+        offence: "YELLOW LINE BREACH",
         challanNo: challanNo,
         linkedMobile: latestMobile,
         prosecutionTime: new Date().toLocaleString(),
-        isSettled: false // Mark as not yet paid/negotiated
+        station: station,
+        isSettled: false
     };
 
     try {
         const { update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
         await update(dbRef(db, 'violations/' + window.currentActiveViolationKey), updates);
         
-        // SMS: "Legal Notice Issued"
         if (latestMobile) {
-            // Ensure this specific string is used
-let msg = `KOLKATA METRO: CHN ${challanNo}. STN: ${station}. OFFENCE: ${offence}. FINE: RS ${amount}. PAY AT STATION. THIS IS TESTING MESSAGE DON'T PANIC.`;
+            let msg = `KOLKATA METRO: CHN ${challanNo}. STN: ${station}. OFFENCE: YELLOW LINE BREACH. FINE: RS ${baseFine}. PAY AT STATION. THIS IS TESTING MESSAGE DON'T PANIC.`;
             window.sendKolkataSMS(latestMobile, msg);
         }
 
         alert("LEGAL NOTICE ISSUED. CASE MOVED TO PROSECUTION LOG.");
         window.closeJudgement();
-    } catch (e) { console.error(e); }
+        window.renderChallans(); // Refresh UI
+    } catch (e) { 
+        console.error(e);
+        alert("Failed to issue notice: " + e.message);
+    }
 };
 // CONTROL F: FINALIZE UPDATE (SMS OPTIONAL)
 window.finalizeUpdate = async function(shouldSendSms) {

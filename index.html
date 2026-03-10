@@ -128,15 +128,18 @@
 
         /* --- CHALLAN TAB OVERLAY --- */
         #challan-overlay {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: var(--bg);
-            z-index: 500;
-            display: none;
-            padding: 40px;
-            box-sizing: border-box;
-            overflow-y: auto;
-        }
+    position: fixed; /* Ensures it stays on top of everything */
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: #0a0b10; /* Dark background so it's not transparent */
+    z-index: 10000; /* Higher than sidebar and viewport */
+    display: none; /* Hidden by default */
+    padding: 40px;
+    box-sizing: border-box;
+    overflow-y: auto;
+}
 
         .challan-header {
             border-bottom: 2px solid var(--police-blue);
@@ -263,8 +266,27 @@
     </style>
 </head>
 <body>
+    <body>
+    <div id="challan-overlay">
+        <div class="challan-header">
+            <h1 style="margin:0;">METRO RAILWAY | VIOLATION PORTAL</h1>
+            <div style="display:flex; gap:10px; flex-grow:1; max-width:500px; margin: 0 40px;">
+                <input type="text" id="portal-search" placeholder="SEARCH BY CHALLAN NO. OR RFID..." onkeyup="window.renderChallans()">
+            </div>
+            <button class="action-btn" style="width:100px; margin:0;" onclick="switchUI('monitor')">CLOSE</button>
+        </div>
 
-    <div id="sidebar">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+            <section>
+                <h2 style="color:var(--danger); border-bottom: 1px solid var(--danger); padding-bottom:10px;">[ PENDING INVESTIGATION ]</h2>
+                <div id="grid-pending" class="challan-grid"></div>
+            </section>
+            <section>
+                <h2 style="color:var(--success); border-bottom: 1px solid var(--success); padding-bottom:10px;">[ PROSECUTED / FINED ]</h2>
+                <div id="grid-prosecuted" class="challan-grid"></div>
+            </section>
+        </div>
+    </div>
     <div class="tabs" style="display:flex; gap:5px; margin-bottom:15px;">
         <button onclick="switchUI('monitor')" class="tab-btn active" id="tab-mon">MONITOR</button>
         <button onclick="switchUI('register')" class="tab-btn" id="tab-reg">REGISTER</button>
@@ -354,6 +376,7 @@
             <p style="text-align:center; color:#555; padding-top: 20px;">Loading Cloud Records...</p>
         </div>
     </div>
+    
 </div>
 </div>
 
@@ -366,14 +389,7 @@
         <video id="input-video" autoplay muted playsinline></video>
         <canvas id="output-canvas"></canvas>
 
-        <div id="challan-overlay">
-    <div class="challan-header">
-        <h1 style="margin:0;">METRO RAILWAY | VIOLATION PORTAL</h1>
-        <div style="display:flex; gap:10px; flex-grow:1; max-width:500px; margin: 0 40px;">
-            <input type="text" id="portal-search" placeholder="SEARCH BY CHALLAN NO. OR RFID..." onkeyup="window.renderChallans()">
-        </div>
-        <button class="action-btn" style="width:100px; margin:0;" onclick="switchUI('monitor')">CLOSE</button>
-    </div>
+        
 
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
         <section>
@@ -431,33 +447,25 @@ window.captureStep = 0;
 window.capturedDescriptors = [];
 window.tempCapturedImages = [];
 window.commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
-   window.switchUI = async (mode) => {
+   window.switchUI = (mode) => {
+    const challanOverlay = document.getElementById('challan-overlay');
     const monitorUI = document.getElementById('monitor-ui');
     const registerUI = document.getElementById('register-ui');
-    const challanPortal = document.getElementById('challan-overlay');
     const viewport = document.getElementById('viewport');
-    const sidebar = document.getElementById('sidebar');
 
-    // Toggle Visibility
-    if (monitorUI) monitorUI.style.display = (mode === 'monitor' ? 'block' : 'none');
-    if (registerUI) registerUI.style.display = (mode === 'register' ? 'block' : 'none');
-    if (challanPortal) challanPortal.style.display = (mode === 'challan' ? 'block' : 'none');
-    
-    if (mode === 'challan' || mode === 'register') {
-        if (viewport) viewport.style.display = 'none';
-        if (sidebar) sidebar.style.width = '100%'; 
-        
-        // FORCED RE-RENDER: Ensure data is drawn when tab opens
-        if (mode === 'challan') {
-            console.log("Loading Challan Portal...");
-            window.renderChallans(); 
-        }
+    // Toggle Overlay
+    if (mode === 'challan') {
+        challanOverlay.style.display = 'block';
+        if (window.renderChallans) window.renderChallans(); // Force a draw
     } else {
-        if (viewport) viewport.style.display = 'flex';
-        if (sidebar) sidebar.style.width = '380px';
+        challanOverlay.style.display = 'none';
     }
 
-    // Active Tab Styling
+    // Toggle Sidebar Panels
+    if (monitorUI) monitorUI.style.display = (mode === 'monitor' ? 'block' : 'none');
+    if (registerUI) registerUI.style.display = (mode === 'register' ? 'block' : 'none');
+
+    // Tab Highlights
     document.getElementById('tab-mon').classList.toggle('active', mode === 'monitor');
     document.getElementById('tab-reg').classList.toggle('active', mode === 'register');
     document.getElementById('tab-cha').classList.toggle('active', mode === 'challan');

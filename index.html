@@ -710,7 +710,7 @@ window.finalizeSettlement = async function() {
             
             // 3. Send Confirmation SMS
             if (vData.linkedMobile) {
-                let msg = `KOLKATA METRO: Payment received for CHN ${vData.challanNo}. Your case is now SETTLED and DISPOSED. Thank you.`;
+                let msg = `KOLKATA METRO: Payment received for CHN ${vData.challanNo}. Your case is now SETTLED and DISPOSED. Thank you.THIS IS TESTING MESSAGE DON'T PANIC. `;
                 window.sendKolkataSMS(vData.linkedMobile, msg);
             }
 

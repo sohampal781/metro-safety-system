@@ -148,17 +148,6 @@ video, canvas { position: absolute; width: 95%; height: 90%; border-radius: 12px
 </style>
 </head>
 <body>
-    <div id="challan-overlay">
-        <div class="challan-header">
-            <h1 style="margin:0;">METRO RAILWAY | VIOLATION PORTAL</h1>
-            <div style="display:flex; gap:10px; flex-grow:1; max-width:500px; margin: 0 40px;">
-                <input type="text" id="portal-search" placeholder="SEARCH BY CHALLAN NO. OR RFID..." onkeyup="window.renderChallans()">
-            </div>
-            <button class="action-btn" style="width:100px; margin:0;" onclick="switchUI('monitor')">CLOSE</button>
-        </div>
-
-        
-    </div>
     <div class="tabs" style="display:flex; gap:5px; margin-bottom:15px;">
         <button onclick="switchUI('monitor')" class="tab-btn active" id="tab-mon">MONITOR</button>
         <button onclick="switchUI('register')" class="tab-btn" id="tab-reg">REGISTER</button>
@@ -280,6 +269,15 @@ video, canvas { position: absolute; width: 95%; height: 90%; border-radius: 12px
     <div id="fine-tab" style="display:none;">
         <h4 style="margin-top:0; color: var(--accent);">VIOLATION FEED</h4>
         <div id="violation-list"></div>
+    </div>
+    <div id="challan-overlay">
+        <div class="challan-header">
+            <h1 style="margin:0;">METRO RAILWAY | VIOLATION PORTAL</h1>
+            <div style="display:flex; gap:10px; flex-grow:1; max-width:500px; margin: 0 40px;">
+                <input type="text" id="portal-search" placeholder="SEARCH BY CHALLAN NO. OR RFID..." onkeyup="window.renderChallans()">
+            </div>
+            <button class="action-btn" style="width:100px; margin:0;" onclick="switchUI('monitor')">CLOSE</button>
+        </div>
     </div>
    <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";

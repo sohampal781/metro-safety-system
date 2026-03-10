@@ -742,18 +742,23 @@ window.lookupUser = function() {
                     ` : ''}
                 </div>
                 
-                ${isAlreadyFined ? 
-                    `<div style="display:flex; gap:5px;">
-                        <button class="action-btn" style="background:#ff9800; color:black; flex:1;" onclick="window.markAsPaid('${key}')">
-                            CLEAR
-                        </button>
-                        <button class="action-btn" style="background:var(--accent); color:black; flex:1;" onclick="window.openEvidenceFile('${key}')">
-                            FILE
-                        </button>
-                    </div>` : 
-                    `<button class="action-btn" onclick="window.judgeViolation('${key}')">
-                        ISSUE LEGAL NOTICE
-                     </button>`
+                // Inside window.renderChallans...
+${isAlreadyFined ? 
+    `<div style="display:flex; gap:5px;">
+        <button class="action-btn" style="background:var(--success); color:black; flex:1;" 
+                onclick="window.openSettlementHearing('${key}')">
+            SETTLE CASE
+        </button>
+        <button class="action-btn" style="background:var(--accent); color:black; flex:1;" 
+                onclick="window.openEvidenceFile('${key}')">
+            PRINT FILE
+        </button>
+    </div>` : 
+    `<button class="action-btn" style="background:var(--danger); color:white;" 
+             onclick="window.judgeViolation('${key}')">
+        ISSUE LEGAL NOTICE
+     </button>`
+
                 }
                 <button class="delete-btn" style="background:#21262d; color:#8b949e; margin-top:8px;" 
                         onclick="window.deleteRecord('${key}')">PURGE LOG</button>
@@ -1532,26 +1537,23 @@ window.openSettlementHearing = async function(violationKey) {
         const v = snapshot.val();
         if (!v) return;
 
+        // 1. Open Modal & Set Image
         document.getElementById('judgement-modal').style.display = 'block';
         document.getElementById('modal-violation-img').src = v.img;
         
-        // --- SHOW NEGOTIATION & SIGNATURE UI ---
-        // Wrap your negotiation HTML in a div with id="neg-section" and signature in "sig-section"
-        if(document.getElementById('neg-section')) document.getElementById('neg-section').style.display = 'block';
-        if(document.getElementById('sig-section')) document.getElementById('sig-section').style.display = 'block';
+        // 2. TOGGLE UI: Hide Prosecution, Show Settlement
+        document.getElementById('prosecution-controls').style.display = 'none';
+        document.getElementById('settlement-controls').style.display = 'block';
 
-        const baseDisplay = document.getElementById('base-fine-display');
-        const negInput = document.getElementById('negotiated-amt');
-        if(baseDisplay) baseDisplay.value = v.fineAmount;
-        if(negInput) negInput.value = v.fineAmount;
-
-        // Load the person's registration info for identity confirmation
-        if (v.linkedRfid && v.linkedRfid !== "UNKNOWN_ID") {
-            const rfidField = document.getElementById('manual-rfid-input');
-            if(rfidField) rfidField.value = v.linkedRfid;
-            window.fetchDetailedProsecutionData(); 
-        }
+        // 3. Populate Data
+        document.getElementById('issued-fine-box').innerText = "₹" + v.fineAmount;
+        document.getElementById('negotiated-amt').value = v.fineAmount;
+        document.getElementById('manual-rfid-input').value = v.linkedRfid || "";
         
+        // 4. Load History & Biometrics automatically
+        window.fetchDetailedProsecutionData();
+        
+        // 5. Initialize Signature Pad
         if (window.initSignaturePad) window.initSignaturePad();
     }, { onlyOnce: true });
 };
@@ -1584,33 +1586,40 @@ window.initSignaturePad = function() {
 window.processFinalSettlement = async function() {
     const key = window.currentActiveViolationKey;
     const finalAmt = document.getElementById('negotiated-amt').value;
+    const basis = document.getElementById('neg-basis').value;
+    const notes = document.getElementById('neg-notes').value.trim();
     const isVerified = document.getElementById('legal-confirm').checked;
     const rfid = document.getElementById('manual-rfid-input').value;
 
-    if (!isVerified) return alert("Check the Verification box.");
+    if (!isVerified) return alert("SECURITY: Confirm identity verification first.");
+    if (basis === "none" || notes.length < 5) return alert("LEGAL: Basis and Notes required for audit.");
 
     try {
         const { update, ref: dbRef, get } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
         
+        // Fetch mobile for receipt
         const userSnap = await get(dbRef(db, 'users/' + rfid));
+        if (!userSnap.exists()) return alert("User Mobile not found.");
         const mobile = userSnap.val().mobile;
 
+        // Update Database
         await update(dbRef(db, 'violations/' + key), {
             status: "CLOSED_PAID",
             paidAmount: finalAmt,
+            settlementBasis: basis,
+            stationMasterNotes: notes,
             settlementTime: new Date().toLocaleString()
         });
 
-        // STRICT 160 CHAR LIMIT RECEIPT
-        const receiptMsg = `KOLKATA METRO: Payment Received for RFID ${rfid}. AMT: RS ${finalAmt}. Case CLOSED. Thank you for your cooperation.`;
-        
+        // SMS RECEIPT (Strictly < 160 Characters)
+        const receiptMsg = `KOLKATA METRO: Payment Received for RFID ${rfid}. AMT: RS ${finalAmt}. Case CLOSED. Thank you for cooperating with Metro Safety.`;
         window.sendKolkataSMS(mobile, receiptMsg);
 
-        alert("PAYMENT RECEIVED. SMS SENT.");
+        alert("SETTLEMENT COMPLETE. SMS RECEIPT SENT.");
         window.closeJudgement();
-        window.renderChallans();
+        if (window.renderChallans) window.renderChallans(); 
     } catch (e) {
-        alert("Error: " + e.message);
+        alert("Cloud Error: " + e.message);
     }
 };
        window.finalizeInitialFine = async function() {

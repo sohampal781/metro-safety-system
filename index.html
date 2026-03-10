@@ -1428,63 +1428,45 @@ window.fetchDetailedProsecutionData = async function() {
     const nameLabel = document.getElementById('det-name');
     const rfidLabel = document.getElementById('det-rfid');
     const phoneLabel = document.getElementById('det-phone');
-    const gallery = document.getElementById('biometric-gallery');
+    const controls = document.getElementById('prosecution-controls'); // Ensure this matches your HTML ID
     const historyDiv = document.getElementById('offence-history');
-    const controls = document.getElementById('prosecution-controls');
 
-    if (!rfid) return alert("Please enter an RFID number.");
+    if (!rfid) return;
 
-    // 1. Get User Data from Firebase
     onValue(ref(db, 'users/' + rfid), (snapshot) => {
         const user = snapshot.val();
         
         if (!user) {
-            alert("NO PASSENGER FOUND WITH RFID: " + rfid);
-            infoBox.style.display = 'none';
-            controls.style.display = 'none';
+            alert("RFID NOT FOUND");
             return;
         }
 
-        // 2. Show the Data in the Box
+        // SHOW THE BOXES
         infoBox.style.display = 'block';
-        controls.style.display = 'block';
-        
+        if (controls) controls.style.display = 'block'; // THIS UNHIDES THE AMOUNT SECTION
+
+        // FILL DATA
         nameLabel.innerText = user.name.toUpperCase();
         rfidLabel.innerText = rfid;
         phoneLabel.innerText = user.mobile;
 
-        // 3. Load Gallery
-        gallery.innerHTML = "";
-        if (user.tempImages) {
-            user.tempImages.forEach(img => {
-                gallery.innerHTML += `<img src="${img}" style="width:100%; border:1px solid var(--accent); border-radius:4px;">`;
-            });
-        }
-
-        // 4. Check for previous fines
+        // CHECK HISTORY
         onValue(ref(db, 'violations'), (vSnap) => {
             const allViolations = vSnap.val();
             let count = 0;
-            let historyHtml = "";
-
             if (allViolations) {
-                Object.keys(allViolations).forEach(key => {
-                    const v = allViolations[key];
-                    // Match RFID and check if they were already fined before
-                    if (String(v.linkedRfid) === String(rfid) && v.status === "FINED") {
-                        count++;
-                        historyHtml += `<div>⚠ ${v.time} - ₹${v.fineAmount}</div>`;
-                    }
+                Object.values(allViolations).forEach(v => {
+                    if (String(v.linkedRfid) === String(rfid) && v.status === "FINED") count++;
                 });
             }
 
-            if (count > 0) {
-                historyDiv.innerHTML = historyHtml;
-                document.getElementById('fine-amount').value = 1000 + (count * 500);
-                alert(`REPEAT OFFENDER: Found ${count} previous cases.`);
-            } else {
-                historyDiv.innerHTML = "CLEAN RECORD - FIRST OFFENCE";
-                document.getElementById('fine-amount').value = 1000;
+            // SET THE FINE AMOUNT
+            const fineInput = document.getElementById('fine-amount');
+            if (fineInput) {
+                fineInput.value = 1000 + (count * 500);
+            }
+            if (historyDiv) {
+                historyDiv.innerHTML = count > 0 ? `Found ${count} previous violations.` : "No previous offences.";
             }
         }, { onlyOnce: true });
 
@@ -1671,8 +1653,23 @@ async function init() {
                 </div>
             </div>
 
-            <div id="prosecution-controls" style="display:none;">
-                </div>
+            <div id="prosecution-controls" style="display:none; margin-top: 20px;">
+    <div class="control-group" style="border-color: #ff9800;">
+        <label style="color:#ff9800;">OFFENCE HISTORY</label>
+        <div id="offence-history" style="font-size:12px; color:#8b949e;">Searching...</div>
+    </div>
+
+    <div class="control-group">
+        <label>PENALTY CALCULATION (INR)</label>
+        <input type="number" id="fine-amount" value="1000">
+        
+        <button class="action-btn" 
+                style="background:#00e676; color:black; height:50px; margin-top:15px; font-weight:bold;" 
+                onclick="window.finalizeProsecution()">
+            ISSUE OFFICIAL CHALLAN & SMS
+        </button>
+    </div>
+</div>
         </div>
     </div>
 </div>

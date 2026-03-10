@@ -431,21 +431,32 @@ window.captureStep = 0;
 window.capturedDescriptors = [];
 window.tempCapturedImages = [];
 window.commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
-   window.switchUI = function(mode) {
+   window.switchUI = async (mode) => {
+    // 1. Toggle Visibility
     document.getElementById('monitor-ui').style.display = (mode === 'monitor') ? 'block' : 'none';
     document.getElementById('register-ui').style.display = (mode === 'register') ? 'block' : 'none';
     document.getElementById('challan-overlay').style.display = (mode === 'challan') ? 'block' : 'none';
     
-    // UI Width adjustment
+    // 2. Layout Adjustment (Full Screen for Portal/Register)
     const viewport = document.getElementById('viewport');
     const sidebar = document.getElementById('sidebar');
+    
     if (mode === 'register' || mode === 'challan') {
         viewport.style.display = 'none';
         sidebar.style.width = '100%';
+        
+        // Auto-refresh lists when entering these tabs
+        if (mode === 'register') await window.renderUserList();
+        if (mode === 'challan') await window.renderChallans();
     } else {
         viewport.style.display = 'flex';
         sidebar.style.width = '380px';
     }
+
+    // 3. Tab Button Active States
+    document.getElementById('tab-mon').classList.toggle('active', mode === 'monitor');
+    document.getElementById('tab-reg').classList.toggle('active', mode === 'register');
+    document.getElementById('tab-cha').classList.toggle('active', mode === 'challan');
 };
 window.judgeViolation = async function(key) {
     window.currentActiveViolationKey = key;

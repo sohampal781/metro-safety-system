@@ -1333,61 +1333,64 @@ window.deleteUserRecord = async function(rfid) {
 };
     // --- 5. VIOLATION LOGGING ---
 window.captureViolation = async function(minX, maxX, minY, maxY, distance, results) {
-    // --- STEP 1: VERIFY HUMAN FACE PRESENCE ---
-    // We check for a face BEFORE doing anything else to stop curtain triggers
+    // --- 1. HUMAN FACE GATEKEEPER (Stops Curtain Triggers) ---
     let faceDetection = null;
     try {
         faceDetection = await faceapi.detectSingleFace(videoElement).withFaceLandmarks().withFaceDescriptor();
-    } catch (e) { console.log("Face API Error:", e); }
+    } catch (e) { console.log("AI Busy:", e); }
 
     if (!faceDetection) {
-        console.log("BLOCKING CAPTURE: No human face detected in frame.");
-        return; // EXIT: Do not save to Firebase, do not draw boxes
+        console.log("Ignored: No human face detected.");
+        return; 
     }
 
-    // --- STEP 2: VERIFY POSE CONFIDENCE (Double Check) ---
-    if (!results || !results.poseLandmarks) return;
-    const visibility = (results.poseLandmarks[23].visibility + results.poseLandmarks[24].visibility) / 2;
-    if (visibility < 0.75) {
-        console.log("BLOCKING CAPTURE: Pose visibility too low.");
-        return;
-    }
-
-    // --- STEP 3: PROCEED WITH CAPTURE (Since Human is verified) ---
+    // --- 2. PREPARE THE CANVAS ---
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = videoElement.videoWidth;
     tempCanvas.height = videoElement.videoHeight;
     const ctx = tempCanvas.getContext('2d');
     
-    // Draw Mirrored Background
+    // Draw Background (Mirrored Selfie View)
     ctx.save();
     ctx.translate(tempCanvas.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(videoElement, 0, 0);
     ctx.restore();
 
-    // Coordinate Fix for Box
+    // --- 3. BOX CALCULATIONS WITH HEAD-ROOM ---
     const correctedMinX = tempCanvas.width - maxX;
     const correctedMaxX = tempCanvas.width - minX;
     const boxWidth = correctedMaxX - correctedMinX;
+    
+    // Lift the top of the box (minY) by 15% of the total person height 
+    // This ensures the box starts ABOVE the head, not at the eyes.
+    const personHeight = maxY - minY;
+    const headRoom = personHeight * 0.15; 
+    const adjustedMinY = Math.max(0, minY - headRoom); 
+    const adjustedMaxY = maxY + 10; // Slight padding at feet
 
-    // Label Positioning
-    const labelHeight = 60;
-    let labelY = minY - labelHeight; 
-    if (labelY < 10) labelY = maxY + 10;
-
-    // Draw Red Box & Label
+    // --- 4. DRAW RED BOUNDING BOX ---
     ctx.strokeStyle = 'red';
     ctx.lineWidth = 10;
-    ctx.strokeRect(correctedMinX, minY, boxWidth, maxY - minY);
+    ctx.strokeRect(correctedMinX, adjustedMinY, boxWidth, adjustedMaxY - adjustedMinY);
+
+    // --- 5. DRAW DATA LABEL (ABOVE HEAD) ---
+    const labelHeight = 60;
+    let labelY = adjustedMinY - labelHeight - 5; // 5px gap above the box
+    
+    // If there is no space at the top of the screen, move label to bottom
+    if (labelY < 5) {
+        labelY = adjustedMaxY + 5;
+    }
 
     ctx.fillStyle = 'red';
-    ctx.fillRect(correctedMinX, labelY, 450, labelHeight);
+    ctx.fillRect(correctedMinX, labelY, 480, labelHeight);
+    
     ctx.fillStyle = 'white';
     ctx.font = 'bold 26px Arial';
     ctx.fillText(`VIOLATION: ${distance}cm FROM LINE`, correctedMinX + 15, labelY + 40);
 
-    // Draw Yellow Safety Line
+    // --- 6. DRAW YELLOW SAFETY LINE (PROOF) ---
     ctx.beginPath();
     ctx.strokeStyle = 'yellow';
     ctx.lineWidth = 12;
@@ -1401,7 +1404,7 @@ window.captureViolation = async function(minX, maxX, minY, maxY, distance, resul
 
     const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.8);
     
-    // --- STEP 4: BIOMETRIC RECOGNITION (Using already detected face) ---
+    // --- 7. BIOMETRIC RECOGNITION ---
     let detectedRfid = "UNKNOWN_ID";
     let passengerName = "UNKNOWN";
 
@@ -1415,7 +1418,7 @@ window.captureViolation = async function(minX, maxX, minY, maxY, distance, resul
                 if (!user.descriptors) continue;
                 for (const rawDesc of Object.values(user.descriptors)) {
                     const dist = faceapi.euclideanDistance(faceDetection.descriptor, new Float32Array(Object.values(rawDesc)));
-                    if ((1 - dist) * 100 > 48) { // Strict threshold for Metro Security
+                    if ((1 - dist) * 100 > 48) { 
                         detectedRfid = rfid;
                         passengerName = user.name;
                         break;
@@ -1425,13 +1428,17 @@ window.captureViolation = async function(minX, maxX, minY, maxY, distance, resul
         }
     } catch (e) { console.error(e); }
 
-    // --- STEP 5: SAVE TO FIREBASE ---
+    // --- 8. SAVE TO FIREBASE ---
     const violID = "VIOL-" + Date.now();
     const { set, ref: saveRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
     await set(saveRef(db, 'violations/' + violID), {
-        id: violID, img: dataUrl, time: new Date().toLocaleString(),
-        linkedRfid: detectedRfid, status: "PENDING",
-        violationDistance: distance + "cm", identifiedName: passengerName
+        id: violID,
+        img: dataUrl,
+        time: new Date().toLocaleString(),
+        linkedRfid: detectedRfid,
+        status: "PENDING",
+        violationDistance: distance + "cm",
+        identifiedName: passengerName
     });
 };
     // --- 6. INITIALIZATION ---

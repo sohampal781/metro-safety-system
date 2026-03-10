@@ -466,35 +466,50 @@ window.commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT",
     console.log("System Mode Switched to: " + mode.toUpperCase());
 };
 window.judgeViolation = async function(key) {
-    window.currentActiveViolationKey = key; // Store for the finalizeFine step
-    
-    // Fetch violation data from Firebase
-    onValue(ref(db, 'violations/' + key), (snapshot) => {
-        const violData = snapshot.val();
-        if(!violData) return;
+    window.currentActiveViolationKey = key;
+    const { onValue, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
 
+    onValue(dbRef(db, 'violations/' + key), (snapshot) => {
+        const violData = snapshot.val();
+        if (!violData) return;
+
+        // 1. Open Modal & Setup Evidence
         document.getElementById('judgement-modal').style.display = 'block';
         document.getElementById('modal-violation-img').src = violData.img;
         
-        const rfidInput = document.getElementById('manual-rfid-input');
-        const aiPred = document.getElementById('ai-prediction');
+        // --- HIDE NEGOTIATION UI FOR THIS MODE ---
+        // Ensure negotiation specific elements are hidden during initial prosecution
+        if(document.getElementById('neg-section')) document.getElementById('neg-section').style.display = 'none';
+        if(document.getElementById('sig-section')) document.getElementById('sig-section').style.display = 'none';
 
-        // Auto-fill if the system identified them during the breach
+        const rfidInput = document.getElementById('manual-rfid-input');
+        
+        // 2. Auto-load data if AI found a match
         if (violData.linkedRfid && violData.linkedRfid !== "UNKNOWN_ID") {
             rfidInput.value = violData.linkedRfid;
-            aiPred.innerHTML = `<span style="color:var(--success)">AI MATCH: ${violData.linkedRfid}</span>`;
-            window.fetchRegistrationData(); // Auto-load their profile
+            window.fetchDetailedProsecutionData(); // Full function provided below
         } else {
             rfidInput.value = "";
-            aiPred.innerHTML = `<span style="color:var(--danger)">MANUAL ID REQUIRED</span>`;
+            document.getElementById('prosecution-controls').style.display = 'none';
         }
     }, { onlyOnce: true });
 };
 
 // Also ensure closeJudgement is accessible
 window.closeJudgement = function() {
-    document.getElementById('judgement-modal').style.display = 'none';
-    document.getElementById('registration-display').style.display = 'none';
+    // Hide the main modal
+    const modal = document.getElementById('judgement-modal');
+    if (modal) modal.style.display = 'none';
+
+    // Hide the old registration display if it still exists
+    const regDisplay = document.getElementById('registration-display');
+    if (regDisplay) regDisplay.style.display = 'none';
+    
+    // Hide prosecution controls
+    const prosControls = document.getElementById('prosecution-controls');
+    if (prosControls) prosControls.style.display = 'none';
+
+    console.log("Prosecution Session Closed.");
 };
 window.fetchRegistrationData = function() {
     const inputRfid = document.getElementById('manual-rfid-input').value.trim();
@@ -1350,55 +1365,50 @@ window.finalizeUpdate = async function(shouldSendSms) {
         alert("Update Failed: " + e.message);
     }
 };
-    window.fetchDetailedProsecutionData = async function() {
+   window.fetchDetailedProsecutionData = async function() {
     const rfidInput = document.getElementById('manual-rfid-input').value.trim();
     const infoDisplay = document.getElementById('prosecution-controls');
     const historyDiv = document.getElementById('offence-history');
     const gallery = document.getElementById('biometric-gallery');
 
-    if (!rfidInput) return alert("CRITICAL: Enter Passenger RFID to proceed.");
+    if (!rfidInput) return alert("Enter RFID to fetch records.");
 
     const { onValue, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
     
-    // 1. Load Passenger Profile
     onValue(dbRef(db, 'users/' + rfidInput), (snapshot) => {
         const user = snapshot.val();
-        if (!user) return alert("IDENTITY NOT FOUND. Please verify RFID.");
+        if (!user) return alert("RFID NOT REGISTERED");
 
-        infoDisplay.style.display = 'block';
+        if(infoDisplay) infoDisplay.style.display = 'block';
         
-        // Show All 4 Enrollment Angles
-        gallery.innerHTML = "";
-        if (user.tempImages) {
-            user.tempImages.forEach((img, i) => {
-                gallery.innerHTML += `<div style="text-align:center;"><img src="${img}" style="width:100%; border-radius:4px; border:1px solid var(--accent);"><small style="font-size:8px;">ANGLE ${i+1}</small></div>`;
-            });
+        // Show 4-Angle Registration Evidence
+        if(gallery) {
+            gallery.innerHTML = "";
+            if (user.tempImages) {
+                user.tempImages.forEach((img, i) => {
+                    gallery.innerHTML += `<div style="text-align:center;"><img src="${img}" style="width:100%; border:1px solid var(--accent);"><small style="font-size:8px;">REG ANGLE ${i+1}</small></div>`;
+                });
+            }
         }
 
-        // 2. Scan History for Repeat Offender Status
+        // Scan for previous history
         onValue(dbRef(db, 'violations'), (vSnap) => {
             const data = vSnap.val();
             let historyHtml = "";
             let vCount = 0;
-
             if (data) {
                 Object.values(data).forEach(v => {
-                    if (v.linkedRfid === rfidInput && v.status === "FINED") {
+                    if (v.linkedRfid === rfidInput && (v.status === "FINED" || v.status === "CLOSED_PAID")) {
                         vCount++;
-                        historyHtml += `<div style="color:var(--danger); border-bottom:1px solid #333; padding:4px;">⚠ ${v.time} | CHN: ${v.challanNo} | AMT: ₹${v.fineAmount}</div>`;
+                        historyHtml += `<div style="color:var(--danger); border-bottom:1px solid #333; padding:2px;">${v.time} | CHN: ${v.challanNo} | AMT: ₹${v.fineAmount}</div>`;
                     }
                 });
             }
-
-            if (vCount > 0) {
-                historyDiv.innerHTML = historyHtml;
-                const escalatedFine = 1000 + (vCount * 500); // 500 increase per offense
-                document.getElementById('fine-amount').value = escalatedFine;
-                alert(`REPEAT OFFENDER: This person has ${vCount} previous breaches. Fine escalated to ₹${escalatedFine}.`);
-            } else {
-                historyDiv.innerHTML = "<div style='color:var(--success);'>CLEAN HISTORY: No previous violations found.</div>";
-                document.getElementById('fine-amount').value = 1000;
-            }
+            if(historyDiv) historyDiv.innerHTML = vCount > 0 ? historyHtml : "CLEAN RECORD";
+            
+            // Auto-set initial fine based on history count
+            const fineInput = document.getElementById('fine-amount');
+            if(fineInput) fineInput.value = 1000 + (vCount * 500);
         }, { onlyOnce: true });
     }, { onlyOnce: true });
 };
@@ -1494,7 +1504,6 @@ window.finalizeProsecution = async function() {
         evidenceWindow.document.write(htmlContent);
     }, { onlyOnce: true });
 };
-       // --- 1. OPEN THE SETTLEMENT TERMINAL (Called from Fined Tab) ---
 window.openSettlementHearing = async function(violationKey) {
     window.currentActiveViolationKey = violationKey;
     const { onValue, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
@@ -1503,33 +1512,27 @@ window.openSettlementHearing = async function(violationKey) {
         const v = snapshot.val();
         if (!v) return;
 
-        // UI Prep
         document.getElementById('judgement-modal').style.display = 'block';
         document.getElementById('modal-violation-img').src = v.img;
-        document.getElementById('issued-fine-box').innerText = `₹${v.fineAmount}`;
-        document.getElementById('negotiated-amt').value = v.fineAmount;
-        document.getElementById('incident-meta').innerText = `ISSUED BY AI-UNIT | TIME: ${v.time} | CHN: ${v.challanNo}`;
+        
+        // --- SHOW NEGOTIATION & SIGNATURE UI ---
+        // Wrap your negotiation HTML in a div with id="neg-section" and signature in "sig-section"
+        if(document.getElementById('neg-section')) document.getElementById('neg-section').style.display = 'block';
+        if(document.getElementById('sig-section')) document.getElementById('sig-section').style.display = 'block';
 
-        // Cross-Verify with Enrollment Photos
+        const baseDisplay = document.getElementById('base-fine-display');
+        const negInput = document.getElementById('negotiated-amt');
+        if(baseDisplay) baseDisplay.value = v.fineAmount;
+        if(negInput) negInput.value = v.fineAmount;
+
+        // Load the person's registration info for identity confirmation
         if (v.linkedRfid && v.linkedRfid !== "UNKNOWN_ID") {
-            onValue(dbRef(db, 'users/' + v.linkedRfid), (uSnap) => {
-                const user = uSnap.val();
-                const gallery = document.getElementById('biometric-gallery');
-                gallery.innerHTML = "";
-                if (user && user.tempImages) {
-                    user.tempImages.forEach((img, i) => {
-                        gallery.innerHTML += `
-                            <div style="text-align:center;">
-                                <img src="${img}" style="width:100%; border:1px solid var(--accent); border-radius:4px;">
-                                <span style="font-size:8px; color:var(--accent);">REG-ANGLE ${i+1}</span>
-                            </div>`;
-                    });
-                }
-            }, { onlyOnce: true });
+            const rfidField = document.getElementById('manual-rfid-input');
+            if(rfidField) rfidField.value = v.linkedRfid;
+            window.fetchDetailedProsecutionData(); 
         }
         
-        // Initialize Signature Pad
-        window.initSignaturePad();
+        if (window.initSignaturePad) window.initSignaturePad();
     }, { onlyOnce: true });
 };
 
@@ -1558,37 +1561,38 @@ window.initSignaturePad = function() {
     window.clearSignature = () => ctx.clearRect(0, 0, canvas.width, canvas.height);
 };
 
-// --- 3. THE SETTLEMENT PROCESS ---
 window.processFinalSettlement = async function() {
     const key = window.currentActiveViolationKey;
-    const finalAmt = document.getElementById('negotiated-amt').value;
-    const basis = document.getElementById('neg-basis').value;
-    const notes = document.getElementById('neg-notes').value.trim();
-    const verified = document.getElementById('legal-confirm').checked;
+    const negAmtInput = document.getElementById('negotiated-amt');
+    const basisInput = document.getElementById('neg-basis');
+    const notesInput = document.getElementById('neg-notes');
+    const confirmCheck = document.getElementById('legal-confirm');
 
-    // 1. Mandatory Validations
-    if (!verified) return alert("SECURITY ALERT: Station Master must confirm Identity Verification first.");
-    if (basis === "none" || notes.length < 5) return alert("LEGAL ERROR: Selection of 'Authority Basis' and descriptive 'Case Notes' are mandatory for settlement.");
+    // Safe extraction of values
+    const finalAmt = negAmtInput ? negAmtInput.value : 1000;
+    const basis = basisInput ? basisInput.value : "none";
+    const notes = notesInput ? notesInput.value.trim() : "";
+    const isVerified = confirmCheck ? confirmCheck.checked : false;
+
+    if (!isVerified) return alert("SECURITY: You must check the Identity Verification box.");
+    if (basis === "none" || notes.length < 5) return alert("LEGAL: Authority Basis and Case Notes are required.");
 
     const { update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
 
     try {
-        // 2. Finalize in Database
         await update(dbRef(db, 'violations/' + key), {
             status: "CLOSED_PAID",
             paidAmount: finalAmt,
             settlementBasis: basis,
             stationMasterNotes: notes,
-            settlementTime: new Date().toLocaleString(),
-            hearingStatus: "COMPLETED"
+            settlementTime: new Date().toLocaleString()
         });
 
-        // 3. Clear UI & Notify
-        alert(`CASE CLOSED SUCCESSFULLY\nFinal Collection: ₹${finalAmt}\nRecord moved to Archives.`);
+        alert(`SETTLEMENT SUCCESS\nAmount: ₹${finalAmt}\nCase marked as PAID.`);
         window.closeJudgement();
-        window.renderChallans(); // Update the lists so it disappears from 'Fined'
+        if (window.renderChallans) window.renderChallans(); 
     } catch (e) {
-        alert("CRITICAL DATABASE FAILURE: " + e.message);
+        alert("Cloud Sync Error: " + e.message);
     }
 };
 // Update your init function

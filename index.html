@@ -1470,7 +1470,7 @@ window.finalizeUpdate = async function(shouldSendSms) {
         alert("Critical Failure: Could not save prosecution data to cloud.");
     }
 };
-       window.openEvidenceFile = function(violationKey) {
+      window.openEvidenceFile = async function(violationKey) {
     const { onValue, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
     
     onValue(dbRef(db, 'violations/' + violationKey), (snapshot) => {

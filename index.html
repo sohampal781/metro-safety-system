@@ -83,11 +83,10 @@ body {
     top: 0; left: 0;
     width: 100vw;
     height: 100vh;
-    background: #0a0b10;
-    z-index: 99999; /* Higher than everything else */
-    padding: 40px;
-    box-sizing: border-box;
+    background: #05070a; /* Pure dark background */
+    z-index: 9999; 
     overflow-y: auto;
+    padding: 20px;
 }
 
 /* Tab Switching Classes */
@@ -272,24 +271,24 @@ video, canvas { position: absolute; width: 95%; height: 90%; border-radius: 12px
     </div>
     <div id="challan-overlay">
     <div class="challan-header">
-        <h1 style="margin:0; color:var(--accent);">METRO RAILWAY | VIOLATION PORTAL</h1>
-        <div style="display:flex; gap:10px; flex-grow:1; max-width:500px; margin: 0 40px;">
-            <input type="text" id="portal-search" placeholder="SEARCH BY CHALLAN NO. OR RFID..." onkeyup="window.renderChallans()">
-        </div>
-        <button class="action-btn" style="width:100px; margin:0;" onclick="switchUI('monitor')">CLOSE</button>
+    <h1 style="margin:0;">METRO RAILWAY | VIOLATION PORTAL</h1>
+    <div style="display:flex; gap:10px; flex-grow:1; max-width:500px; margin: 0 40px;">
+        <input type="text" id="portal-search" placeholder="SEARCH BY CHALLAN NO. OR RFID..." onkeyup="window.renderChallans()">
     </div>
+    <button class="action-btn" style="width:100px; margin:0;" onclick="switchUI('monitor')">CLOSE</button>
+</div>
 
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 80px;">
-        <section>
-            <h2 style="color:var(--danger); border-bottom: 1px solid var(--danger); padding-bottom:10px;">[ PENDING INVESTIGATION ]</h2>
-            <div id="grid-pending" class="challan-grid"></div>
-        </section>
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; padding: 20px; margin-top: 20px;">
+    <section>
+        <h2 style="color:var(--danger); border-bottom: 1px solid var(--danger); padding-bottom:10px;">[ PENDING INVESTIGATION ]</h2>
+        <div id="grid-pending" class="challan-grid"></div>
+    </section>
 
-        <section>
-            <h2 style="color:var(--success); border-bottom: 1px solid var(--success); padding-bottom:10px;">[ PROSECUTED / FINED ]</h2>
-            <div id="grid-prosecuted" class="challan-grid"></div>
-        </section>
-    </div>
+    <section>
+        <h2 style="color:var(--success); border-bottom: 1px solid var(--success); padding-bottom:10px;">[ PROSECUTED / FINED ]</h2>
+        <div id="grid-prosecuted" class="challan-grid"></div>
+    </section>
+</div>
 </div>
    <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
@@ -330,26 +329,34 @@ window.capturedDescriptors = [];
 window.tempCapturedImages = [];
 window.commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
  window.switchUI = (mode) => {
-    // Hide all UI panes first
+    // Hide all sidebars
     document.getElementById('monitor-ui').style.display = 'none';
     document.getElementById('register-ui').style.display = 'none';
-    document.getElementById('challan-overlay').style.display = 'none';
     
+    // Main Container Logic
     const viewport = document.getElementById('viewport');
-
+    const challanPortal = document.getElementById('challan-overlay');
+    
     if (mode === 'monitor') {
         document.getElementById('monitor-ui').style.display = 'block';
-        viewport.style.display = 'flex';
+        viewport.style.display = 'flex'; 
+        challanPortal.style.display = 'none';
     } 
     else if (mode === 'register') {
         document.getElementById('register-ui').style.display = 'block';
         viewport.style.display = 'flex';
+        challanPortal.style.display = 'none';
     } 
     else if (mode === 'challan') {
-        viewport.style.display = 'none'; // Hide camera to save CPU and prevent overlap
-        document.getElementById('challan-overlay').style.display = 'block';
-        window.renderChallans(); // Trigger the draw
+        viewport.style.display = 'none'; // This hides the camera and the "bottom" feed
+        challanPortal.style.display = 'block'; // This shows the portal
+        window.renderChallans(); 
     }
+
+    // Tab Highlighting
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    const tabId = 'tab-' + mode.substring(0, 3);
+    if(document.getElementById(tabId)) document.getElementById(tabId).classList.add('active');
 };
 window.judgeViolation = async function(key) {
     window.currentActiveViolationKey = key;

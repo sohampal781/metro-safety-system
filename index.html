@@ -476,33 +476,38 @@ window.judgeViolation = async function(key) {
 
         const modal = document.getElementById('judgement-modal');
         const rfidInput = document.getElementById('manual-rfid-input');
-        const aiPred = document.getElementById('ai-prediction');
         const modalImg = document.getElementById('modal-violation-img');
 
-        // Check if elements exist before setting properties
-        if (modal) modal.style.display = 'block';
-        if (modalImg) modalImg.src = violData.img;
+        // Show Modal
+        modal.style.display = 'block';
+        modalImg.src = violData.img;
         
-        if (rfidInput && aiPred) {
-            if (violData.linkedRfid && violData.linkedRfid !== "UNKNOWN_ID") {
-                rfidInput.value = violData.linkedRfid;
-                aiPred.innerHTML = `<span style="color:var(--success)">AI MATCH: ${violData.linkedRfid}</span>`;
-                window.fetchRegistrationData(); 
-            } else {
-                rfidInput.value = "";
-                aiPred.innerHTML = `<span style="color:var(--danger)">MANUAL ID REQUIRED</span>`;
-            }
+        // AUTO-LOAD AI DETECTION
+        if (violData.linkedRfid && violData.linkedRfid !== "UNKNOWN_ID") {
+            rfidInput.value = violData.linkedRfid;
+            // IMMEDIATELY fetch the name and phone number
+            window.fetchDetailedProsecutionData(); 
+        } else {
+            rfidInput.value = "";
+            rfidInput.placeholder = "MANUAL RFID REQUIRED";
+            // Hide previous data if any
+            document.getElementById('passenger-info-display').style.display = 'none';
+            document.getElementById('prosecution-controls').style.display = 'none';
         }
     }, { onlyOnce: true });
 };
 
-// Also ensure closeJudgement is accessible
 window.closeJudgement = function() {
     const modal = document.getElementById('judgement-modal');
-    const display = document.getElementById('registration-display');
+    // Hide Modal
+    modal.style.display = 'none';
     
-    if (modal) modal.style.display = 'none';
-    if (display) display.style.display = 'none';
+    // RESET UI for next time
+    document.getElementById('manual-rfid-input').value = "";
+    document.getElementById('passenger-info-display').style.display = 'none';
+    document.getElementById('prosecution-controls').style.display = 'none';
+    document.getElementById('biometric-gallery').innerHTML = "";
+    document.getElementById('offence-history').innerHTML = "";
 };
 window.fetchRegistrationData = function() {
     const inputRfid = document.getElementById('manual-rfid-input').value.trim();
@@ -1632,45 +1637,42 @@ async function init() {
    
     init();
 </script>
-   <div id="judgement-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg); z-index:9999; padding:20px; box-sizing:border-box; overflow-y:auto; border: 4px solid var(--police-blue);">
+   <div id="judgement-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:#0a0b10; z-index:9999; padding:20px; box-sizing:border-box; overflow-y:auto; border: 4px solid #1a237e;">
+    
+    <div style="display:flex; justify-content:space-between; align-items:center; background:#1a237e; padding:15px; margin:-20px -20px 20px -20px;">
+        <h2 style="margin:0; color:white; font-size:18px; letter-spacing:1px;">METRO PROSECUTION TERMINAL</h2>
+        <button onclick="window.closeJudgement()" style="background:#ff3333; border:none; color:white; padding:10px 25px; cursor:pointer; font-weight:bold; border-radius:4px;">EXIT / CANCEL</button>
+    </div>
+
     <div style="display:grid; grid-template-columns: 1.2fr 1fr; gap:20px;">
         <div style="display:flex; flex-direction:column; gap:15px;">
-            <div class="control-group" style="border-color: var(--danger);">
-                <label style="color:var(--danger); font-weight:bold;">INCIDENT EVIDENCE</label>
-                <img id="modal-violation-img" style="width:100%; border:2px solid var(--danger); border-radius:5px;">
+            <div class="control-group" style="border-color: #ff3333;">
+                <label style="color:#ff3333; font-weight:bold;">VIOLATION EVIDENCE</label>
+                <img id="modal-violation-img" style="width:100%; border:2px solid #ff3333; border-radius:5px;">
             </div>
             <div class="control-group">
-                <label>REGISTERED BIOMETRIC PHOTOS</label>
+                <label>BIOMETRIC RECORD MATCHES</label>
                 <div id="biometric-gallery" style="display:grid; grid-template-columns:repeat(4, 1fr); gap:5px;"></div>
             </div>
         </div>
 
         <div style="display:flex; flex-direction:column; gap:15px;">
             <div class="control-group">
-                <label>PASSENGER IDENTITY VERIFICATION</label>
+                <label>PASSENGER VERIFICATION</label>
                 <div style="display:flex; gap:10px; margin-bottom:10px;">
-                    <input type="text" id="manual-rfid-input" placeholder="ENTER RFID (e.g. METRO-123456)">
-                    <button class="action-btn" style="width:120px; margin:0;" onclick="window.fetchDetailedProsecutionData()">LOAD DATA</button>
+                    <input type="text" id="manual-rfid-input" placeholder="SCAN RFID">
+                    <button class="action-btn" style="width:120px; margin:0;" onclick="window.fetchDetailedProsecutionData()">RELOAD</button>
                 </div>
                 
-                <div id="passenger-info-display" style="display:none; background:rgba(0,210,255,0.1); padding:15px; border-radius:8px; border:1px solid var(--accent);">
-                    <h3 id="det-name" style="margin:0; color:var(--accent);"></h3>
+                <div id="passenger-info-display" style="display:none; background:rgba(0,210,255,0.1); padding:15px; border-radius:8px; border:1px solid #00d2ff;">
+                    <h3 id="det-name" style="margin:0; color:#00d2ff;"></h3>
                     <p style="margin:5px 0;">RFID: <span id="det-rfid" style="color:white; font-family:monospace;"></span></p>
-                    <p style="margin:0;">MOBILE: <span id="det-phone" style="color:var(--success); font-weight:bold;"></span></p>
+                    <p style="margin:0;">MOBILE: <span id="det-phone" style="color:#00e676; font-weight:bold;"></span></p>
                 </div>
             </div>
 
             <div id="prosecution-controls" style="display:none;">
-                <div class="control-group" style="border-color:#ff9800;">
-                    <label style="color:#ff9800;">OFFENCE HISTORY</label>
-                    <div id="offence-history" style="font-size:12px; max-height:100px; overflow-y:auto; color:#8b949e;"></div>
                 </div>
-                <div class="control-group">
-                    <label>PENALTY (INR)</label>
-                    <input type="number" id="fine-amount" value="1000">
-                    <button class="action-btn" style="background:var(--success); color:black; height:50px; margin-top:15px;" onclick="window.finalizeProsecution()">ISSUE LEGAL NOTICE & SMS</button>
-                </div>
-            </div>
         </div>
     </div>
 </div>

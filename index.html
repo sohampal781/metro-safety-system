@@ -432,28 +432,32 @@ window.capturedDescriptors = [];
 window.tempCapturedImages = [];
 window.commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
    window.switchUI = async (mode) => {
-    // 1. Toggle Visibility
-    document.getElementById('monitor-ui').style.display = (mode === 'monitor') ? 'block' : 'none';
-    document.getElementById('register-ui').style.display = (mode === 'register') ? 'block' : 'none';
-    document.getElementById('challan-overlay').style.display = (mode === 'challan') ? 'block' : 'none';
+    // 1. Core Visibility - Ensure these IDs exist in your HTML
+    const monitorUI = document.getElementById('monitor-ui');
+    const registerUI = document.getElementById('register-ui');
+    const challanPortal = document.getElementById('challan-overlay'); // Your Portal/Challan UI
+
+    if (monitorUI) monitorUI.style.display = (mode === 'monitor' ? 'block' : 'none');
+    if (registerUI) registerUI.style.display = (mode === 'register' ? 'block' : 'none');
+    if (challanPortal) challanPortal.style.display = (mode === 'challan' ? 'block' : 'none');
     
-    // 2. Layout Adjustment (Full Screen for Portal/Register)
+    // 2. Sidebar & Viewport logic
     const viewport = document.getElementById('viewport');
     const sidebar = document.getElementById('sidebar');
     
-    if (mode === 'register' || mode === 'challan') {
-        viewport.style.display = 'none';
-        sidebar.style.width = '100%';
+    if (mode === 'challan' || mode === 'register') {
+        if (viewport) viewport.style.display = 'none';
+        if (sidebar) sidebar.style.width = '100%'; // Expand to full screen
         
-        // Auto-refresh lists when entering these tabs
-        if (mode === 'register') await window.renderUserList();
+        // Load data immediately
         if (mode === 'challan') await window.renderChallans();
+        if (mode === 'register') await window.renderUserList();
     } else {
-        viewport.style.display = 'flex';
-        sidebar.style.width = '380px';
+        if (viewport) viewport.style.display = 'flex';
+        if (sidebar) sidebar.style.width = '380px';
     }
 
-    // 3. Tab Button Active States
+    // 3. Tab Button Highlights
     document.getElementById('tab-mon').classList.toggle('active', mode === 'monitor');
     document.getElementById('tab-reg').classList.toggle('active', mode === 'register');
     document.getElementById('tab-cha').classList.toggle('active', mode === 'challan');

@@ -689,28 +689,21 @@ window.finalizeSettlement = async function() {
     const isNeg = document.getElementById('settle-mode').value === 'negotiated';
     const finalAmount = isNeg ? document.getElementById('final-amt').value : "Original Amount";
     
-    if(confirm(`Confirm collection and permanent closure of Case?`)) {
+    if(confirm(`Confirm payment and archive case? (Face data will be purged for privacy)`)) {
         try {
-            const { get, remove, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+            const { update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
             
-            const snapshot = await get(dbRef(db, 'violations/' + window.currentSettlementKey));
-            const vData = snapshot.val();
+            // We do NOT use remove(). We use update() to clear the image but keep the stats.
+            const archiveData = {
+                status: "SETTLED", // Change status so it doesn't show in 'Pending'
+                img: null,         // DELETE THE IMAGE DATA (Erase face)
+                settledAmount: finalAmount,
+                settledAt: new Date().toLocaleString()
+            };
+
+            await update(dbRef(db, 'violations/' + window.currentSettlementKey), archiveData);
             
-            if (!vData) return alert("Record not found.");
-
-            const mobile = vData.linkedMobile;
-            const challan = vData.challanNo;
-            const offence = vData.offence || "METRO VIOLATION";
-
-            await remove(dbRef(db, 'violations/' + window.currentSettlementKey));
-            
-            if (mobile) {
-                // FIXED MESSAGE: Includes the offence being settled
-                let msg = `KOLKATA METRO: Payment received for CHN ${challan} is disposed. Settled Amount: RS ${finalAmount}. THIS IS TESTING MESSAGE DON'T PANIC.`;
-                window.sendKolkataSMS(mobile, msg);
-            }
-
-            alert(`PAYMENT RECEIVED. CASE CLOSED.`);
+            alert(`PAYMENT COLLECTED. RECORD ARCHIVED.`);
             document.getElementById('settlement-overlay').remove();
             window.renderChallans(); 
         } catch (e) { alert("Error: " + e.message); }
@@ -1466,18 +1459,38 @@ window.fetchDetailedProsecutionData = async function() {
         }
 
         // 4. CHECK VIOLATION HISTORY
-        onValue(ref(db, 'violations'), (vSnap) => {
-            const allViolations = vSnap.val();
-            let count = 0;
-            if (allViolations) {
-                Object.values(allViolations).forEach(v => {
-                    if (String(v.linkedRfid) === String(rfid) && v.status === "FINED") count++;
-                });
+        // Inside fetchDetailedProsecutionData...
+onValue(ref(db, 'violations'), (vSnap) => {
+    const allViolations = vSnap.val();
+    let count = 0;
+    let historyHtml = "";
+
+    if (allViolations) {
+        Object.keys(allViolations).forEach(key => {
+            const v = allViolations[key];
+            const savedRfid = String(v.linkedRfid || "").trim();
+            const currentRfid = String(rfid).trim();
+            
+            // Look for ANY previous legal action (Fined or already Settled)
+            if (savedRfid === currentRfid && (v.status === "FINED" || v.status === "SETTLED")) {
+                count++;
+                historyHtml += `
+                    <div style="border-bottom:1px solid #333; padding:4px; font-size:11px;">
+                        <span style="color:#ff9800;">[RECORD ${count}]</span> ${v.time} | ₹${v.fineAmount || v.settledAmount}
+                    </div>`;
             }
-            const fineInput = document.getElementById('fine-amount');
-            if (fineInput) fineInput.value = 1000 + (count * 500);
-            if (historyDiv) historyDiv.innerHTML = count > 0 ? `Repeat Offender: ${count} cases` : "First-time Offender";
-        }, { onlyOnce: true });
+        });
+    }
+
+    const historyDiv = document.getElementById('offence-history');
+    if (count > 0) {
+        historyDiv.innerHTML = `<b style="color:#ff3333;">REPEAT OFFENDER: ${count} PREVIOUS TIMES</b>${historyHtml}`;
+        document.getElementById('fine-amount').value = 1000 + (count * 500); // Higher penalty
+    } else {
+        historyDiv.innerHTML = "<span style='color:#00e676;'>FIRST-TIME OFFENDER</span>";
+        document.getElementById('fine-amount').value = 1000;
+    }
+}, { onlyOnce: true });
 
     }, { onlyOnce: true });
 };

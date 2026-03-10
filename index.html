@@ -493,8 +493,11 @@ window.judgeViolation = async function(key) {
 
 // Also ensure closeJudgement is accessible
 window.closeJudgement = function() {
-    document.getElementById('judgement-modal').style.display = 'none';
-    document.getElementById('registration-display').style.display = 'none';
+    const modal = document.getElementById('judgement-modal');
+    const display = document.getElementById('registration-display');
+    
+    if (modal) modal.style.display = 'none';
+    if (display) display.style.display = 'none';
 };
 window.fetchRegistrationData = function() {
     const inputRfid = document.getElementById('manual-rfid-input').value.trim();
@@ -1407,6 +1410,11 @@ window.openEvidenceFile = async function(violationKey) {
 };
 window.finalizeProsecution = async function() {
     const rfid = document.getElementById('manual-rfid-input').value.trim();
+    const display = document.getElementById('registration-display');
+    
+    // Attempt to get the mobile number from the display dataset or the database logic
+    const latestMobile = (display && display.dataset.latestMobile) ? display.dataset.latestMobile : null;
+    
     const baseFine = document.getElementById('fine-amount').value;
     const finalFine = document.getElementById('negotiated-amount').value || baseFine;
     const reason = document.getElementById('negotiation-reason').value;
@@ -1425,11 +1433,29 @@ window.finalizeProsecution = async function() {
         prosecutionTime: new Date().toLocaleString()
     };
 
-    await update(ref(db, 'violations/' + window.currentActiveViolationKey), updates);
-    
-    // Add SMS Logic here (same as your previous sendKolkataSMS)
-    alert("OFFICIAL CHALLAN GENERATED: " + challanNo);
-    window.closeJudgement();
+    try {
+        const { update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+        await update(dbRef(db, 'violations/' + window.currentActiveViolationKey), updates);
+        
+        // --- SMS TRIGGER WITH TESTING WARNING ---
+        if (latestMobile) {
+            let msg = `KOLKATA METRO: CHN ${challanNo}. FINE: RS ${finalFine}. THIS IS TESTING MESSAGE DON'T PANIC.`;
+            window.sendKolkataSMS(latestMobile, msg);
+        } else {
+            console.warn("SMS not sent: No mobile number linked to this session.");
+        }
+
+        alert("OFFICIAL CHALLAN GENERATED: " + challanNo);
+        
+        // Safely close the modal
+        if (window.closeJudgement) {
+            window.closeJudgement();
+        }
+
+    } catch (e) {
+        console.error("Prosecution Error:", e);
+        alert("Critical Error: Check Console.");
+    }
 };
 // CONTROL F: FINALIZE UPDATE (SMS OPTIONAL)
 window.finalizeUpdate = async function(shouldSendSms) {

@@ -682,23 +682,26 @@ window.toggleNegotiation = function(val) {
 // FINAL STEP: COLLECT & PURGE
 window.finalizeSettlement = async function() {
     const isNeg = document.getElementById('settle-mode').value === 'negotiated';
-    const finalAmount = isNeg ? document.getElementById('final-amt').value : "Original";
+    const finalAmount = isNeg ? document.getElementById('final-amt').value : "Original Amount";
     
     if(confirm(`Confirm collection and permanent closure of Case?`)) {
         try {
             const { get, remove, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
             
-            // Fetch mobile before purging the record
             const snapshot = await get(dbRef(db, 'violations/' + window.currentSettlementKey));
             const vData = snapshot.val();
+            
+            if (!vData) return alert("Record not found.");
+
             const mobile = vData.linkedMobile;
             const challan = vData.challanNo;
+            const offence = vData.offence || "METRO VIOLATION";
 
             await remove(dbRef(db, 'violations/' + window.currentSettlementKey));
             
             if (mobile) {
-                // Updated with required testing disclaimer
-                let msg = `KOLKATA METRO: Payment received for CHN ${challan}. Settled Amount: RS ${finalAmount}. Case closed. THIS IS TESTING MESSAGE DON'T PANIC.`;
+                // FIXED MESSAGE: Includes the offence being settled
+                let msg = `KOLKATA METRO: Payment received for CHN ${challan}. OFFENCE: ${offence}. Settled Amount: RS ${finalAmount}. Case closed. THIS IS TESTING MESSAGE DON'T PANIC.`;
                 window.sendKolkataSMS(mobile, msg);
             }
 
@@ -1520,7 +1523,6 @@ window.finalizeProsecution = async function() {
     try {
         const { get, update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
         
-        // 1. Fetch user data directly to get the mobile number
         const userSnapshot = await get(dbRef(db, 'users/' + rfid));
         const userData = userSnapshot.val();
 
@@ -1532,32 +1534,31 @@ window.finalizeProsecution = async function() {
         const mobile = userData.mobile;
         const challanNo = "METRO-" + Math.floor(100000 + Math.random() * 900000);
         const baseFine = document.getElementById('fine-amount').value;
+        const station = "DUMDUM";
+        const offence = "YELLOW LINE BREACH";
 
         const updates = {
             status: "FINED",
             fineAmount: baseFine,
-            offence: "YELLOW LINE BREACH",
+            offence: offence,
             challanNo: challanNo,
             linkedMobile: mobile, 
             linkedRfid: rfid,
             prosecutionTime: new Date().toLocaleString(),
-            station: "DUMDUM"
+            station: station
         };
 
-        // 2. Save to Violations
         await update(dbRef(db, 'violations/' + window.currentActiveViolationKey), updates);
         
-        // 3. Send SMS
-        let msg = `KOLKATA METRO: LEGAL NOTICE issued. CHN: ${challanNo}. FINE: RS ${baseFine}. THIS IS TESTING MESSAGE DON'T PANIC.`;
+        // FIXED MESSAGE: Now includes Offence and Station
+        let msg = `KOLKATA METRO: LEGAL NOTICE issued. CHN: ${challanNo}. STN: ${station}. OFFENCE: ${offence}. FINE: RS ${baseFine}. THIS IS TESTING MESSAGE DON'T PANIC.`;
+        
         await window.sendKolkataSMS(mobile, msg);
 
-        alert("LEGAL NOTICE ISSUED & SMS DISPATCHED TO " + mobile);
+        alert("LEGAL NOTICE ISSUED & SMS DISPATCHED.");
         window.closeJudgement();
         window.renderChallans();
-    } catch (e) { 
-        console.error(e); 
-        alert("System Error: " + e.message);
-    }
+    } catch (e) { console.error(e); }
 };
 // CONTROL F: FINALIZE UPDATE (SMS OPTIONAL)
 window.finalizeUpdate = async function(shouldSendSms) {

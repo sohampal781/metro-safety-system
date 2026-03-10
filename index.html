@@ -431,39 +431,21 @@ window.captureStep = 0;
 window.capturedDescriptors = [];
 window.tempCapturedImages = [];
 window.commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
-   window.switchUI = async (mode) => {
-    // 1. Core Visibility: Hide/Show main layout containers
-    document.getElementById('monitor-ui').style.display = mode === 'monitor' ? 'block' : 'none';
-    document.getElementById('register-ui').style.display = mode === 'register' ? 'block' : 'none';
-    document.getElementById('challan-overlay').style.display = mode === 'challan' ? 'block' : 'none';
+   window.switchUI = function(mode) {
+    document.getElementById('monitor-ui').style.display = (mode === 'monitor') ? 'block' : 'none';
+    document.getElementById('register-ui').style.display = (mode === 'register') ? 'block' : 'none';
+    document.getElementById('challan-overlay').style.display = (mode === 'challan') ? 'block' : 'none';
     
-    // 2. Full-Screen Registration: Hide the video viewport to focus on enrollment/database
+    // UI Width adjustment
     const viewport = document.getElementById('viewport');
     const sidebar = document.getElementById('sidebar');
-    
-    if (mode === 'register') {
+    if (mode === 'register' || mode === 'challan') {
         viewport.style.display = 'none';
-        sidebar.style.width = '100%'; // Expand to full screen
-        
-        // --- TRIGGER DATABASE SYNC ---
-        // This ensures the RFID list and delete buttons load every time
-        await window.renderUserList(); 
+        sidebar.style.width = '100%';
     } else {
         viewport.style.display = 'flex';
-        sidebar.style.width = '380px'; // Return to standard width
+        sidebar.style.width = '380px';
     }
-
-    // 3. Tab active states (Visual highlights)
-    document.getElementById('tab-mon').classList.toggle('active', mode === 'monitor');
-    document.getElementById('tab-reg').classList.toggle('active', mode === 'register');
-    document.getElementById('tab-cha').classList.toggle('active', mode === 'challan');
-    
-    // 4. Portal Auto-Refresh: Refresh violations when entering the Portal
-    if (mode === 'challan') {
-        await window.renderChallans();
-    }
-    
-    console.log("System Mode Switched to: " + mode.toUpperCase());
 };
 window.judgeViolation = async function(key) {
     window.currentActiveViolationKey = key;
@@ -1627,83 +1609,53 @@ window.initSignaturePad = function() {
 };
 
 window.processFinalSettlement = async function() {
-    // 1. Core Data Retrieval
     const key = window.currentActiveViolationKey;
     const rfid = document.getElementById('manual-rfid-input').value.trim();
-    const issuedFine = parseInt(document.getElementById('issued-fine-box').innerText.replace('₹', ''));
-    const finalAmtInput = document.getElementById('negotiated-amt').value;
-    const finalAmt = parseInt(finalAmtInput);
-    
-    // 2. Negotiation Data Retrieval
-    const basis = document.getElementById('neg-basis').value;
-    const notes = document.getElementById('neg-notes').value.trim();
+    const finalAmt = document.getElementById('negotiated-amt').value;
     const isVerified = document.getElementById('legal-confirm').checked;
 
-    // --- VALIDATION LAYER ---
-    if (!isVerified) {
-        return alert("SECURITY: Identity verification checkbox is mandatory.");
-    }
-
-    if (!finalAmtInput || finalAmt < 0) {
-        return alert("ERROR: Please enter a valid settlement amount.");
-    }
-
-    // MANDATORY: If amount is reduced, Basis and Notes are strictly required for Audit
-    if (finalAmt < issuedFine) {
-        if (basis === "none") {
-            return alert("LEGAL REQUIREMENT: You must select an Authority Basis for fine reduction.");
-        }
-        if (notes.length < 5) {
-            return alert("AUDIT REQUIREMENT: Provide detailed Station Master notes for the discount.");
-        }
-    }
+    if (!isVerified) return alert("SECURITY: Verify identity first.");
 
     try {
         const { update, ref: dbRef, get } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
         
-        // 3. Fetch Mobile Number from User Database
+        // 1. Fetch User Mobile for the Receipt
         const userSnap = await get(dbRef(db, 'users/' + rfid));
-        if (!userSnap.exists()) {
-            return alert("CRITICAL ERROR: Passenger mobile record not found for RFID: " + rfid);
-        }
+        if (!userSnap.exists()) return alert("User Mobile not found.");
         const mobile = userSnap.val().mobile;
 
-        // 4. Update Firebase Record
-        const updatePayload = {
+        // 2. PRIVACY PURGE & FINALIZATION
+        // We update the record to CLOSED_PAID and simultaneously REMOVE the image data
+        const purgePayload = {
             status: "CLOSED_PAID",
             paidAmount: finalAmt,
-            originalFine: issuedFine,
             settlementTime: new Date().toLocaleString(),
-            legalAdmission: true
+            
+            // --- DATA PURGE: Setting these to null deletes them from Firebase ---
+            img: null,            
+            confidence: null,     
+            descriptors: null,    
+            tempImages: null,     
+            // -----------------------------------------------------------------
+            
+            legalAdmission: true,
+            purgedForPrivacy: true
         };
 
-        // Only add negotiation data if it was used
-        if (finalAmt < issuedFine) {
-            updatePayload.negotiationBasis = basis;
-            updatePayload.stationMasterNotes = notes;
-        }
+        await update(dbRef(db, 'violations/' + key), purgePayload);
 
-        await update(dbRef(db, 'violations/' + key), updatePayload);
+        // 3. SMS RECEIPT (< 160 Chars)
+        const receiptMsg = `KOLKATA METRO: Payment Received for RFID ${rfid}. AMT: RS ${finalAmt}. Case CLOSED. Privacy Purge Complete. Safe journey!`;
+        window.sendKolkataSMS(mobile, receiptMsg);
 
-        // 5. SEND FINAL RECEIPT SMS (STRICTLY < 160 CHARACTERS)
-        // Format: [Brand]: [Status] [RFID]. [Amount]. [State]. [Closing]
-        const receiptMsg = `KOLKATA METRO: Payment Received for RFID ${rfid}. AMT: RS ${finalAmt}. Case CLOSED. Keep this msg as digital receipt. Safe journey!`;
+        alert("PAYMENT COLLECTED. BIOMETRIC DATA PURGED FROM CLOUD.");
+        window.closeJudgement();
         
-        const smsSuccess = window.sendKolkataSMS(mobile, receiptMsg);
-
-        // 6. UI RESET & FEEDBACK
-        if (smsSuccess) {
-            alert(`SETTLEMENT SUCCESS\nAmount: ₹${finalAmt}\nReceipt sent to: ${mobile}`);
-        } else {
-            alert(`SETTLEMENT SUCCESS\nAmount: ₹${finalAmt}\nNote: SMS Gateway Busy.`);
-        }
-
-        window.closeJudgement(); // Close Modal
-        if (window.renderChallans) window.renderChallans(); // Refresh Violation Portal
+        if (window.renderChallans) window.renderChallans(); 
 
     } catch (e) {
-        console.error("Settlement Sync Error:", e);
-        alert("DATABASE ERROR: Failed to close case. check internet connection.");
+        console.error("Purge Error:", e);
+        alert("Sync Failed: " + e.message);
     }
 };
        window.finalizeInitialFine = async function() {

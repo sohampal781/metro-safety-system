@@ -764,7 +764,7 @@ window.lookupUser = function() {
         if (!found) alert("No matching records in Kolkata Metro database.");
     }, { onlyOnce: true });
 };
-  window.renderChallans = function() {
+ window.renderChallans = function() {
     const pendingGrid = document.getElementById('grid-pending');
     const prosecutedGrid = document.getElementById('grid-prosecuted');
     const searchTerm = document.getElementById('portal-search').value.trim().toLowerCase();
@@ -782,12 +782,10 @@ window.lookupUser = function() {
             const viol = data[key];
             const isAlreadyFined = (viol.status === "FINED");
             
-            // Search Filter Logic (Matches Challan No or RFID)
             const cNo = (viol.challanNo || "").toString();
             const rfid = (viol.linkedRfid || "").toLowerCase();
             if (searchTerm && !cNo.includes(searchTerm) && !rfid.includes(searchTerm)) return;
 
-            // Create the Card UI
             const card = document.createElement('div');
             card.className = 'challan-card';
             card.style.borderTopColor = isAlreadyFined ? 'var(--success)' : 'var(--danger)';
@@ -804,24 +802,20 @@ window.lookupUser = function() {
                         </div>
                     ` : ''}
                 </div>
-                
                 ${isAlreadyFined ? 
-                    `<button class="action-btn" style="background:#ff9800; color:black;" onclick="window.openSettlementTerminal('${key}')">`
-                       OPEN SETTLEMENT TERMINAL
-                     </button>` : 
+                    `<button class="action-btn" style="background:#ff9800; color:black;" onclick="window.openSettlementTerminal('${key}')">OPEN SETTLEMENT TERMINAL</button>` : 
+                    `<button class="action-btn" onclick="window.judgeViolation('${key}')">ISSUE LEGAL NOTICE</button>`
                 }
-                <button class="delete-btn" style="background:#21262d; color:#8b949e; margin-top:8px;" 
-                        onclick="window.deleteRecord('${key}')">PURGE LOG</button>
+                <button class="delete-btn" style="background:#21262d; color:#8b949e; margin-top:8px;" onclick="window.deleteRecord('${key}')">PURGE LOG</button>
             `;
 
-            // Sort into correct section
             if (isAlreadyFined) {
                 prosecutedGrid.appendChild(card);
             } else {
                 pendingGrid.appendChild(card);
             }
         });
-    }, { onlyOnce: false }); // Real-time sync enabled
+    }, { onlyOnce: false });
 };
 
     // --- 3. MONITORING & MATH LOGIC (YOUR ORIGINAL LOGIC) ---

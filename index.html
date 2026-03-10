@@ -1583,56 +1583,73 @@ window.initSignaturePad = function() {
 
 window.processFinalSettlement = async function() {
     const key = window.currentActiveViolationKey;
-    const negAmtInput = document.getElementById('negotiated-amt');
-    const basisInput = document.getElementById('neg-basis');
-    const notesInput = document.getElementById('neg-notes');
-    const confirmCheck = document.getElementById('legal-confirm');
+    const finalAmt = document.getElementById('negotiated-amt').value;
+    const isVerified = document.getElementById('legal-confirm').checked;
+    const rfid = document.getElementById('manual-rfid-input').value;
 
-    // Safe extraction of values
-    const finalAmt = negAmtInput ? negAmtInput.value : 1000;
-    const basis = basisInput ? basisInput.value : "none";
-    const notes = notesInput ? notesInput.value.trim() : "";
-    const isVerified = confirmCheck ? confirmCheck.checked : false;
-
-    if (!isVerified) return alert("SECURITY: You must check the Identity Verification box.");
-    if (basis === "none" || notes.length < 5) return alert("LEGAL: Authority Basis and Case Notes are required.");
-
-    const { update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+    if (!isVerified) return alert("Check the Verification box.");
 
     try {
+        const { update, ref: dbRef, get } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+        
+        const userSnap = await get(dbRef(db, 'users/' + rfid));
+        const mobile = userSnap.val().mobile;
+
         await update(dbRef(db, 'violations/' + key), {
             status: "CLOSED_PAID",
             paidAmount: finalAmt,
-            settlementBasis: basis,
-            stationMasterNotes: notes,
             settlementTime: new Date().toLocaleString()
         });
 
-        alert(`SETTLEMENT SUCCESS\nAmount: ₹${finalAmt}\nCase marked as PAID.`);
+        // STRICT 160 CHAR LIMIT RECEIPT
+        const receiptMsg = `KOLKATA METRO: Payment Received for RFID ${rfid}. AMT: RS ${finalAmt}. Case CLOSED. Thank you for your cooperation.`;
+        
+        window.sendKolkataSMS(mobile, receiptMsg);
+
+        alert("PAYMENT RECEIVED. SMS SENT.");
         window.closeJudgement();
-        if (window.renderChallans) window.renderChallans(); 
+        window.renderChallans();
     } catch (e) {
-        alert("Cloud Sync Error: " + e.message);
+        alert("Error: " + e.message);
     }
 };
        window.finalizeInitialFine = async function() {
     const rfid = document.getElementById('manual-rfid-input').value.trim();
-    const fine = document.getElementById('prosecution-fine-input').value;
+    const fineAmt = document.getElementById('prosecution-fine-input').value;
     
     if(!rfid) return alert("Verify RFID first.");
 
-    const { update, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
-    
-    await update(dbRef(db, 'violations/' + window.currentActiveViolationKey), {
-        status: "FINED",
-        fineAmount: fine,
-        linkedRfid: rfid,
-        challanNo: "METRO-" + Math.floor(100000 + Math.random() * 900000),
-        time: new Date().toLocaleString()
-    });
+    try {
+        const { update, ref: dbRef, get } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+        
+        // Fetch mobile from 'users' node
+        const userSnap = await get(dbRef(db, 'users/' + rfid));
+        if (!userSnap.exists()) return alert("RFID NOT REGISTERED");
+        
+        const mobile = userSnap.val().mobile;
+        const challanNo = "METRO" + Math.floor(1000 + Math.random() * 9000); // Shorter ID
 
-    alert("Challan Issued. Passenger moved to Prosecution List.");
-    window.closeJudgement();
+        await update(dbRef(db, 'violations/' + window.currentActiveViolationKey), {
+            status: "FINED",
+            fineAmount: fineAmt,
+            linkedRfid: rfid,
+            linkedMobile: mobile,
+            challanNo: challanNo,
+            prosecutionDate: new Date().toLocaleString()
+        });
+
+        // STRICT 160 CHAR LIMIT MESSAGE
+        const smsMsg = `KOLKATA METRO: Legal Notice for RFID ${rfid}. CHN: ${challanNo}. FINE: RS ${fineAmt}. Pay at counter to avoid penalty. Stay safe!`;
+        
+        window.sendKolkataSMS(mobile, smsMsg);
+
+        alert(`PROSECUTION SUCCESS\nSMS Sent to: ${mobile}`);
+        window.closeJudgement();
+        window.renderChallans(); // Refresh list
+        
+    } catch (e) {
+        alert("Cloud Error: " + e.message);
+    }
 };
 // Update your init function
 async function init() {

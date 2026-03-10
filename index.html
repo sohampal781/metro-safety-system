@@ -40,7 +40,11 @@ body {
     flex-direction: column;
     z-index: 100;
 }
-
+#sidebar {
+    overflow: hidden; 
+    display: flex;
+    flex-direction: column;
+}
 .tabs { display: flex; background: #0d1117; padding: 10px; gap: 5px; }
 .tab-btn {
     flex: 1; padding: 12px; border: none; background: transparent;
@@ -71,10 +75,30 @@ input, select, button { width: 100%; padding: 12px; background: #161b22; border:
 #viewport { flex-grow: 1; position: relative; background: #000; display: flex; align-items: center; justify-content: center; }
 video, canvas { position: absolute; width: 95%; height: 90%; border-radius: 12px; transform: scaleX(-1); object-fit: contain; }
 
-#challan-overlay {
-    position: fixed; inset: 0; background: #0a0b10; z-index: 99999; display: none; padding: 30px; overflow-y: auto;
+#challan-overlay {#challan-overlay {
+    display: none !important; /* Prevents the flash on refresh */
+    position: fixed;
+    inset: 0;
+    background: #0a0b10;
+    z-index: 99999;
+    padding: 30px;
+    overflow-y: auto;
 }
-    </style>
+    #judgement-modal {
+    display: none; 
+    position: fixed; 
+    top: 0; 
+    left: 0; 
+    width: 100vw; 
+    height: 100vh; 
+    background: #05070a !important; /* Force black background */
+    z-index: 100000; /* Higher than sidebar and overlay */
+    padding: 20px; 
+    box-sizing: border-box; 
+    overflow-y: auto; 
+    border: 6px solid #1a237e;
+}           
+</style>
 </head>
 <body>
     <div id="challan-overlay">
@@ -86,16 +110,7 @@ video, canvas { position: absolute; width: 95%; height: 90%; border-radius: 12px
             <button class="action-btn" style="width:100px; margin:0;" onclick="switchUI('monitor')">CLOSE</button>
         </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
-            <section>
-                <h2 style="color:var(--danger); border-bottom: 1px solid var(--danger); padding-bottom:10px;">[ PENDING INVESTIGATION ]</h2>
-                <div id="grid-pending" class="challan-grid"></div>
-            </section>
-            <section>
-                <h2 style="color:var(--success); border-bottom: 1px solid var(--success); padding-bottom:10px;">[ PROSECUTED / FINED ]</h2>
-                <div id="grid-prosecuted" class="challan-grid"></div>
-            </section>
-        </div>
+        
     </div>
     <div class="tabs" style="display:flex; gap:5px; margin-bottom:15px;">
         <button onclick="switchUI('monitor')" class="tab-btn active" id="tab-mon">MONITOR</button>
@@ -258,31 +273,33 @@ window.capturedDescriptors = [];
 window.tempCapturedImages = [];
 window.commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
    window.switchUI = (mode) => {
-    const monitorUI = document.getElementById('monitor-ui');
-    const registerUI = document.getElementById('register-ui');
-    const challanOverlay = document.getElementById('challan-overlay');
+    const monitor = document.getElementById('monitor-ui');
+    const register = document.getElementById('register-ui');
+    const challan = document.getElementById('challan-overlay');
+    const modal = document.getElementById('judgement-modal');
 
-    // Hide everything first
-    if(monitorUI) monitorUI.style.display = 'none';
-    if(registerUI) registerUI.style.display = 'none';
-    if(challanOverlay) challanOverlay.style.display = 'none';
+    // 1. Force hide all main views
+    if (monitor) monitor.style.setProperty('display', 'none', 'important');
+    if (register) register.style.setProperty('display', 'none', 'important');
+    if (challan) challan.style.setProperty('display', 'none', 'important');
+    
+    // 2. Hide modal if switching tabs to prevent "tab bleeding"
+    if (modal) modal.style.display = 'none';
 
-    // Show selected
+    // 3. Show the correct view
     if (mode === 'monitor') {
-        monitorUI.style.display = 'block';
+        if (monitor) monitor.style.setProperty('display', 'block', 'important');
     } else if (mode === 'register') {
-        registerUI.style.display = 'block';
+        if (register) register.style.setProperty('display', 'block', 'important');
     } else if (mode === 'challan') {
-        challanOverlay.style.display = 'block';
+        if (challan) challan.style.setProperty('display', 'block', 'important');
         window.renderChallans();
     }
 
-    // Update Tab Buttons
+    // 4. Update Tab button CSS
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-    const activeTabId = { 'monitor': 'tab-mon', 'register': 'tab-reg', 'challan': 'tab-cha' }[mode];
-    if (document.getElementById(activeTabId)) {
-        document.getElementById(activeTabId).classList.add('active');
-    }
+    const activeTab = document.getElementById('tab-' + mode.substring(0, 3));
+    if (activeTab) activeTab.classList.add('active');
 };
 window.judgeViolation = async function(key) {
     window.currentActiveViolationKey = key;

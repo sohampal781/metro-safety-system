@@ -1333,58 +1333,61 @@ window.deleteUserRecord = async function(rfid) {
 };
     // --- 5. VIOLATION LOGGING ---
 window.captureViolation = async function(minX, maxX, minY, maxY, distance, results) {
-    // --- SAFETY GATE 1: CHECK IF HUMAN LANDMARKS ACTUALLY EXIST ---
-    if (!results || !results.poseLandmarks || results.poseLandmarks.length < 24) {
-        console.log("Discarding capture: No valid human pose detected.");
+    // --- STEP 1: VERIFY HUMAN FACE PRESENCE ---
+    // We check for a face BEFORE doing anything else to stop curtain triggers
+    let faceDetection = null;
+    try {
+        faceDetection = await faceapi.detectSingleFace(videoElement).withFaceLandmarks().withFaceDescriptor();
+    } catch (e) { console.log("Face API Error:", e); }
+
+    if (!faceDetection) {
+        console.log("BLOCKING CAPTURE: No human face detected in frame.");
+        return; // EXIT: Do not save to Firebase, do not draw boxes
+    }
+
+    // --- STEP 2: VERIFY POSE CONFIDENCE (Double Check) ---
+    if (!results || !results.poseLandmarks) return;
+    const visibility = (results.poseLandmarks[23].visibility + results.poseLandmarks[24].visibility) / 2;
+    if (visibility < 0.75) {
+        console.log("BLOCKING CAPTURE: Pose visibility too low.");
         return;
     }
 
-    // --- SAFETY GATE 2: VERIFY KEY LANDMARK CONFIDENCE ---
-    // Landmark 23 & 24 are Left/Right Hips. We check their visibility score.
-    const leftHipVisibility = results.poseLandmarks[23].visibility;
-    const rightHipVisibility = results.poseLandmarks[24].visibility;
-    
-    // Threshold of 0.8 means the AI must be 80% sure it's a human part
-    if (leftHipVisibility < 0.8 && rightHipVisibility < 0.8) {
-        console.log("Discarding capture: Low confidence / Non-living object detected.");
-        return;
-    }
-
+    // --- STEP 3: PROCEED WITH CAPTURE (Since Human is verified) ---
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = videoElement.videoWidth;
     tempCanvas.height = videoElement.videoHeight;
     const ctx = tempCanvas.getContext('2d');
     
-    // 1. DRAW MIRRORED BACKGROUND
+    // Draw Mirrored Background
     ctx.save();
     ctx.translate(tempCanvas.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(videoElement, 0, 0);
     ctx.restore();
 
-    // 2. COORDINATE TRANSFORM
+    // Coordinate Fix for Box
     const correctedMinX = tempCanvas.width - maxX;
     const correctedMaxX = tempCanvas.width - minX;
     const boxWidth = correctedMaxX - correctedMinX;
 
-    // 3. AUTO-POSITION LABEL
+    // Label Positioning
     const labelHeight = 60;
     let labelY = minY - labelHeight; 
     if (labelY < 10) labelY = maxY + 10;
 
-    // 4. DRAW RED BOUNDING BOX
+    // Draw Red Box & Label
     ctx.strokeStyle = 'red';
     ctx.lineWidth = 10;
     ctx.strokeRect(correctedMinX, minY, boxWidth, maxY - minY);
 
-    // 5. DRAW DATA LABEL
     ctx.fillStyle = 'red';
     ctx.fillRect(correctedMinX, labelY, 450, labelHeight);
     ctx.fillStyle = 'white';
     ctx.font = 'bold 26px Arial';
     ctx.fillText(`VIOLATION: ${distance}cm FROM LINE`, correctedMinX + 15, labelY + 40);
 
-    // 6. DRAW YELLOW SAFETY LINE
+    // Draw Yellow Safety Line
     ctx.beginPath();
     ctx.strokeStyle = 'yellow';
     ctx.lineWidth = 12;
@@ -1398,34 +1401,31 @@ window.captureViolation = async function(minX, maxX, minY, maxY, distance, resul
 
     const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.8);
     
-    // 7. BIOMETRIC RECOGNITION (Firebase Integration)
+    // --- STEP 4: BIOMETRIC RECOGNITION (Using already detected face) ---
     let detectedRfid = "UNKNOWN_ID";
     let passengerName = "UNKNOWN";
 
     try {
-        const det = await faceapi.detectSingleFace(videoElement).withFaceLandmarks().withFaceDescriptor();
-        if (det) {
-            const { get, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
-            const snapshot = await get(dbRef(db, 'users'));
-            if (snapshot.exists()) {
-                const cloudUsers = snapshot.val();
-                for (let rfid in cloudUsers) {
-                    const user = cloudUsers[rfid];
-                    if (!user.descriptors) continue;
-                    for (const rawDesc of Object.values(user.descriptors)) {
-                        const dist = faceapi.euclideanDistance(det.descriptor, new Float32Array(Object.values(rawDesc)));
-                        if ((1 - dist) * 100 > 45) {
-                            detectedRfid = rfid;
-                            passengerName = user.name;
-                            break;
-                        }
+        const { get, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+        const snapshot = await get(dbRef(db, 'users'));
+        if (snapshot.exists()) {
+            const cloudUsers = snapshot.val();
+            for (let rfid in cloudUsers) {
+                const user = cloudUsers[rfid];
+                if (!user.descriptors) continue;
+                for (const rawDesc of Object.values(user.descriptors)) {
+                    const dist = faceapi.euclideanDistance(faceDetection.descriptor, new Float32Array(Object.values(rawDesc)));
+                    if ((1 - dist) * 100 > 48) { // Strict threshold for Metro Security
+                        detectedRfid = rfid;
+                        passengerName = user.name;
+                        break;
                     }
                 }
             }
         }
     } catch (e) { console.error(e); }
 
-    // 8. SAVE TO FIREBASE
+    // --- STEP 5: SAVE TO FIREBASE ---
     const violID = "VIOL-" + Date.now();
     const { set, ref: saveRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
     await set(saveRef(db, 'violations/' + violID), {

@@ -809,9 +809,6 @@ window.lookupUser = function() {
                     `<button class="action-btn" style="background:#ff9800; color:black;" onclick="window.openSettlementTerminal('${key}')">`
                        OPEN SETTLEMENT TERMINAL
                      </button>` : 
-                    `<button class="action-btn" onclick="window.judgeViolation('${key}')">
-                        ISSUE LEGAL NOTICE
-                     </button>`
                 }
                 <button class="delete-btn" style="background:#21262d; color:#8b949e; margin-top:8px;" 
                         onclick="window.deleteRecord('${key}')">PURGE LOG</button>
@@ -1187,11 +1184,13 @@ window.sendManualRegistrationSMS = async function() {
     smsBtn.innerText = "SENDING...";
     smsBtn.disabled = true;
 
-    // Added testing disclaimer
+    // EXACT TEXT REQUIRED
     let msg = `KOLKATA METRO: Enrollment Successful for ${name}. THIS IS TESTING MESSAGE DON'T PANIC.`;
-    msg = msg.replace(/(\r\n|\n|\r)/gm, " "); 
+    
+    // Clean the message for the API
+    const cleanMsg = msg.replace(/(\r\n|\n|\r)/gm, " ").trim(); 
 
-    const success = await window.sendKolkataSMS(mobile, msg);
+    const success = await window.sendKolkataSMS(mobile, cleanMsg);
     
     if (success) {
         smsBtn.innerText = "SMS SENT SUCCESSFULLY ✔";

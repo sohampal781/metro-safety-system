@@ -271,14 +271,26 @@ video, canvas { position: absolute; width: 95%; height: 90%; border-radius: 12px
         <div id="violation-list"></div>
     </div>
     <div id="challan-overlay">
-        <div class="challan-header">
-            <h1 style="margin:0;">METRO RAILWAY | VIOLATION PORTAL</h1>
-            <div style="display:flex; gap:10px; flex-grow:1; max-width:500px; margin: 0 40px;">
-                <input type="text" id="portal-search" placeholder="SEARCH BY CHALLAN NO. OR RFID..." onkeyup="window.renderChallans()">
-            </div>
-            <button class="action-btn" style="width:100px; margin:0;" onclick="switchUI('monitor')">CLOSE</button>
+    <div class="challan-header">
+        <h1 style="margin:0; color:var(--accent);">METRO RAILWAY | VIOLATION PORTAL</h1>
+        <div style="display:flex; gap:10px; flex-grow:1; max-width:500px; margin: 0 40px;">
+            <input type="text" id="portal-search" placeholder="SEARCH BY CHALLAN NO. OR RFID..." onkeyup="window.renderChallans()">
         </div>
+        <button class="action-btn" style="width:100px; margin:0;" onclick="switchUI('monitor')">CLOSE</button>
     </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 80px;">
+        <section>
+            <h2 style="color:var(--danger); border-bottom: 1px solid var(--danger); padding-bottom:10px;">[ PENDING INVESTIGATION ]</h2>
+            <div id="grid-pending" class="challan-grid"></div>
+        </section>
+
+        <section>
+            <h2 style="color:var(--success); border-bottom: 1px solid var(--success); padding-bottom:10px;">[ PROSECUTED / FINED ]</h2>
+            <div id="grid-prosecuted" class="challan-grid"></div>
+        </section>
+    </div>
+</div>
    <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
     import { getDatabase, ref, set, push, onValue, remove, update } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js";
@@ -318,33 +330,26 @@ window.capturedDescriptors = [];
 window.tempCapturedImages = [];
 window.commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
  window.switchUI = (mode) => {
-    // 1. Reset Sidebar Tabs
+    // Hide all UI panes first
     document.getElementById('monitor-ui').style.display = 'none';
     document.getElementById('register-ui').style.display = 'none';
+    document.getElementById('challan-overlay').style.display = 'none';
     
-    // 2. Hide/Show Main Containers
     const viewport = document.getElementById('viewport');
-    const challanPortal = document.getElementById('challan-overlay');
-    
+
     if (mode === 'monitor') {
         document.getElementById('monitor-ui').style.display = 'block';
-        viewport.style.display = 'flex'; // Show Live Feed
-        challanPortal.style.display = 'none'; // Hide Portal
+        viewport.style.display = 'flex';
     } 
     else if (mode === 'register') {
         document.getElementById('register-ui').style.display = 'block';
-        viewport.style.display = 'flex'; // Keep feed for alignment
-        challanPortal.style.display = 'none';
+        viewport.style.display = 'flex';
     } 
     else if (mode === 'challan') {
-        viewport.style.display = 'none'; // REMOVE CAMERA TO PREVENT OVERLAP
-        challanPortal.style.display = 'block'; // SHOW PORTAL FULLSCREEN
-        window.renderChallans(); // Load evidence cards
+        viewport.style.display = 'none'; // Hide camera to save CPU and prevent overlap
+        document.getElementById('challan-overlay').style.display = 'block';
+        window.renderChallans(); // Trigger the draw
     }
-
-    // Update Tab UI Styles
-    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-    document.getElementById('tab-' + mode.substring(0, 3)).classList.add('active');
 };
 window.judgeViolation = async function(key) {
     window.currentActiveViolationKey = key;

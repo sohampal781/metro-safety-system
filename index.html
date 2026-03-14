@@ -1339,57 +1339,57 @@ window.deleteUserRecord = async function(rfid) {
         }
     }
 };
-    // --- 5. VIOLATION LOGGING ---
-// ATTACH TO WINDOW TO PREVENT "NOT FOUND" ERROR
-window.captureViolation = async function(minX, maxX, minY, maxY, distance, results) {
-    
-    // --- 1. HUMAN VERIFICATION GATEKEEPER ---
+window.captureViolation = async function(minX, maxX, minY, maxY, distance, results, violationType = "LINE_BREACH") {
+    // 1. HUMAN FACE GATEKEEPER (Prevents Curtain/Object Triggers)
     let faceDetection = null;
     try {
         faceDetection = await faceapi.detectSingleFace(videoElement).withFaceLandmarks().withFaceDescriptor();
-    } catch (e) { console.log("AI Verification Busy..."); }
+    } catch (e) { console.log("AI Busy..."); }
 
-    if (!faceDetection) {
-        console.log("BLOCKING CAPTURE: No human face detected in frame.");
+    // For Spitting and Harassment, we REQUIRE a face to confirm the human
+    if (!faceDetection && (violationType === "SPITTING" || violationType === "HARASSMENT")) {
+        console.log("Blocking capture: No human face confirmed.");
         return; 
     }
 
-    // --- 2. CANVAS SETUP ---
+    // 2. PREPARE THE EVIDENCE CANVAS
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = videoElement.videoWidth;
     tempCanvas.height = videoElement.videoHeight;
     const ctx = tempCanvas.getContext('2d');
     
-    // Draw Mirrored Video Background
+    // Draw Mirrored Background
     ctx.save();
     ctx.translate(tempCanvas.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(videoElement, 0, 0);
     ctx.restore();
 
-    // --- 3. COORDINATE TRANSFORM ---
+    // 3. COORDINATE MAPPING & HEADROOM
     const cMinX = tempCanvas.width - maxX;
     const cMaxX = tempCanvas.width - minX;
     const headRoom = (maxY - minY) * 0.15;
-    const adjMinY = Math.max(15, minY - headRoom); 
+    const adjMinY = Math.max(15, minY - headRoom);
 
-    const labelHeight = 55;
+    // 4. DYNAMIC LABEL POSITIONING (Avoid cutting off text)
+    const labelHeight = 60;
     let labelY = adjMinY - labelHeight - 10;
-    if (labelY < 5) labelY = maxY + 15; 
+    if (labelY < 5) labelY = maxY + 15;
 
-    // --- 4. DRAW OVERLAYS ---
-    ctx.strokeStyle = 'red';
+    // 5. DRAW OVERLAYS
+    const boxColor = (violationType === "LINE_BREACH" || violationType === "SUICIDE") ? "red" : "orange";
+    ctx.strokeStyle = boxColor;
     ctx.lineWidth = 10;
     ctx.strokeRect(cMinX, adjMinY, cMaxX - cMinX, maxY - adjMinY);
 
-    ctx.fillStyle = 'red';
+    ctx.fillStyle = boxColor;
     ctx.fillRect(cMinX, labelY, 480, labelHeight);
     
     ctx.fillStyle = 'white';
     ctx.font = 'bold 24px Arial';
-    ctx.fillText(`VIOLATION: ${distance}cm FROM LINE`, cMinX + 15, labelY + 35);
+    ctx.fillText(`${violationType}: ${distance}cm FROM LINE`, cMinX + 15, labelY + 40);
 
-    // Draw Yellow Safety Line
+    // Draw Safety Line Proof
     ctx.beginPath();
     ctx.strokeStyle = 'yellow';
     ctx.lineWidth = 12;
@@ -1403,33 +1403,34 @@ window.captureViolation = async function(minX, maxX, minY, maxY, distance, resul
 
     const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.8);
     
-    // --- 5. BIOMETRIC IDENTIFICATION ---
+    // 6. BIOMETRIC IDENTIFICATION (Link to RFID for Fine Tab)
     let detectedRfid = "UNKNOWN_ID";
     let passengerName = "UNKNOWN";
 
-    try {
-        const { get, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
-        const snapshot = await get(dbRef(db, 'users'));
-        if (snapshot.exists()) {
-            const cloudUsers = snapshot.val();
-            for (let rfid in cloudUsers) {
-                const user = cloudUsers[rfid];
-                if (!user.descriptors) continue;
-                for (const rawDesc of Object.values(user.descriptors)) {
-                    const serverDesc = new Float32Array(Object.values(rawDesc));
-                    const dist = faceapi.euclideanDistance(faceDetection.descriptor, serverDesc);
-                    if ((1 - dist) * 100 > 48) { 
-                        detectedRfid = rfid;
-                        passengerName = user.name;
-                        break;
+    if (faceDetection) {
+        try {
+            const { get, ref: dbRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+            const snapshot = await get(dbRef(db, 'users'));
+            if (snapshot.exists()) {
+                const cloudUsers = snapshot.val();
+                for (let rfid in cloudUsers) {
+                    const user = cloudUsers[rfid];
+                    if (!user.descriptors) continue;
+                    for (const rawDesc of Object.values(user.descriptors)) {
+                        const dist = faceapi.euclideanDistance(faceDetection.descriptor, new Float32Array(Object.values(rawDesc)));
+                        if ((1 - dist) * 100 > 48) { 
+                            detectedRfid = rfid;
+                            passengerName = user.name;
+                            break;
+                        }
                     }
+                    if (detectedRfid !== "UNKNOWN_ID") break;
                 }
-                if (detectedRfid !== "UNKNOWN_ID") break;
             }
-        }
-    } catch (e) { console.error("Biometric Error:", e); }
+        } catch (e) { console.error("ID Error:", e); }
+    }
 
-    // --- 6. SAVE TO FIREBASE ---
+    // 7. FIREBASE ARCHIVING (Will show up in Fine Tab)
     const violID = "VIOL-" + Date.now();
     try {
         const { set, ref: saveRef } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
@@ -1437,13 +1438,33 @@ window.captureViolation = async function(minX, maxX, minY, maxY, distance, resul
             id: violID,
             img: dataUrl,
             time: new Date().toLocaleString(),
-            linkedRfid: detectedRfid,
+            linkedRfid: detectedRfid, // THIS CONNECTS TO THE FINE TAB LOOKUP
             status: "PENDING",
             violationDistance: distance + "cm",
-            identifiedName: passengerName
+            identifiedName: passengerName,
+            type: violationType,
+            location: "DUMDUM-PLATFORM-P4"
         });
-        console.log("Violation Archived.");
+        console.log(`Violation ${violID} logged for ${passengerName}`);
     } catch (err) { console.error(err); }
+
+    // 8. DISCRETE AUTHORITY VOICE ANNOUNCEMENT
+    window.announceToAuthority(violationType, "Pillar 4");
+};
+
+// --- AI VOICE ENGINE ---
+window.announceToAuthority = function(type, location) {
+    const msg = {
+        "LINE_BREACH": `Yellow line breach at ${location}. Logging fine.`,
+        "SUICIDE": `Emergency. Potential suicide attempt at ${location}. RPF attend.`,
+        "HARASSMENT": `Security alert. Possible harassment at ${location}.`,
+        "SPITTING": `Hygiene violation. Spitting detected at ${location}.`
+    }[type] || "Safety violation detected.";
+
+    const speech = new SpeechSynthesisUtterance(msg);
+    speech.rate = 0.9;
+    speech.voice = window.speechSynthesis.getVoices().find(v => v.lang === 'en-IN');
+    window.speechSynthesis.speak(speech);
 };
     // --- 6. INITIALIZATION ---
     pointCountInput.onchange = updateSliders;

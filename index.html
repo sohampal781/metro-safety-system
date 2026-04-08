@@ -1263,7 +1263,7 @@ window.sendManualRegistrationSMS = async function() {
     smsBtn.disabled = true;
 
     // EXACT TEXT REQUIRED
-    let msg = `KOLKATA METRO: Enrollment Successful for ${name}. THIS IS TESTING MESSAGE DON'T PANIC.`;
+    let msg = `KOLKATA METRO: Enrollment Successful.RFID:${rfid}. THIS IS TESTING MESSAGE DON'T PANIC.`;
     
     // Clean the message for the API
     const cleanMsg = msg.replace(/(\r\n|\n|\r)/gm, " ").trim(); 

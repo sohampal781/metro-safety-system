@@ -270,9 +270,8 @@
 
     <div id="sidebar">
     <div class="tabs" style="display:flex; gap:5px; margin-bottom:15px;">
-        <button onclick="switchUI('monitor')" class="tab-btn active" id="tab-mon">MONITOR</button>
-        <button onclick="switchUI('register')" class="tab-btn" id="tab-reg">REGISTER</button>
-        <button onclick="switchUI('challan')" class="tab-btn" id="tab-cha">PORTAL</button>
+        <button onclick="switchUI('monitor')" class="tab-btn active" id="tab-mon">MONITORING</button>
+        <button onclick="switchUI('logs')" class="tab-btn" id="tab-logs">BREACH LOGS</button>
     </div>
 
     <div id="status-display" class="status-card status-safe">SYSTEM READY</div>
@@ -298,7 +297,7 @@
         </div>
         <div class="control-group" style="border:1px solid var(--accent);padding:12px;border-radius:8px;margin-top:16px;">
             <label style="color:var(--accent);font-weight:bold;">SIMPLE CAMERA DISTANCE SETUP</label>
-            <p style="font-size:11px;color:#9da7b3;line-height:1.4;">On the live camera image, select the floor point directly below the camera, then select another floor point at a measured distance from it. Enter that distance in metres.</p>
+            <p style="font-size:11px;color:#9da7b3;line-height:1.4;">Select four corners of a measured rectangular floor area. Point A must be directly below the camera. Enter the rectangle width/depth and the camera's perpendicular height. The system uses perspective mapping to estimate floor distance.</p>
             <div id="calibration-points"></div>
             <div style="display:flex;align-items:center;gap:8px;margin:8px 0">
                 <label for="camera-height-metres" style="font-size:11px">Camera height perpendicular to floor (metres)</label>
@@ -306,16 +305,27 @@
             </div>
             <button type="button" class="action-btn" id="calibrate-distance-btn">SAVE DISTANCE CALIBRATION</button>
             <div id="calibration-status" style="font-size:11px;margin-top:8px;color:#e1b12c;">Not calibrated.</div>
-            <div style="font-size:11px;color:#9da7b3;margin-top:6px;">Keep the webcam fixed. This simple two-point scale is an estimate; perspective can cause errors at different floor depths.</div>
+            <div style="font-size:11px;color:#9da7b3;margin-top:6px;">Keep the webcam fixed. Four-point perspective calibration corrects floor-plane perspective within the calibrated area. Accuracy still depends on careful corner measurements and a fixed camera.</div>
         </div>
         <div class="control-group" style="border:1px solid var(--border);padding:12px;border-radius:8px;">
             <label>PERSON DISTANCE FROM CAMERA</label>
+            <div style="font-size:11px;color:#9da7b3;">STRAIGHT-LINE CAMERA DISTANCE</div>
             <div id="camera-distance-readout" style="font-size:25px;font-weight:800;color:var(--accent);">-- m</div>
+            <div style="font-size:11px;color:#9da7b3;margin-top:8px;">HORIZONTAL FLOOR DISTANCE</div>
+            <div id="floor-distance-readout" style="font-size:20px;font-weight:700;color:#00d4aa;">-- m</div>
             <div id="camera-distance-detail" style="font-size:11px;color:#9da7b3;">Waiting for calibrated person position</div>
         </div>
         <button id="start-btn">LOCK & START MONITORING</button>
     </div>
-        <div id="register-ui" style="display:none; padding: 20px; background: #0a0b10; height: 100vh; overflow-y: scroll; box-sizing: border-box; padding-bottom: 100px;">
+    <div id="logs-ui" style="display:none;padding:16px;max-height:calc(100vh - 90px);overflow-y:auto;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <h2 style="color:var(--accent);margin:0;font-size:18px;">BREACH HISTORY</h2>
+            <button type="button" class="action-btn" id="refresh-logs-btn">REFRESH</button>
+        </div>
+        <div id="breach-log-summary" style="color:#9da7b3;font-size:12px;margin-bottom:12px;">No breach records loaded.</div>
+        <div id="breach-log-list"></div>
+    </div>
+        <div id="register-ui" style="display:none;visibility:hidden; padding: 20px; background: #0a0b10; height: 100vh; overflow-y: scroll; box-sizing: border-box; padding-bottom: 100px;">
     
     <div class="registration-header" style="font-size: 18px; color: var(--accent); margin-bottom: 20px; text-align:center; border-bottom: 1px solid var(--accent); padding-bottom:10px;">
         KOLKATA METRO | ENROLLMENT & UPDATE TERMINAL
@@ -484,38 +494,17 @@ window.capturedDescriptors = [];
 window.tempCapturedImages = [];
 window.commands = ["LOOK STRAIGHT (FRONT)", "TURN HEAD LEFT", "TURN HEAD RIGHT", "LOOK UP / DOWN"];
    window.switchUI = (mode) => {
-    // 1. Core Visibility: Hide/Show main layout containers
-    document.getElementById('monitor-ui').style.display = mode === 'monitor' ? 'block' : 'none';
-    document.getElementById('register-ui').style.display = mode === 'register' ? 'block' : 'none';
-    document.getElementById('challan-overlay').style.display = mode === 'challan' ? 'block' : 'none';
-    
-    // 2. Full-Screen Registration: Hide the video viewport to focus on enrollment/database
-    const viewport = document.getElementById('viewport');
-    const sidebar = document.getElementById('sidebar');
-    
-    if (mode === 'register') {
-        viewport.style.display = 'none';
-        sidebar.style.width = '100%'; // Expand to full screen
-        
-        // --- TRIGGER DATABASE SYNC ---
-        // This ensures the RFID list and delete buttons load every time
-        window.renderUserList(); 
-    } else {
-        viewport.style.display = 'flex';
-        sidebar.style.width = '380px'; // Return to standard width
-    }
-
-    // 3. Tab active states (Visual highlights)
-    document.getElementById('tab-mon').classList.toggle('active', mode === 'monitor');
-    document.getElementById('tab-reg').classList.toggle('active', mode === 'register');
-    document.getElementById('tab-cha').classList.toggle('active', mode === 'challan');
-    
-    // 4. Portal Auto-Refresh: Refresh violations when entering the Portal
-    if (mode === 'challan') {
-        window.renderChallans();
-    }
-    
-    console.log("System Mode Switched to: " + mode.toUpperCase());
+    const showLogs = mode === 'logs';
+    document.getElementById('monitor-ui').style.display = showLogs ? 'none' : 'block';
+    document.getElementById('logs-ui').style.display = showLogs ? 'block' : 'none';
+    document.getElementById('register-ui').style.display = 'none';
+    const challan = document.getElementById('challan-overlay');
+    if (challan) challan.style.display = 'none';
+    document.getElementById('viewport').style.display = 'flex';
+    document.getElementById('sidebar').style.width = '380px';
+    document.getElementById('tab-mon').classList.toggle('active', !showLogs);
+    document.getElementById('tab-logs').classList.toggle('active', showLogs);
+    if (showLogs) window.renderBreachLogs();
 };
 window.judgeViolation = async function(key) {
     window.currentActiveViolationKey = key;
@@ -953,37 +942,66 @@ window.lookupUser = function() {
         return (px - x1) * (y2 - y1) - (py - y1) * (x2 - x1);
     }
 
-    // --- SIMPLE TWO-POINT FLOOR DISTANCE CALIBRATION ---
-    // Point A should be the floor point directly below the camera.
-    // Point B is another floor point at a known measured distance from A.
-    const distanceCalibration = {a:null,b:null,knownMetres:2,metresPerPixel:null};
+    // --- FOUR-POINT FLOOR PERSPECTIVE CALIBRATION ---
+    // A is the floor point directly below the camera. B/C/D define a measured
+    // rectangular floor reference, allowing a projective homography.
+    const distanceCalibration = {a:null,b:null,c:null,d:null};
     let selectingDistancePoint = null;
     let cameraFloorOrigin = null;
     let floorMetresPerPixel = null;
-    let floorHomography = null; // kept null: this simplified mode uses a single scale
+    let floorHomography = null;
     const calibrationStatus = document.getElementById('calibration-status');
     const distanceReadout = document.getElementById('camera-distance-readout');
     const distanceDetail = document.getElementById('camera-distance-detail');
     const calibrationContainer = document.getElementById('calibration-points');
     calibrationContainer.innerHTML = `
-      <div class="cal-row"><strong>A</strong><span style="font-size:11px;flex:1">Camera floor projection</span><button type="button" id="pick-distance-a">SELECT A</button></div>
-      <div class="cal-row"><strong>B</strong><span style="font-size:11px;flex:1">Known-distance floor point</span><button type="button" id="pick-distance-b">SELECT B</button></div>
-      <div style="display:flex;align-items:center;gap:8px;margin:8px 0"><label for="known-floor-distance" style="font-size:11px">A to B distance (metres)</label><input id="known-floor-distance" type="number" min="0.1" step="0.01" value="2" style="width:90px"></div>`;
-    document.getElementById('pick-distance-a').addEventListener('click',()=>{selectingDistancePoint='a';calibrationStatus.textContent='Click point A: floor directly below the camera.';});
-    document.getElementById('pick-distance-b').addEventListener('click',()=>{selectingDistancePoint='b';calibrationStatus.textContent='Click point B: the measured floor point.';});
+      <div class="cal-row"><strong>A</strong><span style="font-size:11px;flex:1">Camera floor projection (0,0)</span><button type="button" id="pick-distance-a">SELECT A</button></div>
+      <div class="cal-row"><strong>B</strong><span style="font-size:11px;flex:1">Near-side width corner</span><button type="button" id="pick-distance-b">SELECT B</button></div>
+      <div class="cal-row"><strong>C</strong><span style="font-size:11px;flex:1">Far-side width/depth corner</span><button type="button" id="pick-distance-c">SELECT C</button></div>
+      <div class="cal-row"><strong>D</strong><span style="font-size:11px;flex:1">Far-side depth corner</span><button type="button" id="pick-distance-d">SELECT D</button></div>
+      <div style="display:flex;align-items:center;gap:8px;margin:8px 0"><label for="known-floor-width" style="font-size:11px">A-B width (m)</label><input id="known-floor-width" type="number" min="0.1" step="0.01" value="2" style="width:70px"><label for="known-floor-depth" style="font-size:11px">A-D depth (m)</label><input id="known-floor-depth" type="number" min="0.1" step="0.01" value="4" style="width:70px"></div>
+      <div style="font-size:10px;color:#9da7b3">Select A, B, C, D in order around a measured rectangular floor area. A must be directly below the camera.</div>`;
+    ['a','b','c','d'].forEach(k=>document.getElementById(`pick-distance-${k}`).addEventListener('click',()=>{
+      selectingDistancePoint=k;
+      calibrationStatus.textContent=`Click floor corner ${k.toUpperCase()} on the live camera image.`;
+    }));
+
+    function solveHomography(srcPts, dstPts) {
+      const M=[];
+      for(let i=0;i<4;i++){
+        const {x,y}=srcPts[i], {X,Y}=dstPts[i];
+        M.push([x,y,1,0,0,0,-X*x,-X*y,X]);
+        M.push([0,0,0,x,y,1,-Y*x,-Y*y,Y]);
+      }
+      for(let col=0;col<8;col++){
+        let pivot=col;
+        for(let r=col+1;r<8;r++) if(Math.abs(M[r][col])>Math.abs(M[pivot][col])) pivot=r;
+        if(Math.abs(M[pivot][col])<1e-10) return null;
+        [M[col],M[pivot]]=[M[pivot],M[col]];
+        const div=M[col][col]; for(let j=col;j<9;j++) M[col][j]/=div;
+        for(let r=0;r<8;r++) if(r!==col){const f=M[r][col];for(let j=col;j<9;j++)M[r][j]-=f*M[col][j];}
+      }
+      return M.map(row=>row[8]).concat(1);
+    }
+    function imageToFloor(x,y,H){
+      const den=H[6]*x+H[7]*y+1;
+      if(Math.abs(den)<1e-9)return null;
+      return {x:(H[0]*x+H[1]*y+H[2])/den,y:(H[3]*x+H[4]*y+H[5])/den};
+    }
     document.getElementById('calibrate-distance-btn').addEventListener('click',()=>{
-      const known=parseFloat(document.getElementById('known-floor-distance').value);
+      const width=parseFloat(document.getElementById('known-floor-width').value);
+      const depth=parseFloat(document.getElementById('known-floor-depth').value);
       const cameraHeight=parseFloat(document.getElementById('camera-height-metres').value);
-      if(!distanceCalibration.a||!distanceCalibration.b||!Number.isFinite(known)||known<=0){calibrationStatus.textContent='Select A and B and enter their measured distance.';calibrationStatus.style.color='#ff7777';return;}
-      if(!Number.isFinite(cameraHeight)||cameraHeight<=0){calibrationStatus.textContent='Enter the camera height measured vertically/perpendicularly from the floor.';calibrationStatus.style.color='#ff7777';return;}
+      if(!['a','b','c','d'].every(k=>distanceCalibration[k])){calibrationStatus.textContent='Select all four floor corners A, B, C and D.';calibrationStatus.style.color='#ff7777';return;}
+      if(!Number.isFinite(width)||width<=0||!Number.isFinite(depth)||depth<=0||!Number.isFinite(cameraHeight)||cameraHeight<=0){calibrationStatus.textContent='Enter valid floor width, depth and perpendicular camera height.';calibrationStatus.style.color='#ff7777';return;}
+      const srcPts=['a','b','c','d'].map(k=>distanceCalibration[k]);
+      const dstPts=[{x:0,y:0},{x:width,y:0},{x:width,y:depth},{x:0,y:depth}];
+      const H=solveHomography(srcPts,dstPts);
+      if(!H){calibrationStatus.textContent='Calibration points are invalid or nearly in a straight line. Select the four floor corners again.';calibrationStatus.style.color='#ff7777';return;}
+      floorHomography=H;
+      cameraFloorOrigin={x:0,y:0};
       window.metroGuardCameraHeightMetres=cameraHeight;
-      const pixels=Math.hypot(distanceCalibration.b.x-distanceCalibration.a.x,distanceCalibration.b.y-distanceCalibration.a.y);
-      if(pixels<10){calibrationStatus.textContent='Choose two points farther apart.';calibrationStatus.style.color='#ff7777';return;}
-      distanceCalibration.knownMetres=known;
-      distanceCalibration.metresPerPixel=known/pixels;
-      cameraFloorOrigin=distanceCalibration.a;
-      floorMetresPerPixel=distanceCalibration.metresPerPixel;
-      calibrationStatus.textContent=`Saved: floor scale ${known.toFixed(2)} m; perpendicular camera height ${cameraHeight.toFixed(2)} m. Keep camera fixed.`;
+      calibrationStatus.textContent=`Perspective calibration saved: ${width.toFixed(2)} m × ${depth.toFixed(2)} m floor area; camera height ${cameraHeight.toFixed(2)} m.`;
       calibrationStatus.style.color='#00e676';
     });
     canvasElement.addEventListener('click',e=>{
@@ -1139,15 +1157,21 @@ window.lookupUser = function() {
         if(detected){
             const lmL=results.poseLandmarks?.[27],lmR=results.poseLandmarks?.[28];
             let cameraFloorDistance=null;
-            if(floorMetresPerPixel!==null&&cameraFloorOrigin&&lmL&&lmR){
-                const fx=(lmL.x+lmR.x)/2*canvasElement.width,fy=(lmL.y+lmR.y)/2*canvasElement.height;
-                const horizontalFloorDistance=Math.hypot(fx-cameraFloorOrigin.x,fy-cameraFloorOrigin.y)*floorMetresPerPixel;
-                const perpendicularHeight=Number(window.metroGuardCameraHeightMetres)||0;
-                // 3D straight-line distance from camera lens to the detected foot point:
-                // sqrt(horizontal floor distance² + perpendicular camera height²).
-                cameraFloorDistance=Math.hypot(horizontalFloorDistance,perpendicularHeight);
+            if(floorHomography&&lmL&&lmR){
+                const fx=(lmL.x+lmR.x)/2*canvasElement.width;
+                const fy=(lmL.y+lmR.y)/2*canvasElement.height;
+                const floorPoint=imageToFloor(fx,fy,floorHomography);
+                if(floorPoint){
+                    const horizontalFloorDistance=Math.hypot(floorPoint.x,floorPoint.y);
+                    const perpendicularHeight=Number(window.metroGuardCameraHeightMetres)||0;
+                    window.lastFloorDistanceMetres=horizontalFloorDistance;
+                    cameraFloorDistance=Math.hypot(horizontalFloorDistance,perpendicularHeight);
+                    window.lastCameraDistanceMetres=cameraFloorDistance;
+                }
             }
             distanceReadout.textContent=cameraFloorDistance===null?'-- m':`${cameraFloorDistance.toFixed(2)} m`;
+            const floorReadout=document.getElementById('floor-distance-readout');
+            if(floorReadout) floorReadout.textContent=window.lastFloorDistanceMetres===null?'-- m':`${window.lastFloorDistanceMetres.toFixed(2)} m`;
             distanceDetail.textContent=cameraFloorDistance===null?'Foot landmarks unavailable or distance not calibrated':'Estimated 3D camera-to-foot distance (floor range + perpendicular height)';
             const distanceLabel=cameraFloorDistance===null?'DISTANCE NOT CALIBRATED':`${cameraFloorDistance.toFixed(2)}m from camera`;
             const distanceForLog=cameraFloorDistance===null?null:Math.round(cameraFloorDistance*100);
@@ -1491,6 +1515,42 @@ window.deleteUserRecord = async function(rfid) {
         }
     }
 };
+// BREACH LOG VIEW: reads the existing Firebase violation archive and local fallback.
+window.renderBreachLogs = async function() {
+    const list=document.getElementById('breach-log-list');
+    const summary=document.getElementById('breach-log-summary');
+    if(!list||!summary)return;
+    list.innerHTML='<p style="color:#9da7b3">Loading breach records...</p>';
+    let records=[];
+    try {
+        const {get,ref:dbRef}=await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+        const snap=await get(dbRef(db,'violations'));
+        if(snap.exists()) records=Object.values(snap.val()||{});
+    } catch(e) { console.warn('Firebase log read failed; showing local records.',e); }
+    const local=JSON.parse(localStorage.getItem('metroGuardBreachLogs')||'[]');
+    const seen=new Set(records.map(r=>r.id));
+    local.forEach(r=>{if(!seen.has(r.id))records.push(r);});
+    records.sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
+    summary.textContent=`${records.length} breach record(s) | Includes time, identity (when recognised), image evidence and floor distance.`;
+    if(!records.length){list.innerHTML='<p style="color:#9da7b3">No breaches recorded yet.</p>';return;}
+    list.innerHTML='';
+    records.forEach(r=>{
+        const card=document.createElement('div');
+        card.style.cssText='background:#151b24;border:1px solid #343d4b;border-left:4px solid #ff4545;border-radius:8px;padding:12px;margin-bottom:10px;';
+        const img=r.img?`<img src="${r.img}" alt="Breach evidence" style="width:100%;max-height:220px;object-fit:contain;margin-top:8px;border-radius:5px;">`:'';
+        const safe=v=>(v===undefined||v===null||v===''?'Not available':String(v));
+        card.innerHTML=`<div style="display:flex;justify-content:space-between;gap:8px;"><b style="color:#ff6666">${safe(r.type||'LINE_BREACH')}</b><small style="color:#9da7b3">${safe(r.time)}</small></div>
+        <div style="font-size:12px;line-height:1.7;margin-top:7px;color:#e6edf3">
+        <b>Person:</b> ${safe(r.identifiedName)}<br><b>RFID:</b> ${safe(r.linkedRfid)}<br>
+        <b>Floor distance from camera projection:</b> ${safe(r.floorDistanceMetres)} m<br>
+        <b>Direct camera-to-person distance:</b> ${safe(r.cameraDistanceMetres)} m<br>
+        <b>Distance from boundary:</b> ${safe(r.violationDistance)}<br>
+        <b>Location:</b> ${safe(r.location)}<br><b>Record ID:</b> ${safe(r.id)}</div>${img}`;
+        list.appendChild(card);
+    });
+};
+document.getElementById('refresh-logs-btn')?.addEventListener('click',window.renderBreachLogs);
+
 window.captureViolation = async function(minX, maxX, minY, maxY, distance, results, violationType = "LINE_BREACH") {
     // FACE RECOGNITION: identify an enrolled passenger when a face is visible.
     // Face recognition is supplementary; it never blocks a body/foot breach alert.
@@ -1594,12 +1654,23 @@ window.captureViolation = async function(minX, maxX, minY, maxY, distance, resul
             linkedRfid: detectedRfid, // THIS CONNECTS TO THE FINE TAB LOOKUP
             status: "PENDING",
             violationDistance: distance + "cm",
+            floorDistanceMetres: window.lastFloorDistanceMetres===null?null:Number(window.lastFloorDistanceMetres.toFixed(2)),
+            cameraDistanceMetres: window.lastCameraDistanceMetres===null?null:Number(window.lastCameraDistanceMetres.toFixed(2)),
             identifiedName: passengerName,
             type: violationType,
+            timestamp: Date.now(),
             location: "DUMDUM-PLATFORM-P4"
         });
         console.log(`Violation ${violID} logged for ${passengerName}`);
     } catch (err) { console.error(err); }
+    const localEntry={id:violID,img:dataUrl,time:new Date().toLocaleString(),timestamp:Date.now(),
+        linkedRfid:detectedRfid,identifiedName:passengerName,type:violationType,
+        violationDistance:distance===null?'Not available':distance+'cm',
+        floorDistanceMetres:window.lastFloorDistanceMetres===null?null:Number(window.lastFloorDistanceMetres.toFixed(2)),
+        cameraDistanceMetres:window.lastCameraDistanceMetres===null?null:Number(window.lastCameraDistanceMetres.toFixed(2)),
+        location:"DUMDUM-PLATFORM-P4"};
+    const savedLogs=JSON.parse(localStorage.getItem('metroGuardBreachLogs')||'[]');
+    savedLogs.unshift(localEntry); localStorage.setItem('metroGuardBreachLogs',JSON.stringify(savedLogs.slice(0,200)));
 
     // 8. DISCRETE AUTHORITY VOICE ANNOUNCEMENT
     window.announceToAuthority(violationType, "Pillar 4");

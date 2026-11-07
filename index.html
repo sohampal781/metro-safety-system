@@ -972,7 +972,7 @@ window.lookupUser = function() {
         locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
     });
 
-    pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5 });
+    pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, enableSegmentation: true, smoothSegmentation: true, minDetectionConfidence: 0.35, minTrackingConfidence: 0.35 });
 
   pose.onResults((results) => {
     canvasElement.width = videoElement.videoWidth;
@@ -991,131 +991,64 @@ window.lookupUser = function() {
     });
     canvasCtx.stroke();
 
-    if (results.poseLandmarks && isMonitoring) {
-        let minX = canvasElement.width, maxX = 0, minY = canvasElement.height, maxY = 0;
-        const leftHip = results.poseLandmarks[23];
-        const rightHip = results.poseLandmarks[24];
-        
-        // Calculate Person Center (0-100 scale)
-        const personX = ((leftHip.x + rightHip.x) / 2) * 100;
-        const personY = ((leftHip.y + rightHip.y) / 2) * 100;
-
-        // Calculate Bounding Box Limits
-        results.poseLandmarks.forEach(lm => {
-            const px = lm.x * canvasElement.width;
-            const py = lm.y * canvasElement.height;
-            if (px < minX) minX = px; if (px > maxX) maxX = px;
-            if (py < minY) minY = py; if (py > maxY) maxY = py;
-        });
-
-        // 2. DISTANCE CALCULATION (To nearest Yellow Line Segment)
-        let minDistancePx = Infinity;
-        for (let i = 0; i < window.linePoints.length - 1; i++) {
-            const p1 = window.linePoints[i]; const p2 = window.linePoints[i+1];
-            const x1 = (p1.x/100) * canvasElement.width; const y1 = (p1.y/100) * canvasElement.height;
-            const x2 = (p2.x/100) * canvasElement.width; const y2 = (p2.y/100) * canvasElement.height;
-            const px = (personX/100) * canvasElement.width; const py = (personY/100) * canvasElement.height;
-            
-            const A = px - x1; const B = py - y1; const C = x2 - x1; const D = y2 - y1;
-            const dot = A * C + B * D; const len_sq = C * C + D * D;
-            let param = (len_sq != 0) ? dot / len_sq : -1;
-            let xx, yy;
-            if (param < 0) { xx = x1; yy = y1; } else if (param > 1) { xx = x2; yy = y2; }
-            else { xx = x1 + param * C; yy = y1 + param * D; }
-            const dist = Math.sqrt((px - xx)**2 + (py - yy)**2);
-            if (dist < minDistancePx) minDistancePx = dist;
-        }
-
-        // Estimated floor distance from the camera's floor projection using the two-point scale.
-        // This is a simple pixel-scale estimate, not perspective-correct metric reconstruction.
-        let cameraFloorDistance = null;
-        if (floorMetresPerPixel !== null && cameraFloorOrigin && results.poseLandmarks[27] && results.poseLandmarks[28]) {
-            const lmL=results.poseLandmarks[27], lmR=results.poseLandmarks[28];
-            const footU=(lmL.x+lmR.x)/2, footV=(lmL.y+lmR.y)/2;
-            const footX=footU*canvasElement.width, footY=footV*canvasElement.height;
-            cameraFloorDistance=Math.hypot(footX-cameraFloorOrigin.x,footY-cameraFloorOrigin.y)*floorMetresPerPixel;
-        }
-        if(cameraFloorDistance!==null && Number.isFinite(cameraFloorDistance)){
-            distanceReadout.textContent=`${cameraFloorDistance.toFixed(2)} m`;
-            distanceDetail.textContent='Calibrated floor distance from camera projection to detected feet';
-        } else {
-            distanceReadout.textContent='-- m';
-            distanceDetail.textContent='Select points A and B and save the measured floor distance';
-        }
-        const distanceLabel = cameraFloorDistance!==null ? `${cameraFloorDistance.toFixed(2)}m from camera` : 'DISTANCE NOT CALIBRATED';
-        const distanceForLog = cameraFloorDistance!==null ? Math.round(cameraFloorDistance*100) : null;
-        // BODY-PART BREACH DETECTION:
-        // Test every reliably visible pose landmark, including ankles and feet.
-        // A breach is raised as soon as ANY visible body landmark enters the unsafe side.
-        const safeConfig = document.getElementById('safe-side').value;
-        const bodyLandmarks = results.poseLandmarks;
-        const isBreached = bodyLandmarks.some(lm => {
-            const visibility = (typeof lm.visibility === 'number') ? lm.visibility : 1;
-            if (visibility < 0.45) return false;
-            const landmarkX = lm.x * 100;
-            const landmarkY = lm.y * 100;
-            const landmarkSide = getSide(
-                landmarkX, landmarkY,
-                window.linePoints[0].x, window.linePoints[0].y,
-                window.linePoints[1].x, window.linePoints[1].y
-            );
-            return safeConfig === 'left' ? landmarkSide > 0 : landmarkSide < 0;
-        });
-
-        // Audible alarm: browser audio is unlocked when the operator starts monitoring.
-        if (isBreached) playBreachAlarm();
-        else stopBreachAlarm();
-
-        // 3. DYNAMIC POSITIONING (Box and Label)
-        const headRoom = (maxY - minY) * 0.15;
-        const adjMinY = Math.max(10, minY - headRoom); // Lift box above head
-        const labelHeight = 40;
-        
-        let labelY = adjMinY - labelHeight - 5;
-        if (labelY < 10) labelY = maxY + 10; // Move label to feet if no head room
-
-        // 4. DRAW LIVE OVERLAYS (Un-mirroring the text)
-        canvasCtx.save();
-        
-        // Draw Red/Green Bounding Box
-        canvasCtx.lineWidth = 5;
-        canvasCtx.strokeStyle = isBreached ? '#ff3333' : '#00e676';
-        canvasCtx.strokeRect(minX, adjMinY, maxX - minX, maxY - adjMinY);
-
-        // Flip Context for Readable Text (Selfie Correction)
-        canvasCtx.translate(minX, labelY);
-        canvasCtx.scale(-1, 1);
-        canvasCtx.translate(-260, 0); // Label Width Offset
-
-        // Label Background
-        canvasCtx.fillStyle = isBreached ? '#ff3333' : '#00e676';
-        canvasCtx.fillRect(0, 0, 260, labelHeight);
-        
-        // Label Text
-        canvasCtx.fillStyle = 'white';
-        canvasCtx.font = 'bold 18px Inter, sans-serif';
-        const statusText = isBreached ? `LANE VIOLATION | ${distanceLabel}` : `SECURE | ${distanceLabel}`;
-        canvasCtx.fillText(statusText, 10, 28);
-        
-        canvasCtx.restore();
-
-        // 5. BREACH LOGIC & CAPTURE
-        if (isBreached) {
-            if (!breachStartTime) breachStartTime = Date.now();
-            const elapsed = Date.now() - breachStartTime;
-            statusDisplay.innerText = `BREACH: ${(elapsed/1000).toFixed(1)}s`;
-            statusDisplay.className = "status-card status-breach";
-            
-            if (elapsed > BREACH_THRESHOLD) {
-                // Call global capture function
-                window.captureViolation(minX, maxX, minY, maxY, distanceForLog, results); 
-                breachStartTime = Date.now() + 5000; // Cooldown
+    if (isMonitoring && (results.poseLandmarks || results.segmentationMask)) {
+        let minX=canvasElement.width,maxX=0,minY=canvasElement.height,maxY=0;
+        let detected=false, isBreached=false;
+        const safeConfig=document.getElementById('safe-side').value;
+        // Prefer the person silhouette mask so a foot, hand, arm, or any visible body area counts.
+        if(results.segmentationMask){
+            const sc=document.createElement('canvas'); sc.width=160; sc.height=90;
+            const sx=sc.getContext('2d',{willReadFrequently:true}); sx.drawImage(results.segmentationMask,0,0,160,90);
+            const data=sx.getImageData(0,0,160,90).data;
+            const a=window.linePoints[0], b=window.linePoints[window.linePoints.length-1];
+            const x1=a.x/100*160,y1=a.y/100*90,x2=b.x/100*160,y2=b.y/100*90;
+            let total=0,unsafe=0;
+            for(let y=0;y<90;y+=2) for(let x=0;x<160;x+=2){
+                if(data[(y*160+x)*4]<128) continue;
+                total++;
+                const side=(x-x1)*(y2-y1)-(y-y1)*(x2-x1);
+                if(safeConfig==='left'?side>0:side<0) unsafe++;
+                const fx=x/160*canvasElement.width, fy=y/90*canvasElement.height;
+                minX=Math.min(minX,fx);maxX=Math.max(maxX,fx);minY=Math.min(minY,fy);maxY=Math.max(maxY,fy);
             }
-        } else {
-            breachStartTime = null;
-            statusDisplay.innerText = "SYSTEM SECURE";
-            statusDisplay.className = "status-card status-safe";
+            detected=total>35;
+            isBreached=detected && unsafe>=3;
         }
+        // Landmark fallback if the segmentation mask is unavailable.
+        if(!detected && results.poseLandmarks){
+            const pts=results.poseLandmarks.filter(l=>(l.visibility??1)>=0.25&&l.x>=0&&l.x<=1&&l.y>=0&&l.y<=1);
+            for(const lm of pts){
+                const x=lm.x*canvasElement.width,y=lm.y*canvasElement.height;
+                minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);
+                const side=getSide(lm.x*100,lm.y*100,window.linePoints[0].x,window.linePoints[0].y,window.linePoints.at(-1).x,window.linePoints.at(-1).y);
+                if(safeConfig==='left'?side>0:side<0) isBreached=true;
+            }
+            detected=pts.length>=3;
+        }
+        if(detected){
+            const lmL=results.poseLandmarks?.[27],lmR=results.poseLandmarks?.[28];
+            let cameraFloorDistance=null;
+            if(floorMetresPerPixel!==null&&cameraFloorOrigin&&lmL&&lmR){
+                const fx=(lmL.x+lmR.x)/2*canvasElement.width,fy=(lmL.y+lmR.y)/2*canvasElement.height;
+                cameraFloorDistance=Math.hypot(fx-cameraFloorOrigin.x,fy-cameraFloorOrigin.y)*floorMetresPerPixel;
+            }
+            distanceReadout.textContent=cameraFloorDistance===null?'-- m':`${cameraFloorDistance.toFixed(2)} m`;
+            distanceDetail.textContent=cameraFloorDistance===null?'Foot landmarks unavailable or distance not calibrated':'Estimated floor distance from camera projection';
+            const distanceLabel=cameraFloorDistance===null?'DISTANCE NOT CALIBRATED':`${cameraFloorDistance.toFixed(2)}m from camera`;
+            const distanceForLog=cameraFloorDistance===null?null:Math.round(cameraFloorDistance*100);
+            const top=Math.max(10,minY-(maxY-minY)*0.12), labelY=top>50?top-45:Math.min(canvasElement.height-45,maxY+8);
+            canvasCtx.save();canvasCtx.lineWidth=5;canvasCtx.strokeStyle=isBreached?'#ff3333':'#00e676';
+            canvasCtx.strokeRect(minX,top,Math.max(8,maxX-minX),Math.max(8,maxY-top));
+            canvasCtx.translate(minX,labelY);canvasCtx.scale(-1,1);canvasCtx.translate(-300,0);
+            canvasCtx.fillStyle=isBreached?'#ff3333':'#00e676';canvasCtx.fillRect(0,0,300,40);
+            canvasCtx.fillStyle='white';canvasCtx.font='bold 16px Inter,sans-serif';
+            canvasCtx.fillText(isBreached?`BREACH | ${distanceLabel}`:`PERSON DETECTED | ${distanceLabel}`,8,26);canvasCtx.restore();
+            if(isBreached){
+                playBreachAlarm();if(!breachStartTime)breachStartTime=Date.now();
+                const elapsed=Date.now()-breachStartTime;statusDisplay.innerText=`BREACH: ${(elapsed/1000).toFixed(1)}s`;statusDisplay.className='status-card status-breach';
+                if(elapsed>BREACH_THRESHOLD){window.captureViolation(minX,maxX,minY,maxY,distanceForLog,results);breachStartTime=Date.now()+5000;}
+            }else{stopBreachAlarm();breachStartTime=null;statusDisplay.innerText='PERSON DETECTED - SYSTEM SECURE';statusDisplay.className='status-card status-safe';}
+        }else{stopBreachAlarm();breachStartTime=null;distanceReadout.textContent='-- m';statusDisplay.innerText='NO PERSON DETECTED';statusDisplay.className='status-card status-safe';}
     }
 });
     // --- 4. ENROLLMENT & DATABASE FUNCTIONS ---

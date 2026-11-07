@@ -109,21 +109,27 @@
 
         /* --- VIEWPORT --- */
         #viewport {
-            flex-grow: 1;
+            flex: 1 1 auto;
+            min-width: 0;
+            height: 100vh;
             position: relative;
+            overflow: hidden;
             background: #000;
             display: flex;
             align-items: center;
             justify-content: center;
         }
 
-        video, canvas {
+        #input-video, #output-canvas {
             position: absolute;
-            width: 95%; height: 90%;
+            inset: 0;
+            width: 100%;
+            height: 100%;
             object-fit: contain;
-            border-radius: 12px;
+            border-radius: 0;
             transform: scaleX(-1);
         }
+        #input-video { background: #000; }
 
         #input-video { z-index: 1; }
         #output-canvas { z-index: 2; pointer-events: auto; }
@@ -313,8 +319,10 @@
         <div id="breach-log-summary" style="color:#9da7b3;font-size:12px;margin-bottom:12px;">No breach records loaded.</div>
         <div id="breach-log-list"></div>
     </div>
+    </div><!-- end sidebar -->
 
-    <div id="viewport">
+    <main id="viewport" aria-label="Live camera monitoring">
+        <div id="live-feed-label" style="position:absolute;top:14px;left:16px;z-index:12;background:rgba(0,0,0,.78);color:#00d2ff;border:1px solid #00d2ff;border-radius:6px;padding:8px 12px;font-size:12px;font-weight:700;letter-spacing:.5px;">LIVE CAMERA FEED</div>
         <video id="input-video" autoplay muted playsinline></video>
         <canvas id="output-canvas"></canvas>
         <div id="camera-startup-status" style="position:absolute;left:16px;bottom:16px;z-index:20;background:rgba(0,0,0,.78);color:#ffd84d;padding:10px 14px;border:1px solid #555;border-radius:6px;font-size:12px;max-width:80%;">Initialising camera...</div>

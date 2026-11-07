@@ -1044,9 +1044,27 @@ window.lookupUser = function() {
         }
         const distanceLabel = cameraFloorDistance!==null ? `${cameraFloorDistance.toFixed(2)}m from camera` : 'DISTANCE NOT CALIBRATED';
         const distanceForLog = cameraFloorDistance!==null ? Math.round(cameraFloorDistance*100) : null;
-        const side = getSide(personX, personY, window.linePoints[0].x, window.linePoints[0].y, window.linePoints[1].x, window.linePoints[1].y);
+        // BODY-PART BREACH DETECTION:
+        // Test every reliably visible pose landmark, including ankles and feet.
+        // A breach is raised as soon as ANY visible body landmark enters the unsafe side.
         const safeConfig = document.getElementById('safe-side').value;
-        const isBreached = safeConfig === 'left' ? side > 0 : side < 0;
+        const bodyLandmarks = results.poseLandmarks;
+        const isBreached = bodyLandmarks.some(lm => {
+            const visibility = (typeof lm.visibility === 'number') ? lm.visibility : 1;
+            if (visibility < 0.45) return false;
+            const landmarkX = lm.x * 100;
+            const landmarkY = lm.y * 100;
+            const landmarkSide = getSide(
+                landmarkX, landmarkY,
+                window.linePoints[0].x, window.linePoints[0].y,
+                window.linePoints[1].x, window.linePoints[1].y
+            );
+            return safeConfig === 'left' ? landmarkSide > 0 : landmarkSide < 0;
+        });
+
+        // Audible alarm: browser audio is unlocked when the operator starts monitoring.
+        if (isBreached) playBreachAlarm();
+        else stopBreachAlarm();
 
         // 3. DYNAMIC POSITIONING (Box and Label)
         const headRoom = (maxY - minY) * 0.15;
@@ -1556,8 +1574,43 @@ window.announceToAuthority = function(type, location) {
     pointCountInput.onchange = updateSliders;
     updateSliders();
 
+    // Short repeating electronic alarm while any visible body part is beyond the line.
+    let breachAudioContext = null;
+    let lastBreachBeepAt = 0;
+    function playBreachAlarm() {
+        const now = Date.now();
+        if (now - lastBreachBeepAt < 900) return;
+        lastBreachBeepAt = now;
+        try {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) return;
+            if (!breachAudioContext) breachAudioContext = new AudioCtx();
+            if (breachAudioContext.state === 'suspended') breachAudioContext.resume();
+            const oscillator = breachAudioContext.createOscillator();
+            const gain = breachAudioContext.createGain();
+            oscillator.type = 'square';
+            oscillator.frequency.setValueAtTime(880, breachAudioContext.currentTime);
+            gain.gain.setValueAtTime(0.0001, breachAudioContext.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.16, breachAudioContext.currentTime + 0.015);
+            gain.gain.exponentialRampToValueAtTime(0.0001, breachAudioContext.currentTime + 0.22);
+            oscillator.connect(gain);
+            gain.connect(breachAudioContext.destination);
+            oscillator.start();
+            oscillator.stop(breachAudioContext.currentTime + 0.23);
+        } catch (err) { console.warn('Breach alarm audio unavailable:', err); }
+    }
+    function stopBreachAlarm() { /* Beeps are short; no continuous tone to stop. */ }
+
     startBtn.onclick = () => {
         isMonitoring = !isMonitoring;
+        if (isMonitoring) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx && !breachAudioContext) breachAudioContext = new AudioCtx();
+            if (breachAudioContext && breachAudioContext.state === 'suspended') breachAudioContext.resume();
+            lastBreachBeepAt = 0;
+        } else {
+            stopBreachAlarm();
+        }
         startBtn.innerText = isMonitoring ? "STOP MONITORING" : "LOCK & START MONITORING";
         startBtn.classList.toggle('active');
     };

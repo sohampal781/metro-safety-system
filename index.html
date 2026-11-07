@@ -1003,11 +1003,16 @@ window.lookupUser = function() {
             const data=imageData.data;
             const a=window.linePoints[0], b=window.linePoints[window.linePoints.length-1];
             const x1=a.x/100*160,y1=a.y/100*90,x2=b.x/100*160,y2=b.y/100*90;
+            const lineDX=x2-x1, lineDY=y2-y1;
+            const lineLen=Math.hypot(lineDX,lineDY)||1;
 
-            // IMAGE PROCESSING: threshold the person mask, remove isolated noise,
-            // then inspect the full silhouette (not only the pose skeleton).
+            // IMAGE PROCESSING: threshold the MediaPipe person mask and apply
+            // a small 3x3 majority filter to suppress isolated mask noise.
             const binary=new Uint8Array(160*90);
-            for(let i=0;i<binary.length;i++) binary[i]=data[i*4]>=128?1:0;
+            for(let i=0;i<binary.length;i++){
+                const confidence=data[i*4]; // segmentation confidence (0..255)
+                binary[i]=confidence>=90?1:0;
+            }
             const cleaned=new Uint8Array(binary.length);
             for(let y=1;y<89;y++) for(let x=1;x<159;x++){
                 let neighbours=0;
@@ -1016,31 +1021,23 @@ window.lookupUser = function() {
                 cleaned[y*160+x]=neighbours>=3?1:0;
             }
 
-            let total=0,unsafe=0,nearLine=0;
+            let total=0,unsafe=0;
             for(let y=0;y<90;y++) for(let x=0;x<160;x++){
                 if(!cleaned[y*160+x]) continue;
                 total++;
-                let pixelUnsafe=false;
-                for(let li=0;li<window.linePoints.length-1;li++){
-                    const la=window.linePoints[li],lb=window.linePoints[li+1];
-                    const ax=la.x/100*160, ay=la.y/100*90;
-                    const bx=lb.x/100*160, by=lb.y/100*90;
-                    const side=(x-ax)*(by-ay)-(y-ay)*(bx-ax);
-                    if(safeConfig==='left'?side>0:side<0){pixelUnsafe=true;break;}
-                }
-                const isUnsafe=pixelUnsafe;
+                // Signed distance from the actual drawn boundary. A single
+                // consistent line direction avoids opposite-side errors.
+                const signedSide=(x-x1)*lineDY-(y-y1)*lineDX;
+                const isUnsafe=safeConfig==='left'?signedSide>0:signedSide<0;
                 if(isUnsafe) unsafe++;
-                // Count silhouette pixels close to the drawn boundary as well.
-                const lineLen=Math.hypot(x2-x1,y2-y1)||1;
-                const lineDistance=Math.abs(side)/lineLen;
-                if(lineDistance<=2.5) nearLine++;
                 const fx=x/160*canvasElement.width, fy=y/90*canvasElement.height;
-                minX=Math.min(minX,fx);maxX=Math.max(maxX,fx);minY=Math.min(minY,fy);maxY=Math.max(maxY,fy);
+                minX=Math.min(minX,fx);maxX=Math.max(maxX,fx);
+                minY=Math.min(minY,fy);maxY=Math.max(maxY,fy);
             }
             detected=total>25;
             // A visible body silhouette entering the configured unsafe side is a breach.
             // The face is NOT required for this decision, so feet/hands can trigger it.
-            isBreached=detected && unsafe>=2;
+            isBreached=detected && unsafe>=1;
         }
         // ALWAYS combine pose landmarks with the segmentation mask.
         // Previously landmarks were checked only when the mask found no person.
@@ -1052,14 +1049,11 @@ window.lookupUser = function() {
                 l.x>=0 && l.x<=1 && l.y>=0 && l.y<=1
             );
             const line=window.linePoints;
+            const lineStart=line[0], lineEnd=line[line.length-1];
             const pointIsUnsafe=(xPct,yPct)=>{
-                // Treat the drawn line as a polyline, not just a line from first to last point.
-                for(let i=0;i<line.length-1;i++){
-                    const a=line[i],b=line[i+1];
-                    const side=(xPct-a.x)*(b.y-a.y)-(yPct-a.y)*(b.x-a.x);
-                    if(safeConfig==='left'?side>0:side<0) return true;
-                }
-                return false;
+                const side=(xPct-lineStart.x)*(lineEnd.y-lineStart.y)-
+                           (yPct-lineStart.y)*(lineEnd.x-lineStart.x);
+                return safeConfig==='left'?side>0:side<0;
             };
             for(const lm of pts){
                 const x=lm.x*canvasElement.width,y=lm.y*canvasElement.height;

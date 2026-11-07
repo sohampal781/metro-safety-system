@@ -126,6 +126,10 @@
             transform: scaleX(-1);
         }
 
+        #output-canvas { pointer-events: auto; }
+        .cal-row { display:grid; grid-template-columns: 28px 1fr 1fr auto; gap:5px; align-items:center; margin:7px 0; }
+        .cal-row input { min-width:0; width:100%; box-sizing:border-box; padding:7px 4px; font-size:11px; }
+        .cal-row button { padding:7px; font-size:10px; }
         /* --- CHALLAN TAB OVERLAY --- */
         #challan-overlay {
             position: absolute;
@@ -286,6 +290,19 @@
             </select>
         </div>
         <div id="slider-container"></div>
+        <div class="control-group" style="border:1px solid var(--accent);padding:12px;border-radius:8px;margin-top:16px;">
+            <label style="color:var(--accent);font-weight:bold;">CAMERA DISTANCE CALIBRATION</label>
+            <p style="font-size:11px;color:#9da7b3;line-height:1.4;">Keep the webcam fixed. For each point, enter its measured floor coordinates in metres relative to the point directly below the camera, then click Select and click that same point in the live video.</p>
+            <div id="calibration-points"></div>
+            <button type="button" class="action-btn" id="calibrate-distance-btn">CALIBRATE DISTANCE</button>
+            <div id="calibration-status" style="font-size:11px;margin-top:8px;color:#e1b12c;">Not calibrated. Distance will not be shown as a real measurement.</div>
+            <div style="font-size:11px;color:#9da7b3;margin-top:6px;">Distance shown will be floor distance from the camera's vertical floor projection to the person's feet.</div>
+        </div>
+        <div class="control-group" style="border:1px solid var(--border);padding:12px;border-radius:8px;">
+            <label>PERSON DISTANCE FROM CAMERA</label>
+            <div id="camera-distance-readout" style="font-size:25px;font-weight:800;color:var(--accent);">-- m</div>
+            <div id="camera-distance-detail" style="font-size:11px;color:#9da7b3;">Waiting for calibrated person position</div>
+        </div>
         <button id="start-btn">LOCK & START MONITORING</button>
     </div>
         <div id="register-ui" style="display:none; padding: 20px; background: #0a0b10; height: 100vh; overflow-y: scroll; box-sizing: border-box; padding-bottom: 100px;">
@@ -908,6 +925,78 @@ window.lookupUser = function() {
         return (px - x1) * (y2 - y1) - (py - y1) * (x2 - x1);
     }
 
+    // --- CAMERA-TO-FLOOR DISTANCE CALIBRATION (4-point homography) ---
+    // World coordinates must be measured in metres from the floor point directly below the camera.
+    const calibrationPoints = Array.from({length:4}, () => ({u:null,v:null,x:0,y:0}));
+    let selectingCalibrationPoint = -1;
+    let floorHomography = null;
+    const calibrationStatus = document.getElementById('calibration-status');
+    const distanceReadout = document.getElementById('camera-distance-readout');
+    const distanceDetail = document.getElementById('camera-distance-detail');
+    const calibrationContainer = document.getElementById('calibration-points');
+
+    calibrationPoints.forEach((pt,i) => {
+        const row = document.createElement('div'); row.className='cal-row';
+        row.innerHTML = `<strong>P${i+1}</strong><input type="number" step="0.01" id="cal-x-${i}" placeholder="X metres"><input type="number" step="0.01" id="cal-y-${i}" placeholder="Y metres"><button type="button" id="cal-pick-${i}">SELECT</button>`;
+        calibrationContainer.appendChild(row);
+        row.querySelector(`#cal-pick-${i}`).addEventListener('click', () => {
+            selectingCalibrationPoint=i;
+            calibrationStatus.textContent=`Click measured floor point P${i+1} in the live webcam image.`;
+            calibrationStatus.style.color='#e1b12c';
+        });
+        row.querySelector(`#cal-x-${i}`).addEventListener('input', e => pt.x=parseFloat(e.target.value));
+        row.querySelector(`#cal-y-${i}`).addEventListener('input', e => pt.y=parseFloat(e.target.value));
+    });
+
+    function solveLinearSystem(A,b) {
+        const n=b.length; A=A.map((r,i)=>r.slice().concat(b[i]));
+        for(let i=0;i<n;i++){
+            let max=i; for(let j=i+1;j<n;j++) if(Math.abs(A[j][i])>Math.abs(A[max][i])) max=j;
+            if(Math.abs(A[max][i])<1e-10) throw new Error('Calibration points are geometrically unsuitable. Choose four well-spread floor points.');
+            [A[i],A[max]]=[A[max],A[i]];
+            const d=A[i][i]; for(let k=i;k<=n;k++) A[i][k]/=d;
+            for(let j=0;j<n;j++) if(j!==i){const f=A[j][i];for(let k=i;k<=n;k++)A[j][k]-=f*A[i][k];}
+        }
+        return A.map(r=>r[n]);
+    }
+    function calculateHomography(points) {
+        const A=[], b=[];
+        points.forEach(({u,v,x,y})=>{
+            A.push([u,v,1,0,0,0,-x*u,-x*v]); b.push(x);
+            A.push([0,0,0,u,v,1,-y*u,-y*v]); b.push(y);
+        });
+        return solveLinearSystem(A,b);
+    }
+    function imageToFloor(u,v,H){
+        const den=H[6]*u+H[7]*v+1;
+        if(Math.abs(den)<1e-9) return null;
+        return {x:(H[0]*u+H[1]*v+H[2])/den,y:(H[3]*u+H[4]*v+H[5])/den};
+    }
+    document.getElementById('calibrate-distance-btn').addEventListener('click',()=>{
+        try{
+            if(calibrationPoints.some(p=>!Number.isFinite(p.u)||!Number.isFinite(p.v)||!Number.isFinite(p.x)||!Number.isFinite(p.y))) throw new Error('Select all four image points and enter their measured X/Y floor coordinates.');
+            floorHomography=calculateHomography(calibrationPoints);
+            calibrationStatus.textContent='CALIBRATED. Keep the webcam fixed and do not change zoom or angle.';
+            calibrationStatus.style.color='#00e676';
+        }catch(e){floorHomography=null;calibrationStatus.textContent=e.message;calibrationStatus.style.color='#ff7777';}
+    });
+    canvasElement.addEventListener('click', e=>{
+        if(selectingCalibrationPoint<0) return;
+        if(!canvasElement.width||!canvasElement.height) return;
+        const r=canvasElement.getBoundingClientRect();
+        const scale=Math.min(r.width/canvasElement.width,r.height/canvasElement.height);
+        const dw=canvasElement.width*scale, dh=canvasElement.height*scale;
+        const ox=(r.width-dw)/2, oy=(r.height-dh)/2;
+        let dx=(e.clientX-r.left-ox)/scale;
+        const dy=(e.clientY-r.top-oy)/scale;
+        // The displayed webcam/canvas is mirrored with CSS scaleX(-1).
+        dx=canvasElement.width-dx;
+        if(dx<0||dy<0||dx>canvasElement.width||dy>canvasElement.height) return;
+        const pt=calibrationPoints[selectingCalibrationPoint]; pt.u=dx/canvasElement.width; pt.v=dy/canvasElement.height;
+        calibrationStatus.textContent=`P${selectingCalibrationPoint+1} image position selected. Enter its measured floor X/Y coordinates.`;
+        selectingCalibrationPoint=-1;
+    });
+
     const pose = new Pose({
         locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
     });
@@ -966,7 +1055,24 @@ window.lookupUser = function() {
             if (dist < minDistancePx) minDistancePx = dist;
         }
 
-        const distanceCM = Math.round(minDistancePx * 0.3);
+        // Real floor distance from camera projection: use ankle/foot landmarks, not pixel scaling.
+        // Homography maps image coordinates to the calibrated floor plane.
+        let cameraFloorDistance = null;
+        if (floorHomography && results.poseLandmarks[27] && results.poseLandmarks[28]) {
+            const lmL=results.poseLandmarks[27], lmR=results.poseLandmarks[28];
+            const footU=(lmL.x+lmR.x)/2, footV=(lmL.y+lmR.y)/2;
+            const floorPos=imageToFloor(footU,footV,floorHomography);
+            if(floorPos) cameraFloorDistance=Math.hypot(floorPos.x,floorPos.y);
+        }
+        if(cameraFloorDistance!==null && Number.isFinite(cameraFloorDistance)){
+            distanceReadout.textContent=`${cameraFloorDistance.toFixed(2)} m`;
+            distanceDetail.textContent='Calibrated floor distance from camera projection to detected feet';
+        } else {
+            distanceReadout.textContent='-- m';
+            distanceDetail.textContent='Complete four-point floor calibration to enable metric distance';
+        }
+        const distanceLabel = cameraFloorDistance!==null ? `${cameraFloorDistance.toFixed(2)}m from camera` : 'DISTANCE NOT CALIBRATED';
+        const distanceForLog = cameraFloorDistance!==null ? Math.round(cameraFloorDistance*100) : null;
         const side = getSide(personX, personY, window.linePoints[0].x, window.linePoints[0].y, window.linePoints[1].x, window.linePoints[1].y);
         const safeConfig = document.getElementById('safe-side').value;
         const isBreached = safeConfig === 'left' ? side > 0 : side < 0;
@@ -999,7 +1105,7 @@ window.lookupUser = function() {
         // Label Text
         canvasCtx.fillStyle = 'white';
         canvasCtx.font = 'bold 18px Inter, sans-serif';
-        const statusText = isBreached ? `LANE VIOLATION | ${distanceCM}cm` : `SECURE | ${distanceCM}cm`;
+        const statusText = isBreached ? `LANE VIOLATION | ${distanceLabel}` : `SECURE | ${distanceLabel}`;
         canvasCtx.fillText(statusText, 10, 28);
         
         canvasCtx.restore();
@@ -1013,7 +1119,7 @@ window.lookupUser = function() {
             
             if (elapsed > BREACH_THRESHOLD) {
                 // Call global capture function
-                window.captureViolation(minX, maxX, minY, maxY, distanceCM, results); 
+                window.captureViolation(minX, maxX, minY, maxY, distanceForLog, results); 
                 breachStartTime = Date.now() + 5000; // Cooldown
             }
         } else {

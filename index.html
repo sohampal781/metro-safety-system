@@ -300,6 +300,10 @@
             <label style="color:var(--accent);font-weight:bold;">SIMPLE CAMERA DISTANCE SETUP</label>
             <p style="font-size:11px;color:#9da7b3;line-height:1.4;">On the live camera image, select the floor point directly below the camera, then select another floor point at a measured distance from it. Enter that distance in metres.</p>
             <div id="calibration-points"></div>
+            <div style="display:flex;align-items:center;gap:8px;margin:8px 0">
+                <label for="camera-height-metres" style="font-size:11px">Camera height perpendicular to floor (metres)</label>
+                <input id="camera-height-metres" type="number" min="0.1" step="0.01" value="2.50" style="width:90px">
+            </div>
             <button type="button" class="action-btn" id="calibrate-distance-btn">SAVE DISTANCE CALIBRATION</button>
             <div id="calibration-status" style="font-size:11px;margin-top:8px;color:#e1b12c;">Not calibrated.</div>
             <div style="font-size:11px;color:#9da7b3;margin-top:6px;">Keep the webcam fixed. This simple two-point scale is an estimate; perspective can cause errors at different floor depths.</div>
@@ -969,14 +973,17 @@ window.lookupUser = function() {
     document.getElementById('pick-distance-b').addEventListener('click',()=>{selectingDistancePoint='b';calibrationStatus.textContent='Click point B: the measured floor point.';});
     document.getElementById('calibrate-distance-btn').addEventListener('click',()=>{
       const known=parseFloat(document.getElementById('known-floor-distance').value);
+      const cameraHeight=parseFloat(document.getElementById('camera-height-metres').value);
       if(!distanceCalibration.a||!distanceCalibration.b||!Number.isFinite(known)||known<=0){calibrationStatus.textContent='Select A and B and enter their measured distance.';calibrationStatus.style.color='#ff7777';return;}
+      if(!Number.isFinite(cameraHeight)||cameraHeight<=0){calibrationStatus.textContent='Enter the camera height measured vertically/perpendicularly from the floor.';calibrationStatus.style.color='#ff7777';return;}
+      window.metroGuardCameraHeightMetres=cameraHeight;
       const pixels=Math.hypot(distanceCalibration.b.x-distanceCalibration.a.x,distanceCalibration.b.y-distanceCalibration.a.y);
       if(pixels<10){calibrationStatus.textContent='Choose two points farther apart.';calibrationStatus.style.color='#ff7777';return;}
       distanceCalibration.knownMetres=known;
       distanceCalibration.metresPerPixel=known/pixels;
       cameraFloorOrigin=distanceCalibration.a;
       floorMetresPerPixel=distanceCalibration.metresPerPixel;
-      calibrationStatus.textContent=`Saved: ${known.toFixed(2)} m across ${pixels.toFixed(0)} image pixels. Keep camera fixed.`;
+      calibrationStatus.textContent=`Saved: floor scale ${known.toFixed(2)} m; perpendicular camera height ${cameraHeight.toFixed(2)} m. Keep camera fixed.`;
       calibrationStatus.style.color='#00e676';
     });
     canvasElement.addEventListener('click',e=>{
@@ -1134,10 +1141,14 @@ window.lookupUser = function() {
             let cameraFloorDistance=null;
             if(floorMetresPerPixel!==null&&cameraFloorOrigin&&lmL&&lmR){
                 const fx=(lmL.x+lmR.x)/2*canvasElement.width,fy=(lmL.y+lmR.y)/2*canvasElement.height;
-                cameraFloorDistance=Math.hypot(fx-cameraFloorOrigin.x,fy-cameraFloorOrigin.y)*floorMetresPerPixel;
+                const horizontalFloorDistance=Math.hypot(fx-cameraFloorOrigin.x,fy-cameraFloorOrigin.y)*floorMetresPerPixel;
+                const perpendicularHeight=Number(window.metroGuardCameraHeightMetres)||0;
+                // 3D straight-line distance from camera lens to the detected foot point:
+                // sqrt(horizontal floor distance² + perpendicular camera height²).
+                cameraFloorDistance=Math.hypot(horizontalFloorDistance,perpendicularHeight);
             }
             distanceReadout.textContent=cameraFloorDistance===null?'-- m':`${cameraFloorDistance.toFixed(2)} m`;
-            distanceDetail.textContent=cameraFloorDistance===null?'Foot landmarks unavailable or distance not calibrated':'Estimated floor distance from camera projection';
+            distanceDetail.textContent=cameraFloorDistance===null?'Foot landmarks unavailable or distance not calibrated':'Estimated 3D camera-to-foot distance (floor range + perpendicular height)';
             const distanceLabel=cameraFloorDistance===null?'DISTANCE NOT CALIBRATED':`${cameraFloorDistance.toFixed(2)}m from camera`;
             const distanceForLog=cameraFloorDistance===null?null:Math.round(cameraFloorDistance*100);
             const top=Math.max(10,minY-(maxY-minY)*0.12), labelY=top>50?top-45:Math.min(canvasElement.height-45,maxY+8);

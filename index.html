@@ -466,7 +466,8 @@ const statusDisplay = document.getElementById('status-display');
 // Global Monitoring State
 window.isMonitoring = false;
 // Empty-scene reference for pixel-based foreground detection (static limbs included).
-let metroGuardBackground = null;\nconst sixtyThreshold = 72;
+let metroGuardBackground = null;
+const sixtyThreshold = 72;
 const bgCaptureButton = document.getElementById('capture-background-btn');
 const bgStatus = document.getElementById('background-status');
 bgCaptureButton?.addEventListener('click', () => {
@@ -899,14 +900,14 @@ window.lookupUser = function() {
     function updateSliders() {
     if (isMonitoring) return;
     sliderContainer.innerHTML = '';
-    linePoints = [];
+    window.linePoints = [];
     const count = parseInt(pointCountInput.value);
     
     for (let i = 0; i < count; i++) {
         // Initial point positions spread across the screen
         const x = Math.round((i / (count - 1)) * 100);
         const y = 80; 
-        linePoints.push({ x, y });
+        window.linePoints.push({ x, y });
 
         // Create a dedicated container for this specific point
         const div = document.createElement('div');
@@ -934,7 +935,7 @@ window.lookupUser = function() {
     sliderContainer.addEventListener('input', (e) => {
         const idx = e.target.dataset.idx;
         const axis = e.target.dataset.axis;
-        linePoints[idx][axis] = parseFloat(e.target.value);
+        window.linePoints[idx][axis] = parseFloat(e.target.value);
     });
 
     // Cross-product side detection
@@ -1572,8 +1573,12 @@ window.renderBreachLogs = async function() {
         const {get,ref:dbRef}=await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
         const snap=await get(dbRef(db,'violations'));
         if(snap.exists()) records=Object.values(snap.val()||{});
-    } catch(e) { console.warn('Firebase log read failed; showing local records.',e); }
-    const local=JSON.parse(localStorage.getItem('metroGuardBreachLogs')||'[]');
+    } catch(e) {
+        console.warn('Firebase log read failed; showing local records.',e);
+        summary.textContent='Firebase unavailable: ' + (e?.message || 'Check database rules/network') + ' | Showing browser-local records only.';
+    }
+    let local=[];
+    try { local=JSON.parse(localStorage.getItem('metroGuardBreachLogs')||'[]'); if(!Array.isArray(local)) local=[]; } catch(e) { console.warn('Local breach log data is invalid',e); local=[]; }
     const seen=new Set(records.map(r=>r.id));
     local.forEach(r=>{if(!seen.has(r.id))records.push(r);});
     records.sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
@@ -1708,7 +1713,11 @@ window.captureViolation = async function(minX, maxX, minY, maxY, distance, resul
             location: "DUMDUM-PLATFORM-P4"
         });
         console.log(`Violation ${violID} logged for ${passengerName}`);
-    } catch (err) { console.error(err); }
+    } catch (err) {
+        console.error('Firebase breach log write failed:', err);
+        const logSummary = document.getElementById('breach-log-summary');
+        if (logSummary) logSummary.textContent = 'Firebase save failed: ' + (err?.message || 'Check Realtime Database URL, network and database rules. Record will be kept locally on this browser.');
+    }
     const localEntry={id:violID,img:dataUrl,time:new Date().toLocaleString(),timestamp:Date.now(),
         linkedRfid:detectedRfid,identifiedName:passengerName,type:violationType,
         violationDistance:distance===null?'Not available':distance+'cm',

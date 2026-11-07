@@ -999,31 +999,76 @@ window.lookupUser = function() {
         if(results.segmentationMask){
             const sc=document.createElement('canvas'); sc.width=160; sc.height=90;
             const sx=sc.getContext('2d',{willReadFrequently:true}); sx.drawImage(results.segmentationMask,0,0,160,90);
-            const data=sx.getImageData(0,0,160,90).data;
+            const imageData=sx.getImageData(0,0,160,90);
+            const data=imageData.data;
             const a=window.linePoints[0], b=window.linePoints[window.linePoints.length-1];
             const x1=a.x/100*160,y1=a.y/100*90,x2=b.x/100*160,y2=b.y/100*90;
-            let total=0,unsafe=0;
-            for(let y=0;y<90;y+=2) for(let x=0;x<160;x+=2){
-                if(data[(y*160+x)*4]<128) continue;
+
+            // IMAGE PROCESSING: threshold the person mask, remove isolated noise,
+            // then inspect the full silhouette (not only the pose skeleton).
+            const binary=new Uint8Array(160*90);
+            for(let i=0;i<binary.length;i++) binary[i]=data[i*4]>=128?1:0;
+            const cleaned=new Uint8Array(binary.length);
+            for(let y=1;y<89;y++) for(let x=1;x<159;x++){
+                let neighbours=0;
+                for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++)
+                    neighbours+=binary[(y+dy)*160+(x+dx)];
+                cleaned[y*160+x]=neighbours>=3?1:0;
+            }
+
+            let total=0,unsafe=0,nearLine=0;
+            for(let y=0;y<90;y++) for(let x=0;x<160;x++){
+                if(!cleaned[y*160+x]) continue;
                 total++;
-                const side=(x-x1)*(y2-y1)-(y-y1)*(x2-x1);
-                if(safeConfig==='left'?side>0:side<0) unsafe++;
+                let pixelUnsafe=false;
+                for(let li=0;li<window.linePoints.length-1;li++){
+                    const la=window.linePoints[li],lb=window.linePoints[li+1];
+                    const ax=la.x/100*160, ay=la.y/100*90;
+                    const bx=lb.x/100*160, by=lb.y/100*90;
+                    const side=(x-ax)*(by-ay)-(y-ay)*(bx-ax);
+                    if(safeConfig==='left'?side>0:side<0){pixelUnsafe=true;break;}
+                }
+                const isUnsafe=pixelUnsafe;
+                if(isUnsafe) unsafe++;
+                // Count silhouette pixels close to the drawn boundary as well.
+                const lineLen=Math.hypot(x2-x1,y2-y1)||1;
+                const lineDistance=Math.abs(side)/lineLen;
+                if(lineDistance<=2.5) nearLine++;
                 const fx=x/160*canvasElement.width, fy=y/90*canvasElement.height;
                 minX=Math.min(minX,fx);maxX=Math.max(maxX,fx);minY=Math.min(minY,fy);maxY=Math.max(maxY,fy);
             }
-            detected=total>35;
-            isBreached=detected && unsafe>=3;
+            detected=total>25;
+            // A visible body silhouette entering the configured unsafe side is a breach.
+            // The face is NOT required for this decision, so feet/hands can trigger it.
+            isBreached=detected && unsafe>=2;
         }
-        // Landmark fallback if the segmentation mask is unavailable.
-        if(!detected && results.poseLandmarks){
-            const pts=results.poseLandmarks.filter(l=>(l.visibility??1)>=0.25&&l.x>=0&&l.x<=1&&l.y>=0&&l.y<=1);
+        // ALWAYS combine pose landmarks with the segmentation mask.
+        // Previously landmarks were checked only when the mask found no person.
+        // That caused a torso mask on the safe side to hide a leg/foot crossing.
+        if(results.poseLandmarks){
+            const pts=results.poseLandmarks.filter(l=>
+                (l.visibility??1)>=0.12 &&
+                Number.isFinite(l.x) && Number.isFinite(l.y) &&
+                l.x>=0 && l.x<=1 && l.y>=0 && l.y<=1
+            );
+            const line=window.linePoints;
+            const pointIsUnsafe=(xPct,yPct)=>{
+                // Treat the drawn line as a polyline, not just a line from first to last point.
+                for(let i=0;i<line.length-1;i++){
+                    const a=line[i],b=line[i+1];
+                    const side=(xPct-a.x)*(b.y-a.y)-(yPct-a.y)*(b.x-a.x);
+                    if(safeConfig==='left'?side>0:side<0) return true;
+                }
+                return false;
+            };
             for(const lm of pts){
                 const x=lm.x*canvasElement.width,y=lm.y*canvasElement.height;
-                minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);
-                const side=getSide(lm.x*100,lm.y*100,window.linePoints[0].x,window.linePoints[0].y,window.linePoints.at(-1).x,window.linePoints.at(-1).y);
-                if(safeConfig==='left'?side>0:side<0) isBreached=true;
+                minX=Math.min(minX,x);maxX=Math.max(maxX,x);
+                minY=Math.min(minY,y);maxY=Math.max(maxY,y);
+                if(pointIsUnsafe(lm.x*100,lm.y*100)) isBreached=true;
             }
-            detected=pts.length>=3;
+            // A partial visible body may have fewer than three reliable landmarks.
+            if(pts.length>0) detected=true;
         }
         if(detected){
             const lmL=results.poseLandmarks?.[27],lmR=results.poseLandmarks?.[28];
@@ -1377,7 +1422,8 @@ window.deleteUserRecord = async function(rfid) {
     }
 };
 window.captureViolation = async function(minX, maxX, minY, maxY, distance, results, violationType = "LINE_BREACH") {
-    // 1. HUMAN FACE GATEKEEPER (Prevents Curtain/Object Triggers)
+    // FACE RECOGNITION: identify an enrolled passenger when a face is visible.
+    // Face recognition is supplementary; it never blocks a body/foot breach alert.
     let faceDetection = null;
     try {
         faceDetection = await faceapi.detectSingleFace(videoElement).withFaceLandmarks().withFaceDescriptor();

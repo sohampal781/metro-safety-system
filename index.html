@@ -945,7 +945,7 @@ window.lookupUser = function() {
     // --- FOUR-POINT FLOOR PERSPECTIVE CALIBRATION ---
     // A is the floor point directly below the camera. B/C/D define a measured
     // rectangular floor reference, allowing a projective homography.
-    const distanceCalibration = {a:null,b:null,c:null,d:null};
+    const distanceCalibration = {a:null,b:null,c:null,d:null,twoA:null,twoB:null};
     let selectingDistancePoint = null;
     let cameraFloorOrigin = null;
     let floorMetresPerPixel = null;
@@ -960,11 +960,51 @@ window.lookupUser = function() {
       <div class="cal-row"><strong>C</strong><span style="font-size:11px;flex:1">Far-side width/depth corner</span><button type="button" id="pick-distance-c">SELECT C</button></div>
       <div class="cal-row"><strong>D</strong><span style="font-size:11px;flex:1">Far-side depth corner</span><button type="button" id="pick-distance-d">SELECT D</button></div>
       <div style="display:flex;align-items:center;gap:8px;margin:8px 0"><label for="known-floor-width" style="font-size:11px">A-B width (m)</label><input id="known-floor-width" type="number" min="0.1" step="0.01" value="2" style="width:70px"><label for="known-floor-depth" style="font-size:11px">A-D depth (m)</label><input id="known-floor-depth" type="number" min="0.1" step="0.01" value="4" style="width:70px"></div>
-      <div style="font-size:10px;color:#9da7b3">Select A, B, C, D in order around a measured rectangular floor area. A must be directly below the camera.</div>`;
+      <div style="font-size:10px;color:#9da7b3">Select A, B, C, D in order around a measured rectangular floor area. A must be directly below the camera.</div>
+      <div style="border-top:1px solid #384252;margin-top:12px;padding-top:12px;">
+        <b style="color:var(--accent);font-size:12px;">ALTERNATIVE: TWO-POINT QUICK CALIBRATION</b>
+        <p style="font-size:10px;color:#9da7b3;line-height:1.4;">Use this instead of the four-corner method. Select point A directly below the camera, select point B along the floor, then enter the real A-to-B distance.</p>
+        <div class="cal-row"><strong>A</strong><span style="font-size:11px;flex:1">Camera floor projection</span><button type="button" id="pick-two-a">SELECT A</button></div>
+        <div class="cal-row"><strong>B</strong><span style="font-size:11px;flex:1">Known floor point</span><button type="button" id="pick-two-b">SELECT B</button></div>
+        <div style="display:flex;align-items:center;gap:8px;margin:8px 0;">
+          <label for="two-point-reference-distance" style="font-size:11px;">A to B actual distance (m)</label>
+          <input id="two-point-reference-distance" type="number" min="0.1" step="0.01" value="2" style="width:80px;">
+          <button type="button" id="save-two-point-calibration">SAVE TWO-POINT</button>
+        </div>
+      </div>`;
     ['a','b','c','d'].forEach(k=>document.getElementById(`pick-distance-${k}`).addEventListener('click',()=>{
       selectingDistancePoint=k;
       calibrationStatus.textContent=`Click floor corner ${k.toUpperCase()} on the live camera image.`;
     }));
+
+    document.getElementById('pick-two-a').addEventListener('click',()=>{
+      selectingDistancePoint='twoA';
+      calibrationStatus.textContent='Click point A: floor point directly below the camera.';
+    });
+    document.getElementById('pick-two-b').addEventListener('click',()=>{
+      selectingDistancePoint='twoB';
+      calibrationStatus.textContent='Click point B: the floor point at the measured reference distance.';
+    });
+    document.getElementById('save-two-point-calibration').addEventListener('click',()=>{
+      const known=parseFloat(document.getElementById('two-point-reference-distance').value);
+      const height=parseFloat(document.getElementById('camera-height-metres').value);
+      if(!distanceCalibration.twoA||!distanceCalibration.twoB||!Number.isFinite(known)||known<=0){
+        calibrationStatus.textContent='Select both two-point markers and enter their actual distance.';
+        calibrationStatus.style.color='#ff7777';return;
+      }
+      if(!Number.isFinite(height)||height<=0){
+        calibrationStatus.textContent='Enter the perpendicular camera height.';
+        calibrationStatus.style.color='#ff7777';return;
+      }
+      const px=Math.hypot(distanceCalibration.twoB.x-distanceCalibration.twoA.x,distanceCalibration.twoB.y-distanceCalibration.twoA.y);
+      if(px<8){calibrationStatus.textContent='Choose two points farther apart.';calibrationStatus.style.color='#ff7777';return;}
+      floorHomography=null;
+      cameraFloorOrigin=distanceCalibration.twoA;
+      floorMetresPerPixel=known/px;
+      window.metroGuardCameraHeightMetres=height;
+      calibrationStatus.textContent=`Two-point calibration saved: ${known.toFixed(2)} m reference and ${height.toFixed(2)} m camera height. Perspective variation is not corrected by this quick method.`;
+      calibrationStatus.style.color='#00e676';
+    });
 
     function solveHomography(srcPts, dstPts) {
       const M=[];
@@ -1157,12 +1197,18 @@ window.lookupUser = function() {
         if(detected){
             const lmL=results.poseLandmarks?.[27],lmR=results.poseLandmarks?.[28];
             let cameraFloorDistance=null;
-            if(floorHomography&&lmL&&lmR){
+            if(lmL&&lmR){
                 const fx=(lmL.x+lmR.x)/2*canvasElement.width;
                 const fy=(lmL.y+lmR.y)/2*canvasElement.height;
-                const floorPoint=imageToFloor(fx,fy,floorHomography);
-                if(floorPoint){
-                    const horizontalFloorDistance=Math.hypot(floorPoint.x,floorPoint.y);
+                let horizontalFloorDistance=null;
+                if(floorHomography){
+                    const floorPoint=imageToFloor(fx,fy,floorHomography);
+                    if(floorPoint) horizontalFloorDistance=Math.hypot(floorPoint.x,floorPoint.y);
+                } else if(floorMetresPerPixel!==null&&cameraFloorOrigin){
+                    // Quick two-point mode: constant scale from the selected floor reference.
+                    horizontalFloorDistance=Math.hypot(fx-cameraFloorOrigin.x,fy-cameraFloorOrigin.y)*floorMetresPerPixel;
+                }
+                if(horizontalFloorDistance!==null){
                     const perpendicularHeight=Number(window.metroGuardCameraHeightMetres)||0;
                     window.lastFloorDistanceMetres=horizontalFloorDistance;
                     cameraFloorDistance=Math.hypot(horizontalFloorDistance,perpendicularHeight);

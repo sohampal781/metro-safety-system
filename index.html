@@ -290,6 +290,12 @@
             </select>
         </div>
         <div id="slider-container"></div>
+        <div class="control-group" style="border:1px solid #d6a700;padding:12px;border-radius:8px;margin-top:12px;">
+            <label style="color:#ffd84d;font-weight:bold;">STATIC BODY / LIMB DETECTION</label>
+            <p style="font-size:11px;color:#9da7b3;line-height:1.4;">With the monitored area empty, click CAPTURE EMPTY BACKGROUND once. Then start monitoring. Image processing compares every frame with this reference, so a stationary leg/arm that enters afterwards remains detected.</p>
+            <button type="button" class="action-btn" id="capture-background-btn">CAPTURE EMPTY BACKGROUND</button>
+            <div id="background-status" style="font-size:11px;margin-top:7px;color:#e1b12c;">Background not captured.</div>
+        </div>
         <div class="control-group" style="border:1px solid var(--accent);padding:12px;border-radius:8px;margin-top:16px;">
             <label style="color:var(--accent);font-weight:bold;">SIMPLE CAMERA DISTANCE SETUP</label>
             <p style="font-size:11px;color:#9da7b3;line-height:1.4;">On the live camera image, select the floor point directly below the camera, then select another floor point at a measured distance from it. Enter that distance in metres.</p>
@@ -445,6 +451,24 @@ const statusDisplay = document.getElementById('status-display');
 
 // Global Monitoring State
 window.isMonitoring = false;
+// Empty-scene reference for pixel-based foreground detection (static limbs included).
+let metroGuardBackground = null;\nconst sixtyThreshold = 72;
+const bgCaptureButton = document.getElementById('capture-background-btn');
+const bgStatus = document.getElementById('background-status');
+bgCaptureButton?.addEventListener('click', () => {
+    if (!videoElement.videoWidth || !videoElement.videoHeight) {
+        bgStatus.textContent = 'Camera is not ready yet.';
+        return;
+    }
+    const refCanvas = document.createElement('canvas');
+    refCanvas.width = 160; refCanvas.height = 90;
+    const refCtx = refCanvas.getContext('2d', {willReadFrequently:true});
+    refCtx.drawImage(videoElement, 0, 0, 160, 90);
+    metroGuardBackground = refCtx.getImageData(0, 0, 160, 90);
+    bgStatus.textContent = 'Empty background saved. Keep camera fixed; do not include people.';
+    bgStatus.style.color = '#00e676';
+});
+
 window.linePoints = [];
 window.breachStartTime = null;
 const BREACH_THRESHOLD = 1500; 
@@ -1063,6 +1087,47 @@ window.lookupUser = function() {
             }
             // A partial visible body may have fewer than three reliable landmarks.
             if(pts.length>0) detected=true;
+        }
+        // PIXEL-BASED FOREGROUND DETECTION:
+        // Unlike pose estimation, this does not require a complete person or movement.
+        // Once an empty-scene reference is captured, a stationary limb remains foreground.
+        if (metroGuardBackground && videoElement.videoWidth) {
+            const fgCanvas=document.createElement('canvas'); fgCanvas.width=160; fgCanvas.height=90;
+            const fgCtx=fgCanvas.getContext('2d',{willReadFrequently:true});
+            fgCtx.drawImage(videoElement,0,0,160,90);
+            const current=fgCtx.getImageData(0,0,160,90).data;
+            const base=metroGuardBackground.data;
+            const mask=new Uint8Array(160*90);
+            for(let i=0;i<mask.length;i++){
+                const k=i*4;
+                const diff=Math.abs(current[k]-base[k])+Math.abs(current[k+1]-base[k+1])+Math.abs(current[k+2]-base[k+2]);
+                mask[i]=diff> sixtyThreshold?1:0;
+            }
+            // Remove isolated sensor noise, while preserving thin limbs.
+            const filtered=new Uint8Array(mask.length);
+            for(let y=1;y<89;y++) for(let x=1;x<159;x++){
+                let n=0;
+                for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++) n+=mask[(y+dy)*160+x+dx];
+                filtered[y*160+x]=n>=2?1:0;
+            }
+            let fgCount=0, fgUnsafe=0, fx0=160, fy0=90, fx1=0, fy1=0;
+            const la=window.linePoints[0], lb=window.linePoints[window.linePoints.length-1];
+            const ax=la.x/100*160, ay=la.y/100*90, bx=lb.x/100*160, by=lb.y/100*90;
+            for(let y=0;y<90;y++) for(let x=0;x<160;x++){
+                if(!filtered[y*160+x]) continue;
+                fgCount++; fx0=Math.min(fx0,x); fy0=Math.min(fy0,y); fx1=Math.max(fx1,x); fy1=Math.max(fy1,y);
+                const side=(x-ax)*(by-ay)-(y-ay)*(bx-ax);
+                if(safeConfig==='left'?side>0:side<0) fgUnsafe++;
+            }
+            // Require a small connected foreground area to avoid single-pixel noise.
+            if(fgCount>=18){
+                detected=true;
+                minX=Math.min(minX,fx0/160*canvasElement.width);
+                minY=Math.min(minY,fy0/90*canvasElement.height);
+                maxX=Math.max(maxX,fx1/160*canvasElement.width);
+                maxY=Math.max(maxY,fy1/90*canvasElement.height);
+                if(fgUnsafe>=3) isBreached=true;
+            }
         }
         if(detected){
             const lmL=results.poseLandmarks?.[27],lmR=results.poseLandmarks?.[28];

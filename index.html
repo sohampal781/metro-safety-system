@@ -125,7 +125,9 @@
             transform: scaleX(-1);
         }
 
-        #output-canvas { pointer-events: auto; }
+        #input-video { z-index: 1; }
+        #output-canvas { z-index: 2; pointer-events: auto; }
+        #camera-startup-status { z-index: 10; }
         .cal-row { display:grid; grid-template-columns: 28px 1fr 1fr auto; gap:5px; align-items:center; margin:7px 0; }
         .cal-row input { min-width:0; width:100%; box-sizing:border-box; padding:7px 4px; font-size:11px; }
         .cal-row button { padding:7px; font-size:10px; }
@@ -321,6 +323,41 @@
     </div>
 
     
+
+<script>
+(function () {
+  const video = document.getElementById('input-video');
+  const status = document.getElementById('camera-startup-status');
+  const show = (message, color) => {
+    if (status) { status.textContent = message; status.style.color = color || '#ffd84d'; }
+  };
+  if (!video) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    show('CAMERA ERROR: Open this page through HTTPS or localhost.', '#ff7777');
+    return;
+  }
+  show('Requesting webcam permission...', '#ffd84d');
+  navigator.mediaDevices.getUserMedia({
+    audio: false,
+    video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
+  }).then(async stream => {
+    video.srcObject = stream;
+    video.muted = true;
+    video.autoplay = true;
+    video.playsInline = true;
+    await video.play();
+    show('Camera connected. Loading detection system...', '#00e676');
+  }).catch(err => {
+    console.error('Webcam startup failed:', err);
+    let msg = err.message || String(err);
+    if (err.name === 'NotAllowedError') msg = 'Camera permission denied. Allow camera access in Chrome site settings.';
+    else if (err.name === 'NotFoundError') msg = 'No webcam detected. Connect a webcam.';
+    else if (err.name === 'NotReadableError') msg = 'Webcam is busy in another application.';
+    show('CAMERA ERROR: ' + msg, '#ff7777');
+  });
+})();
+</script>
+
    <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
     import { getDatabase, ref, set, push, onValue, remove, update } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js";
@@ -1024,7 +1061,7 @@ window.announceToAuthority = function(type, location) {
         startBtn.innerText = isMonitoring ? "STOP MONITORING" : "LOCK & START MONITORING";
         startBtn.classList.toggle('active');
     };
-// Start the webcam directly with getUserMedia to avoid silent Camera utility failures.
+// The independent camera bootstrap starts the video even if a remote module fails.
 async function init() {
     const startupStatus = document.getElementById('camera-startup-status');
     const setCameraStatus = (message, color = '#ffd84d') => {
@@ -1033,62 +1070,43 @@ async function init() {
             startupStatus.style.color = color;
         }
     };
-
     try {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            throw new Error('Camera access requires HTTPS or localhost. Open the website over HTTPS and allow camera access.');
+        if (!videoElement.srcObject) {
+            setCameraStatus('Waiting for webcam permission...', '#ffd84d');
+            await new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => reject(new Error('Timed out waiting for webcam. Check browser camera permission.')), 15000);
+                const check = () => {
+                    if (videoElement.srcObject) { clearTimeout(timeout); resolve(); }
+                    else setTimeout(check, 150);
+                };
+                check();
+            });
         }
-
-        setCameraStatus('Requesting webcam permission...');
-        const stream = await navigator.mediaDevices.getUserMedia({
-            audio: false,
-            video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
-        });
-
-        videoElement.muted = true;
-        videoElement.autoplay = true;
-        videoElement.playsInline = true;
-        videoElement.srcObject = stream;
-
-        await new Promise((resolve, reject) => {
-            if (videoElement.readyState >= 2 && videoElement.videoWidth > 0) return resolve();
-            const ready = () => { cleanup(); resolve(); };
-            const failed = () => { cleanup(); reject(new Error('Webcam opened, but video metadata could not load.')); };
-            const cleanup = () => {
-                videoElement.removeEventListener('loadedmetadata', ready);
-                videoElement.removeEventListener('error', failed);
-            };
-            videoElement.addEventListener('loadedmetadata', ready, { once: true });
-            videoElement.addEventListener('error', failed, { once: true });
-        });
-
+        if (videoElement.readyState < 2 || !videoElement.videoWidth) {
+            await new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => reject(new Error('Webcam stream opened but no video frames arrived.')), 10000);
+                videoElement.addEventListener('loadeddata', () => { clearTimeout(timeout); resolve(); }, { once: true });
+            });
+        }
         await videoElement.play();
-        setCameraStatus(`Camera connected: ${videoElement.videoWidth} × ${videoElement.videoHeight}`, '#00e676');
+        setCameraStatus(`Camera connected: ${videoElement.videoWidth} × ${videoElement.videoHeight}. Detection ready.`, '#00e676');
 
         let sendingFrame = false;
         const processFrames = async () => {
-            if (!videoElement.srcObject) return;
-            if (videoElement.readyState >= 2 && !sendingFrame) {
+            if (videoElement.srcObject && videoElement.readyState >= 2 && !sendingFrame) {
                 sendingFrame = true;
-                try {
-                    await pose.send({ image: videoElement });
-                } catch (err) {
+                try { await pose.send({ image: videoElement }); }
+                catch (err) {
                     console.error('Pose processing error:', err);
-                    setCameraStatus('Camera is connected, but image processing failed. Check internet/CDN access and browser console.', '#ff7777');
-                } finally {
-                    sendingFrame = false;
-                }
+                    setCameraStatus('Camera is working, but detection model failed to load. Check internet/CDN access.', '#ff7777');
+                } finally { sendingFrame = false; }
             }
             requestAnimationFrame(processFrames);
         };
         requestAnimationFrame(processFrames);
     } catch (err) {
-        console.error('MetroGuard camera startup failed:', err);
-        let message = err && err.message ? err.message : String(err);
-        if (err && err.name === 'NotAllowedError') message = 'Camera permission denied. Allow camera access in browser site settings, then reload.';
-        else if (err && err.name === 'NotFoundError') message = 'No webcam found. Connect a webcam and reload.';
-        else if (err && err.name === 'NotReadableError') message = 'Webcam is busy in another application. Close other camera apps and reload.';
-        setCameraStatus(`CAMERA ERROR: ${message}`, '#ff7777');
+        console.error('MetroGuard camera/detection startup failed:', err);
+        setCameraStatus('CAMERA ERROR: ' + (err.message || String(err)), '#ff7777');
     }
 }
 
